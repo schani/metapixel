@@ -1028,6 +1028,12 @@ generate_local_classic (classic_reader_t *reader, int min_distance, int metric)
 
 	    match = metapixel_nearest_to(&coeffs, metric, x, y, neighborhood, neighborhood_size, 0, 0);
 
+	    if (match.pixel == 0)
+	    {
+		fprintf(stderr, "Error: cannot find a matching image - try using a shorter distance.\n");
+		exit(1);
+	    }
+
 	    mosaic->matches[y * metawidth + x] = match;
 
 	    printf(".");

@@ -53,8 +53,8 @@
       <command>&dhpackage;</command>
       <arg><option><replaceable>options</replaceable></option></arg>
       <arg>--metapixel <filename>input.jpg</filename>
-      <filename>output.png</filename> --tables
-      <filename>destdir/tables.mxt</filename></arg>
+      <filename>output.png</filename> --library
+      <filename>destdir</filename></arg>
     </cmdsynopsis>
     <funcsynopsisinfo>creates a photomosaic <filename>output.png</filename> using <filename>input.jpg</filename> as the input image and <filename>destdir/tables.mxt</filename> as table file</funcsynopsisinfo>
   </refsynopsisdiv>
@@ -99,7 +99,7 @@
     
     <para><command>&dhpackage; --metapixel
     <filename>input.jpg</filename> <filename>output.png</filename>
-    --tables <filename>destdir/tables.mxt</filename></command> is then used
+    --library <filename>destdir</filename></command> is then used
     to transform an image (<filename>input.jpg</filename>) into a
     mosaic (<filename>output.png</filename>) using the source images
     (described by <filename>destdir/tables.mxt</filename>).

@@ -6,6 +6,8 @@ Changes since version 0.10:
   * Metapixel can now take default values for its settings from a
     configuration file in the user's home directory (".metapixelrc").
 
+  * Bugfixes
+
 Changes since version 0.9:
 
   * Metapixel can now enforce a minimum image distance for

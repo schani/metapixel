@@ -3,6 +3,8 @@ INSTALL = install
 
 BINDIR = $(PREFIX)/bin
 
+VERSION = 0.2
+
 #PROFILE = -pg
 
 LDOPTS = -L/usr/X11R6/lib $(PROFILE)
@@ -25,3 +27,10 @@ install : metapixel
 
 clean :
 	rm -f *.o metapixel *~
+
+dist :
+	rm -rf metapixel-$(VERSION)
+	mkdir metapixel-$(VERSION)
+	cp Makefile README COPYING *.[ch] metapixel-prepare metapixel-$(VERSION)/
+	tar -zcvf metapixel-$(VERSION).tar.gz metapixel-$(VERSION)
+	rm -rf metapixel-$(VERSION)

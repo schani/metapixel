@@ -698,7 +698,7 @@ main (int argc, char *argv[])
 	int option,
 	    option_index;
 
-	option = getopt_long(argc, argv, "pmy:i:q:", long_options, &option_index);
+	option = getopt_long(argc, argv, "pmw:h:y:i:q:c", long_options, &option_index);
 
 	if (option == -1)
 	    break;
@@ -803,27 +803,43 @@ main (int argc, char *argv[])
 	    return 1;
 	}
 
+	/* generate small image */
 	image->filter = MitchellFilter;
-	scaled = ZoomImage(image, 64, 64);
+	scaled = ZoomImage(image, small_width, small_height);
 	assert(scaled != 0);
 
 	TransformRGBImage(scaled, RGBColorspace);
 	UncondenseImage(scaled);
 
-	image_data = (unsigned char*)malloc(3 * IMAGE_SIZE * IMAGE_SIZE);
-	for (i = 0; i < IMAGE_SIZE * IMAGE_SIZE; ++i)
+	image_data = (unsigned char*)malloc(3 * small_width * small_height);
+	for (i = 0; i < small_width * small_height; ++i)
 	{
 	    image_data[i * 3 + 0] = DownScale(scaled->pixels[i].red);
 	    image_data[i * 3 + 1] = DownScale(scaled->pixels[i].green);
 	    image_data[i * 3 + 2] = DownScale(scaled->pixels[i].blue);
+	}
 
+	write_png_file(outimage_name, small_width, small_height, image_data);
+	free(image_data);
+
+	/* generate coefficients */
+	if (small_width != IMAGE_SIZE || small_height != IMAGE_SIZE)
+	{
+	    DestroyImage(scaled);
+	    image->filter = MitchellFilter;
+	    scaled = ZoomImage(image, IMAGE_SIZE, IMAGE_SIZE);
+	    assert(scaled != 0);
+
+	    TransformRGBImage(scaled, RGBColorspace);
+	    UncondenseImage(scaled);
+	}
+
+	for (i = 0; i < IMAGE_SIZE * IMAGE_SIZE; ++i)
+	{
 	    float_image[i * 3 + 0] = DownScale(scaled->pixels[i].red);
 	    float_image[i * 3 + 1] = DownScale(scaled->pixels[i].green);
 	    float_image[i * 3 + 2] = DownScale(scaled->pixels[i].blue);
 	}
-
-	write_png_file(outimage_name, IMAGE_SIZE, IMAGE_SIZE, image_data);
-	free(image_data);
 
 	transform_rgb_to_yiq(float_image);
 	decompose_image(float_image);

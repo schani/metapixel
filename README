@@ -82,7 +82,11 @@ photomosaics of size 2048x2048 your machine should at least have
 Licence and Availability
 ------------------------
 
-Metapixel is distributed under the terms of the GPL.
+Metapixel is free software distributed under the terms of the GPL. Due
+to the inclusion of Paul Heckbert's image scaling code, the additional
+restriction is that it may only be used for peaceful and and nonprofit
+purposes. I have already emailed him regarding the removal of this
+restriction.
 
 The source of Metapixel is available at the Metapixel homepage at
 

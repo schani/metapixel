@@ -71,6 +71,19 @@ bitmap_new (int color, unsigned int width, unsigned int height,
 }
 
 bitmap_t*
+bitmap_new_copying (int color, unsigned int width, unsigned int height,
+		    unsigned int pixel_stride, unsigned int row_stride, unsigned char *data)
+{
+    unsigned char *new_data = (unsigned char*)malloc(height * row_stride);
+
+    assert(new_data != 0);
+
+    memcpy(new_data, data, height * row_stride);
+
+    return bitmap_new(color, width, height, pixel_stride, row_stride, new_data);
+}
+
+bitmap_t*
 bitmap_new_packed (int color, unsigned int width, unsigned int height,
 		   unsigned char *data)
 {

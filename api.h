@@ -73,6 +73,9 @@ struct _bitmap_t
    is freed. */
 bitmap_t* bitmap_new (int color, unsigned int width, unsigned int height,
 		      unsigned int pixel_stride, unsigned int row_stride, unsigned char *data);
+/* bitmap_new_copying doesn't take possession of data. */
+bitmap_t* bitmap_new_copying (int color, unsigned int width, unsigned int height,
+			      unsigned int pixel_stride, unsigned int row_stride, unsigned char *data);
 /* This is the same as bitmap_new, only that pixel_stride and
    row_stride are assumed to take on their minimal values. */
 bitmap_t* bitmap_new_packed (int color, unsigned int width, unsigned int height,

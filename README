@@ -1,4 +1,4 @@
-Metapixel 0.10
+Metapixel 0.11
 ==============
 
 Metapixel is a program for generating photomosaics.  It can generate
@@ -8,13 +8,18 @@ is substitued, as well as collage-style photomosaics, in which
 rectangular parts of the source image at arbitrary positions (i.e. not
 aligned to a matrix) are substituted by matching images.
 
+Metapixel is, as of version 0.11, in a feature-freeze for release 1.0.
+This means that no more features will be implemented in Metapixel
+until we have a stable 1.0 release.  So, if you find any bugs in
+Metapixel, please do report them (to schani@complang.tuwien.ac.at).
+
 
 Installation
 ------------
 
-In order to compile Metapixel, you need libpng and libjpeg.  To run
-the script for preparing constituent images, you will additionally
-need Perl.  Most Linux distributions contain these software packages.
+To compile Metapixel, you need libpng and libjpeg.  To run the script
+for preparing constituent images, you will additionally need Perl.
+Most Linux distributions contain these software packages.
 
 Edit the first line of Makefile if you want to install Metapixel
 somewhere else than /usr/local.  Then, type
@@ -24,6 +29,19 @@ somewhere else than /usr/local.  Then, type
 If everything compiled fine, become root and type
 
   make install
+
+
+Configuring Metapixel
+---------------------
+
+You can optionally create a file ".metapixelrc" in your home directory
+to store some settings which makes it easier to use Metapixel, since
+you won't have to use that many switches on the command line.
+
+A sample configuration file is included in the Metapixel distribution
+under the name "metapixelrc".  See the section "The Configuration
+File" below for details.  It is advisable to at least set the options
+"prepare-directory" and "library-directory".
 
 
 Preparing images
@@ -37,18 +55,23 @@ scaled to a smaller size.  Usually this will be the size you intend to
 use for it in the target image, but it can be any arbitrary size.  It
 makes sense to scale your images to the maximum size that you will use
 for constituent images.  That way, no information gets lost.  The
-default size is 64x64 pixels.
+default size is 128x128 pixels.  The matching data and the scaled
+images are stored in a directory which is then called a "library".
+You can use more than one library in the creation of a mosaic.
 
-To simplify the task of preparing images, the Perl script
+To simplify the task of creating a library, the Perl script
 'metapixel-prepare' is included in the distribution.  It must be
-called with two parameters: the name of directory which the original
-images are stored in and the name of the directory which the scaled
-down images and the table file should be stored in.  If called with
-the option "--recurse", it searches the directory with the original
-image recursively, i.e., it searches all its direct and indirect
-subdirectories as well.  It also accepts parameters specifying the
-size of the scaled down images.  Just call it - it prints out usage
-information.
+called with the name of the directory where your original images are
+stored in.  As a second argument you must give the directory of the
+library to which the images are to be added.  If you have set a
+default directory for preparing images in your configuration file,
+the second argument is optional.
+
+If the script is called with the option "--recurse", it searches the
+directory with the original images recursively, i.e., it searches all
+its direct and indirect subdirectories as well.  It also accepts
+parameters specifying the size of the scaled down images.  Just call
+it - it prints out usage information.
 
 If the script constantly complains that an error occurred when running
 'metapixel', that probably means that metapixel is not in your path.
@@ -73,19 +96,19 @@ scaling are always left untouched.
 Metapixel produces output images in the PNG format.  In order to
 create a classic photomosaic for the image input.jpg and write the
 output to output.png with constituent images stored in the directory
-images, use the following command line:
+"images", use the following command line:
 
-  metapixel --tables images/tables.mxt --metapixel input.jpg output.png
+  metapixel --library images --metapixel input.jpg output.png
 
 To create a collage use
 
-  metapixel --tables images/tables.mxt --collage --metapixel input.jpg output.png
+  metapixel --library images --collage --metapixel input.jpg output.png
 
 Using the -y, -i and -q options you can change the weights for each of
 the color channels.  For example, to match only luminance, completely
 disregarding chrominance, use
 
-  metapixel --tables images/tables.mxt -i0 -q0 --metapixel input.jpg output.png
+  metapixel --library images -i0 -q0 --metapixel input.jpg output.png
 
 The default weight for each of the channels is 1.
 
@@ -103,8 +126,8 @@ seems to give better results while not being slower than the old
 wavelet metric.  The metric can be chosen using the --metric option.
 The default is the new subpixel metric.
 
-You can use the --tables option more than once to let Metapixel use
-more than one tables file for a mosaic.
+You can use the --library option more than once to let Metapixel use
+more than one library for a mosaic.
 
 
 Classic Mosaics
@@ -147,14 +170,102 @@ In case the antimosaic image and the input image are the same,
 Metapixel will simply reconstruct the input image from the subimages,
 because they will always match best in their original locations.  To
 tell Metapixel to do otherwise, you can use the
---forbit-reconstruction option, which allows you to specify a minimum
+--forbid-reconstruction option, which allows you to specify a minimum
 distance between the original location of a subimage and the location
 it has in the resulting mosaic.
 
 Here's how you create an antimosaic with a minimum reconstruction
 distance of 2:
 
-  metapixel --tables images/tables.mxt -x input.jpg -f 2 --metapixel input.jpg output.png
+  metapixel --library images -x input.jpg -f 2 --metapixel input.jpg output.png
+
+
+The Configuration File
+----------------------
+
+The first thing Metapixel does is try to read the file ".metapixelrc"
+in your home directory.  From this file, it reads default values for
+its settings, so that you don't have to give them on the command line
+each time you use Metapixel.
+
+In this configuration file, you can use the following directives:
+
+  (prepare-directory <directory>)
+
+    The library directory which metapixel-prepare should use by
+    default.  metapixel-prepare does not automatically create the
+    directory if it doesn't exist, so make sure it does.
+
+  (prepare-dimensions <width> <height>)
+
+    The size metapixel-prepare should use for the small images.
+
+  (library-directory <directory>)
+
+    A library directory which Metapixel should use when creating
+    mosaics.  You can use this directive more than once.
+
+  (small-image-dimensions <width> <height>)
+
+    The dimensions of the small images Metapixel should use in
+    mosaics.
+
+  (yiq-weights <y> <i> <q>)
+
+    The weights for the channels to be used in matching images.
+
+  (metric <metric>)
+
+    The metric Metapixel should use for matching images.  This can
+    either be "subpixel" or "wavelet".
+
+  (search-method <method>)
+
+    The search method for creating classic mosaics.  This can either
+    be "local" or "global".
+
+  (minimum-classic-distance <dist>)
+
+    The minimum distance between two occurences of the same image in
+    classic mosaics with the local search method.
+
+  (minimum-collage-distance <dist>)
+
+    The minimum distance (in pixels) between two occurences of the
+    same image in collage mosaics.
+
+  (cheat-amount <perc>)
+
+    The cheat amount in percent.
+
+  (forbid-reconstruction-distance <dist>)
+
+    The minimum distance between the position of subimage in the
+    original image and its position in the output image in an
+    antimosaic.
+
+Take a look at the file "metapixelrc" in the distribution.  It gives
+examples for each of the directives discussed here.
+
+
+Collages
+--------
+
+To create a collage, you have to use the "--collage" option in
+addition to "--metapixel".
+
+You can also specify a minimum distance between two occurences of the
+same image, which is measured in pixels.  The default value is 256.
+Use the "--distance" option to change it.  Note that the distance is
+measured between the centers of the images, not their edges, i.e., a
+minimum distance of 10 means that the centers of two occurences of the
+same image must be at least 10 pixels apart.  This will usually mean
+that they are allowed to overlap, unless you use very tiny small
+images.
+
+Note that Metapixel uses ridiculous amounts of memory for collage
+mosaics.  To create a collage photomosaics of size 2048x2048 your
+machine should at least have 64MBytes RAM.
 
 
 Protocols
@@ -197,26 +308,6 @@ introduces a comment which lasts ends with the end of the line, so the
 matching score is not part of the protocol syntax.
 
 
-Collages
---------
-
-To create a collage, you have to use the "--collage" option in
-addition to "--metapixel".
-
-You can also specify a minimum distance between two occurences of the
-same image, which is measured in pixels.  The default value is 256.
-Use the "--distance" option to change it.  Note that the distance is
-measured between the centers of the images, not their edges, i.e., a
-minimum distance of 10 means that the centers of two occurences of the
-same image must be at least 10 pixels apart.  This will usually mean
-that they are allowed to overlap, unless you use very tiny small
-images.
-
-Note that Metapixel uses ridiculous amounts of memory for collage
-mosaics.  To create a collage photomosaics of size 2048x2048 your
-machine should at least have 64MBytes RAM.
-
-
 The matching algorithms
 -----------------------
 
@@ -247,6 +338,17 @@ together whose aspect ratios are the same with an accuracy of two
 places behind the comma.  You might now have (among others) a
 directory called /my/sorted/images/ratio_0.79 which contains all
 images whose ratio between width and height is about 0.79.
+
+
+Upgrading from versions 0.8/0.9/0.10
+------------------------------------
+
+Starting from release 0.11, Metapixel requires that the tables file is
+in the same directory as the small images described in that file.  If
+your configuration is different, all you need to do is to make sure
+that all these files are in the same directory.  You don't need to
+remove the paths in the tables file, as Metapixel does that
+automatically.
 
 
 Upgrading from versions 0.6/0.7

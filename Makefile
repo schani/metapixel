@@ -5,10 +5,10 @@ MANPAGE_XSL = /sw/share/xml/xsl/docbook-xsl/manpages/docbook.xsl
 BINDIR = $(PREFIX)/bin
 MANDIR = $(PREFIX)/man
 
-VERSION = 0.10
+VERSION = 0.11
 
-DEBUG = -g
-#OPTIMIZE = -O2
+#DEBUG = -g
+OPTIMIZE = -O2
 #PROFILE = -pg
 
 MACOS_LDOPTS = -L/sw/lib
@@ -62,6 +62,7 @@ realclean : clean
 dist : metapixel.1
 	rm -rf metapixel-$(VERSION)
 	mkdir metapixel-$(VERSION)
-	cp Makefile README NEWS COPYING *.[ch] metapixel-prepare sizesort metapixel.xml metapixel.1 metapixel-$(VERSION)/
+	cp Makefile README NEWS COPYING *.[ch] metapixel-prepare sizesort metapixel.xml metapixel.1 metapixelrc \
+		metapixel-$(VERSION)/
 	tar -zcvf metapixel-$(VERSION).tar.gz metapixel-$(VERSION)
 	rm -rf metapixel-$(VERSION)

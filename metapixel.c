@@ -1456,12 +1456,13 @@ read_tables (const char *library_dir)
 		coefficient_with_index_t coeffs[NUM_COEFFS];
 		lisp_object_t *lst;
 		int channel, i;
+		char *filename = strip_path(lisp_string(vars[0]));
 
-		pixel->filename = (char*)malloc(dir_strlen + 1 + strlen(lisp_string(vars[0])) + 1);
+		pixel->filename = (char*)malloc(dir_strlen + 1 + strlen(filename) + 1);
 
 		strcpy(pixel->filename, library_dir);
 		strcat(pixel->filename, "/");
-		strcat(pixel->filename, lisp_string(vars[0]));
+		strcat(pixel->filename, filename);
 
 		for (channel = 0; channel < NUM_CHANNELS; ++channel)
 		    pixel->means[channel] = lisp_real(vars[3 + channel]);

@@ -1,3 +1,11 @@
+Changes since version 0.10:
+
+  * The tables files must now always be in the directory where the
+    small images reside, and that directory is now called a "library".
+
+  * Metapixel can now take default values for its settings from a
+    configuration file in the user's home directory (".metapixelrc").
+
 Changes since version 0.9:
 
   * Metapixel can now enforce a minimum image distance for

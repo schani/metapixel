@@ -1,0 +1,24 @@
+; comments start with semicolons
+
+; if we prepare images, they go into this directory by default:
+(prepare-directory "/home/hoschi/metapixels")
+; and we want them to be prepared at this size:
+(prepare-dimensions 80 80)
+
+; of course we want Metapixel to always use the images in our prepare
+; directory:
+(library-directory "/home/hoschi/metapixels")
+; by default we want our mosaic images a bit smaller:
+(small-image-dimensions 64 64)
+; we use the default weights, so the following line is commented out
+;(yiq-weights 1.0 1.0 1.0)
+; also we use the subpixel metrix, which is the default
+;(metrix subpixel)
+; we want the global search method, though
+(search-method global)
+; for all the other options, we use default values, so everything else
+; is commented out:
+;(minimum-classic-distance 5)
+;(minimum-collage-distance 256)
+;(cheat-amount 0)
+;(forbid-reconstruction-distance 0)

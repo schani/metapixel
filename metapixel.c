@@ -44,8 +44,8 @@
 #define MAX(a,b)           ((a)>(b)?(a):(b))
 #endif
 
-#define SMALL_WIDTH         64
-#define SMALL_HEIGHT        64
+#define DEFAULT_WIDTH       64
+#define DEFAULT_HEIGHT      64
 
 #define IMAGE_SIZE          64
 #define ROW_LENGTH          (IMAGE_SIZE * 3)
@@ -78,7 +78,7 @@ int index_order[IMAGE_SIZE * IMAGE_SIZE];
 typedef struct _metapixel_t
 {
     char filename[1024];
-    coefficient_with_index_t coeffs[3][SIGNIFICANT_COEFFS];
+    search_coefficients_t coeffs[3];
     float means[3];
     struct _metapixel_t *next;
 } metapixel_t;
@@ -88,6 +88,8 @@ static metapixel_t *first_pixel = 0;
 float sqrt_of_two, sqrt_of_image_size;
 
 float weight_factors[3] = { 1.0, 1.0, 1.0 };
+
+int small_width = DEFAULT_WIDTH, small_height = DEFAULT_HEIGHT;
 
 void
 generate_index_order (void)
@@ -436,8 +438,8 @@ weight_function (int channel, int index)
 }
 
 float
-compare_images (coefficient_with_index_t query[3][SIGNIFICANT_COEFFS], float *query_means,
-		coefficient_with_index_t target[3][SIGNIFICANT_COEFFS], float *target_means)
+compare_images (search_coefficients_t query[3], float *query_means,
+		search_coefficients_t target[3], float *target_means)
 {
     float score = 0.0;
     int channel;
@@ -451,72 +453,171 @@ compare_images (coefficient_with_index_t query[3][SIGNIFICANT_COEFFS], float *qu
 	    * fabs(query_means[channel] - target_means[channel]) * 0.05;
 
 	j = 0;
-	for (i = 0; i < SIGNIFICANT_COEFFS; ++i)
+	for (i = 0; i < query[channel].num_positives; ++i)
 	{
-	    while (target[channel][j].index < query[channel][i].index
-		   && j < SIGNIFICANT_COEFFS)
+	    while (target[channel].positives[j].index < query[channel].positives[i].index
+		   && j < target[channel].num_positives)
 		++j;
 
-	    if (j >= SIGNIFICANT_COEFFS)
+	    if (j >= target[channel].num_positives)
 		break;
 
-	    if (target[channel][j].index > query[channel][i].index)
+	    if (target[channel].positives[j].index > query[channel].positives[i].index)
 		continue;
 
-	    if (query[channel][i].sign == target[channel][j].sign)
-		score -= weight_function(channel, query[channel][i].index);
+	    score -= target[channel].positives[j].weight;
+	}
 
-	    /*
-	    for (j = 0; j < SIGNIFICANT_COEFFS; ++j)
-		if (query[channel][i].index == target[channel][j].index
-		    && query[channel][i].sign == target[channel][j].sign)
-		{
-		    score -= weight_function(channel, query[channel][i].index);
-		    break;
-		}
-	    */
+	j = 0;
+	for (i = 0; i < query[channel].num_negatives; ++i)
+	{
+	    while (target[channel].negatives[j].index < query[channel].negatives[i].index
+		   && j < target[channel].num_negatives)
+		++j;
+
+	    if (j >= target[channel].num_negatives)
+		break;
+
+	    if (target[channel].negatives[j].index > query[channel].negatives[i].index)
+		continue;
+
+	    score -= target[channel].negatives[j].weight;
 	}
     }
 
     return score;
 }
 
-int
-compare_coeffs_with_index_by_index (const void *arg1, const void *arg2)
-{
-    coefficient_with_index_t *coeff1 = (coefficient_with_index_t*)arg1;
-    coefficient_with_index_t *coeff2 = (coefficient_with_index_t*)arg2;
-
-    return coeff1->index - coeff2->index;
-}
-
-void
-sort_coeffs (coefficient_with_index_t coeffs[3][SIGNIFICANT_COEFFS])
-{
-    int i;
-
-    for (i = 0; i < 3; ++i)
-	qsort(coeffs[i], SIGNIFICANT_COEFFS, sizeof(coefficient_with_index_t),
-	      compare_coeffs_with_index_by_index);
-}
-
 void
 add_metapixel (metapixel_t *pixel)
 {
-    sort_coeffs(pixel->coeffs);
     pixel->next = first_pixel;
     first_pixel = pixel;
 }
 
-metapixel_t*
-metapixel_nearest_to (coefficient_with_index_t queryCoeffs[3][SIGNIFICANT_COEFFS], float *queryMeans)
+int
+compare_indexes_with_weight (const void *p1, const void *p2)
 {
-    float best_score = 9999.0;
+    index_with_weight_t *i1 = (index_with_weight_t*)p1;
+    index_with_weight_t *i2 = (index_with_weight_t*)p2;
+
+    return i1->index - i2->index;
+}
+
+void
+generate_search_coeffs (search_coefficients_t search_coeffs[3], coefficient_with_index_t raw_coeffs[3][SIGNIFICANT_COEFFS])
+{
+    int channel;
+
+    for (channel = 0; channel < 3; ++channel)
+    {
+	int i;
+
+	search_coeffs[channel].num_positives = search_coeffs[channel].num_negatives = 0;
+
+	for (i = 0; i < SIGNIFICANT_COEFFS; ++i)
+	{
+	    if (raw_coeffs[channel][i].sign > 0)
+	    {
+		int j = search_coeffs[channel].num_positives++;
+
+		search_coeffs[channel].positives[j].index = raw_coeffs[channel][i].index;
+		search_coeffs[channel].positives[j].weight = weight_function(channel, raw_coeffs[channel][i].index);
+	    }
+	    else
+	    {
+		int j = search_coeffs[channel].num_negatives++;
+
+		search_coeffs[channel].negatives[j].index = raw_coeffs[channel][i].index;
+		search_coeffs[channel].negatives[j].weight = weight_function(channel, raw_coeffs[channel][i].index);
+	    }
+	}
+
+	assert(search_coeffs[channel].num_positives + search_coeffs[channel].num_negatives == SIGNIFICANT_COEFFS);
+
+	qsort(search_coeffs[channel].positives, search_coeffs[channel].num_positives,
+	      sizeof(index_with_weight_t), compare_indexes_with_weight);
+	qsort(search_coeffs[channel].negatives, search_coeffs[channel].num_negatives,
+	      sizeof(index_with_weight_t), compare_indexes_with_weight);
+    }
+}
+
+void
+generate_search_coeffs_for_subimage (search_coefficients_t search_coeffs[3], float means[3], Image *image, int x, int y, int use_crop)
+{
+    static float *float_image = 0;
+
+    RectangleInfo rect;
+    Image *subimage, *scaled_image;
+    int i;
+    coefficient_with_index_t raw_coeffs[3][SIGNIFICANT_COEFFS];
+
+    if (float_image == 0)
+	float_image = (float*)malloc(sizeof(float) * IMAGE_SIZE * IMAGE_SIZE * 3);
+
+    if (use_crop)
+    {
+	rect.x = x;
+	rect.y = y;
+	rect.width = small_width;
+	rect.height = small_height;
+
+	subimage = CropImage(image, &rect);
+	assert(subimage != 0);
+
+	if (small_width != IMAGE_SIZE || small_height != IMAGE_SIZE)
+	{
+	    scaled_image = ScaleImage(subimage, IMAGE_SIZE, IMAGE_SIZE);
+	    assert(scaled_image != 0);
+	    DestroyImage(subimage);
+	}
+	else
+	    scaled_image = subimage;
+
+	UncondenseImage(scaled_image);
+
+	for (i = 0; i < IMAGE_SIZE * IMAGE_SIZE; ++i)
+	{
+	    float_image[i * 3 + 0] = DownScale(scaled_image->pixels[i].red);
+	    float_image[i * 3 + 1] = DownScale(scaled_image->pixels[i].green);
+	    float_image[i * 3 + 2] = DownScale(scaled_image->pixels[i].blue);
+	}
+    }
+    else
+    {
+	int j;
+
+	x /= small_width;
+	y /= small_height;
+
+	for (j = 0; j < IMAGE_SIZE; ++j)
+	    for (i = 0; i < IMAGE_SIZE; ++i)
+	    {
+		float_image[(j * IMAGE_SIZE + i) * 3 + 0] = DownScale(image->pixels[(y * IMAGE_SIZE + j) * image->columns + x * IMAGE_SIZE + i].red);
+		float_image[(j * IMAGE_SIZE + i) * 3 + 1] = DownScale(image->pixels[(y * IMAGE_SIZE + j) * image->columns + x * IMAGE_SIZE + i].green);
+		float_image[(j * IMAGE_SIZE + i) * 3 + 2] = DownScale(image->pixels[(y * IMAGE_SIZE + j) * image->columns + x * IMAGE_SIZE + i].blue);
+	    }
+    }
+
+    transform_rgb_to_yiq(float_image);
+    decompose_image(float_image);
+    find_highest_coefficients(float_image, raw_coeffs);
+
+    generate_search_coeffs(search_coeffs, raw_coeffs);
+
+    for (i = 0; i < 3; ++i)
+	means[i] = float_image[i];
+}
+
+metapixel_t*
+metapixel_nearest_to (search_coefficients_t search_coeffs[3], float *query_means)
+{
+    float best_score = 1e99;
     metapixel_t *best_fit = 0, *pixel;
 
     for (pixel = first_pixel; pixel != 0; pixel = pixel->next)
     {
-	float score = compare_images(queryCoeffs, queryMeans, pixel->coeffs, pixel->means);
+	float score = compare_images(search_coeffs, query_means, pixel->coeffs, pixel->means);
 
 	if (best_fit == 0 || score < best_score)
 	{
@@ -535,8 +636,8 @@ paste_metapixel (metapixel_t *pixel, unsigned char *data, int width, int height,
     int pixel_width, pixel_height;
     unsigned char *pixel_data = read_png_file(pixel->filename, &pixel_width, &pixel_height);
 
-    for (i = 0; i < SMALL_HEIGHT; ++i)
-	memcpy(data + 3 * (x + (y + i) * width), pixel_data + 3 * i * SMALL_WIDTH, 3 * SMALL_WIDTH);
+    for (i = 0; i < small_height; ++i)
+	memcpy(data + 3 * (x + (y + i) * width), pixel_data + 3 * i * small_width, 3 * small_width);
 
     free(pixel_data);
 }
@@ -554,9 +655,12 @@ usage (void)
 	   "  metapixel [option ...] --metapixel <in> <out>\n"
 	   "      transform <in> to <out>\n"
 	   "Options:\n"
+	   "  -w, --width=WIDTH           set width for small images\n"
+	   "  -h, --height=HEIGHT         set height for small images\n"
 	   "  -y, --y-weight=WEIGHT       assign relative weight for the Y-channel\n"
 	   "  -i, --i-weight=WEIGHT       assign relative weight for the I-channel\n"
 	   "  -q, --q-weight=WEIGHT       assign relative weight for the Q-channel\n"
+	   "  -c, --collage               collage mode\n"
 	   "\n"
 	   "Report bugs to schani@complang.tuwien.ac.at\n");
 }
@@ -569,6 +673,7 @@ int
 main (int argc, char *argv[])
 {
     int mode = MODE_NONE;
+    int collage = 0;
 
     while (1)
     {
@@ -578,9 +683,12 @@ main (int argc, char *argv[])
 		{ "help", no_argument, 0, 257 },
 		{ "prepare", no_argument, 0, 'p' },
 		{ "metapixel", no_argument, 0, 'm' },
+		{ "width", required_argument, 0, 'w' },
+		{ "height", required_argument, 0, 'h' },
 		{ "y-weight", required_argument, 0, 'y' },
 		{ "i-weight", required_argument, 0, 'i' },
 		{ "q-weight", required_argument, 0, 'q' },
+		{ "collage", no_argument, 0, 'c' },
 		{ 0, 0, 0, 0 }
 	    };
 
@@ -602,6 +710,14 @@ main (int argc, char *argv[])
 		mode = MODE_METAPIXEL;
 		break;
 
+	    case 'w' :
+		small_width = atoi(optarg);
+		break;
+
+	    case 'h' :
+		small_height = atoi(optarg);
+		break;
+
 	    case 'y' :
 		weight_factors[0] = atof(optarg);
 		break;
@@ -612,6 +728,10 @@ main (int argc, char *argv[])
 
 	    case 'q' :
 		weight_factors[2] = atof(optarg);
+		break;
+
+	    case 'c' :
+		collage = 1;
 		break;
 
 	    case 256 :
@@ -688,7 +808,7 @@ main (int argc, char *argv[])
 	UncondenseImage(scaled);
 
 	image_data = (unsigned char*)malloc(3 * IMAGE_SIZE * IMAGE_SIZE);
-	for (i = 0; i < 64 * 64; ++i)
+	for (i = 0; i < IMAGE_SIZE * IMAGE_SIZE; ++i)
 	{
 	    image_data[i * 3 + 0] = DownScale(scaled->pixels[i].red);
 	    image_data[i * 3 + 1] = DownScale(scaled->pixels[i].green);
@@ -725,9 +845,11 @@ main (int argc, char *argv[])
     }
     else if (mode == MODE_METAPIXEL)
     {
-	unsigned char *in_image_data, *out_image_data;
+	unsigned char *out_image_data;
 	int in_image_width, in_image_height;
-	float *float_image = (float*)malloc(sizeof(float) * 3 * SMALL_WIDTH * SMALL_HEIGHT);
+	Image *image;
+	ImageInfo image_info;
+	int use_crop = 1;
 
 	if (argc - optind != 2)
 	{
@@ -737,6 +859,7 @@ main (int argc, char *argv[])
 
 	do
 	{
+	    coefficient_with_index_t coeffs[3][SIGNIFICANT_COEFFS];
 	    metapixel_t *pixel = (metapixel_t*)malloc(sizeof(metapixel_t));
 	    int channel;
 	    int i;
@@ -750,44 +873,65 @@ main (int argc, char *argv[])
 	    {
 		for (i = 0; i < SIGNIFICANT_COEFFS; ++i)
 		    scanf("%d %d",
-			  &pixel->coeffs[channel][i].index,
-			  &pixel->coeffs[channel][i].sign);
+			  &coeffs[channel][i].index,
+			  &coeffs[channel][i].sign);
 	    }
+
+	    generate_search_coeffs(pixel->coeffs, coeffs);
 
 	    add_metapixel(pixel);
 	} while (!feof(stdin));
 	
-	in_image_data = read_png_file(argv[optind], &in_image_width, &in_image_height);
+	GetImageInfo(&image_info);
+	strcpy(image_info.filename, argv[optind]);
+	image = ReadImage(&image_info);
+	if (image == 0)
+	{
+	    fprintf(stderr, "could not read image %s\n", argv[optind]);
+	    return 1;
+	}
 
-	if (0)
+	in_image_width = image->columns;
+	in_image_height = image->rows;
+
+	if (!collage && (small_width != IMAGE_SIZE || small_height != IMAGE_SIZE))
+	{
+	    Image *scaled_image;
+
+	    scaled_image = ScaleImage(image, in_image_width / small_width * IMAGE_SIZE, in_image_height / small_height * IMAGE_SIZE);
+	    assert(scaled_image != 0);
+	    DestroyImage(image);
+	    image = scaled_image;
+	}
+
+	if (!collage || (small_width == IMAGE_SIZE || small_height == IMAGE_SIZE))
+	{
+	    UncondenseImage(image);
+
+	    use_crop = 0;
+	}
+
+	out_image_data = (unsigned char*)malloc(in_image_width * in_image_height * 3);
+
+	if (!collage)
 	{
 	    int x, y;
 
-	    assert(in_image_width % SMALL_WIDTH == 0);
-	    assert(in_image_height % SMALL_HEIGHT == 0);
+	    assert(in_image_width % small_width == 0);
+	    assert(in_image_height % small_height == 0);
 
-	    out_image_data = in_image_data;
-
-	    for (y = 0; y < in_image_height / SMALL_HEIGHT; ++y)
-		for (x = 0; x < in_image_width / SMALL_WIDTH; ++x)
+	    for (y = 0; y < in_image_height / small_height; ++y)
+		for (x = 0; x < in_image_width / small_width; ++x)
 		{
-		    coefficient_with_index_t query_coeffs[3][SIGNIFICANT_COEFFS];
-		    int i, j;
+		    search_coefficients_t search_coeffs[3];
 		    metapixel_t *pixel;
+		    float means[3];
 
-		    for (j = 0; j < SMALL_HEIGHT; ++j)
-			for (i = 0; i < SMALL_WIDTH * 3; ++i)
-			    float_image[j * SMALL_WIDTH * 3 + i]
-				= in_image_data[(y * SMALL_HEIGHT + j) * in_image_width * 3 + x * SMALL_WIDTH * 3 + i];
+		    generate_search_coeffs_for_subimage(search_coeffs, means, image,
+							x * small_width, y * small_height, use_crop);
 
-		    transform_rgb_to_yiq(float_image);
-		    decompose_image(float_image);
-		    find_highest_coefficients(float_image, query_coeffs);
-
-		    sort_coeffs(query_coeffs);
-
-		    pixel = metapixel_nearest_to(query_coeffs, float_image);
-		    paste_metapixel(pixel, out_image_data, in_image_width, in_image_height, x * SMALL_WIDTH, y * SMALL_HEIGHT);
+		    pixel = metapixel_nearest_to(search_coeffs, means);
+		    paste_metapixel(pixel, out_image_data, in_image_width, in_image_height, x * small_width, y * small_height);
 
 		    printf(".");
 		    fflush(stdout);
@@ -795,41 +939,55 @@ main (int argc, char *argv[])
 	}
 	else
 	{
-	    int i;
+	    char *bitmap;
+	    int num_pixels_done = 0;
 
-	    out_image_data = (unsigned char*)malloc(in_image_width * in_image_height * 3);
-	    memset(out_image_data, 0, in_image_width * in_image_height * 3);
+	    bitmap = (char*)malloc(in_image_width * in_image_height);
+	    memset(bitmap, 0, in_image_width * in_image_height);
 
-	    for (i = 0; i < 4096; ++i)
+	    while (num_pixels_done < in_image_width * in_image_height)
 	    {
-		int x = random() % in_image_width - SMALL_WIDTH / 2;
-		int y = random() % in_image_height - SMALL_WIDTH / 2;
 		int i, j;
-		coefficient_with_index_t query_coeffs[3][SIGNIFICANT_COEFFS];
+		int x, y;
+		search_coefficients_t search_coeffs[3];
 		metapixel_t *pixel;
+		float means[3];
 
-		if (x < 0)
-		    x = 0;
-		if (x + SMALL_WIDTH > in_image_width)
-		    x = in_image_width - SMALL_WIDTH;
+		while (1)
+		{
+		    x = random() % in_image_width - small_width / 2;
+		    y = random() % in_image_height - small_height / 2;
 
-		if (y < 0)
-		    y = 0;
-		if (y + SMALL_HEIGHT > in_image_height)
-		    y = in_image_height - SMALL_HEIGHT;
+		    if (x < 0)
+			x = 0;
+		    if (x + small_width > in_image_width)
+			x = in_image_width - small_width;
 
-		for (j = 0; j < SMALL_HEIGHT; ++j)
-		    for (i = 0; i < SMALL_WIDTH * 3; ++i)
-			float_image[j * SMALL_WIDTH * 3 + i] = in_image_data[(y + j) * in_image_width * 3 + x * 3 + i];
-		
-		transform_rgb_to_yiq(float_image);
-		decompose_image(float_image);
-		find_highest_coefficients(float_image, query_coeffs);
+		    if (y < 0)
+			y = 0;
+		    if (y + small_height > in_image_height)
+			y = in_image_height - small_height;
 
-		sort_coeffs(query_coeffs);
+		    for (j = 0; j < small_height; ++j)
+			for (i = 0; i < small_width; ++i)
+			    if (!bitmap[(y + j) * in_image_width + x + i])
+				goto out;
+		}
 
-		pixel = metapixel_nearest_to(query_coeffs, float_image);
+	    out:
+		generate_search_coeffs_for_subimage(search_coeffs, means, image,
+						    x * small_width, y * small_height, use_crop);
+
+		pixel = metapixel_nearest_to(search_coeffs, means);
 		paste_metapixel(pixel, out_image_data, in_image_width, in_image_height, x, y);
+
+		for (j = 0; j < small_height; ++j)
+		    for (i = 0; i < small_width; ++i)
+			if (!bitmap[(y + j) * in_image_width + x + i])
+			{
+			    bitmap[(y + j) * in_image_width + x + i] = 1;
+			    ++num_pixels_done;
+			}
 
 		printf(".");
 		fflush(stdout);

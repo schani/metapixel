@@ -1,4 +1,4 @@
-Metapixel 0.4
+Metapixel 0.5
 =============
 
 Metapixel is a program for generating photomosaics. It can generate
@@ -78,12 +78,21 @@ completely disregarding chrominance, use
 
 The default weight for each of the channels is 1.
 
-The -d option lets you specify the minimal distance between two
-occurences of the same constituent image in the target image for
+The --distance option lets you specify the minimal distance between
+two occurences of the same constituent image in the target image for
 classical photomosaics. The default distance is 0, which means that it
 is allowed for one image to be placed in two adjacent elements in the
 matrix. Distance 1 means that there must be at least one other image
-between two occurences of the same image.
+between two occurences of the same image. Note that Metapixel is
+forces to select non-optimal matches for distances greater 0.
+
+Using the --cheat option you can specify the percentage by which the
+resulting photomosaic should be overlayed by the original image. The
+default is 0, i.e. the photomosaic is not overlayed at all. A
+percentage of 100 yields, not surprisingly, the original image. A
+percentage of 30 makes the photomosaic appear noticably better but is
+yet small enough to go unnoticed without close inspection in most
+circumstances.
 
 Note that Metapixel uses ridiculous amounts of main memory. To create
 photomosaics of size 2048x2048 your machine should at least have

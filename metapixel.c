@@ -136,6 +136,15 @@ scale_image (unsigned char *image, int image_width, int image_height, int x, int
 }
 
 void
+alpha_compose (unsigned char *dst, int width, int height, unsigned char *src, int perc)
+{
+    int i;
+
+    for (i = 0; i < width * height * NUM_CHANNELS; ++i)
+	dst[i] = dst[i] * (100 - perc) / 100 + src[i] * perc / 100;
+}
+
+void
 generate_index_order (void)
 {
     int index = 0,
@@ -703,6 +712,7 @@ usage (void)
 	   "  -c, --collage               collage mode\n"
 	   "  -d, --distance=DIST         minimum distance between two instances of\n"
 	   "                              the same constituent image\n"
+	   "  -a, --cheat=PERC            cheat with specified percentage\n"
 	   "\n"
 	   "Report bugs to schani@complang.tuwien.ac.at\n");
 }
@@ -717,6 +727,7 @@ main (int argc, char *argv[])
     int mode = MODE_NONE;
     int collage = 0;
     int min_distance = 0;
+    int cheat = 0;
 
     while (1)
     {
@@ -733,13 +744,14 @@ main (int argc, char *argv[])
 		{ "q-weight", required_argument, 0, 'q' },
 		{ "collage", no_argument, 0, 'c' },
 		{ "distance", required_argument, 0, 'd' },
+		{ "cheat", required_argument, 0, 'a' },
 		{ 0, 0, 0, 0 }
 	    };
 
 	int option,
 	    option_index;
 
-	option = getopt_long(argc, argv, "pmw:h:y:i:q:cd:", long_options, &option_index);
+	option = getopt_long(argc, argv, "pmw:h:y:i:q:cd:a:", long_options, &option_index);
 
 	if (option == -1)
 	    break;
@@ -781,6 +793,11 @@ main (int argc, char *argv[])
 	    case 'd' :
 		min_distance = atoi(optarg);
 		assert(min_distance >= 0);
+		break;
+
+	    case 'a' :
+		cheat = atoi(optarg);
+		assert(cheat >= 0 && cheat <= 100);
 		break;
 
 	    case 256 :
@@ -904,6 +921,7 @@ main (int argc, char *argv[])
 	    float sums[NUM_COEFFS];
 
 	    scanf("%s", pixel->filename);
+	    assert(strlen(pixel->filename) > 0);
 	    if (feof(stdin))
 		break;
 	    for (channel = 0; channel < 3; ++channel)
@@ -1050,6 +1068,9 @@ main (int argc, char *argv[])
 		fflush(stdout);
 	    }
 	}
+
+	if (cheat > 0)
+	    alpha_compose(out_image_data, in_image_width, in_image_height, in_image_data, cheat);
 
 	printf("done\n");
 

@@ -1,3 +1,20 @@
+mathmaprc syntax:
+
+  (prepare-directory directory)
+  (prepare-dimensions width height)   ; defaults to 128 * 128
+  (library-directory directory)       ; can be issued multiple times
+  (small-image-dimensions width height)
+  (yiq-weights y i q)
+  (metric metric)              ; subpixel or wavelet
+  (search-method method)       ; local or global
+  (minimum-classic-distance dist)
+  (minimum-collage-distance dist)
+  (cheat-amount perc)
+  (forbid-reconstruction-distance dist)
+
+
+
+
 before new lispreader:
 
 Mark-Probsts-Computer:~/Work/unix/metapixel/metapixel schani$ time ./metapixel -w 128 -h 96 --metapixel ../mets/tinischani.png out.png </pix/wide.prepared/tables.mxt

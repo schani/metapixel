@@ -46,24 +46,38 @@
 #define MAX(a,b)           ((a)>(b)?(a):(b))
 #endif
 
-int index_order[IMAGE_SIZE * IMAGE_SIZE];
+static int index_order[IMAGE_SIZE * IMAGE_SIZE];
 
 static metapixel_t *first_pixel = 0;
 static int num_metapixels = 0;
 
-float sqrt_of_two, sqrt_of_image_size;
+static float sqrt_of_two, sqrt_of_image_size;
 
-float weight_factors[NUM_CHANNELS] = { 1.0, 1.0, 1.0 };
+static float index_weights[NUM_INDEXES];
+static index_t weight_ordered_index_to_index[NUM_INDEXES];
+static index_t index_to_weight_ordered_index[NUM_INDEXES];
 
-float index_weights[NUM_INDEXES];
-index_t weight_ordered_index_to_index[NUM_INDEXES];
-index_t index_to_weight_ordered_index[NUM_INDEXES];
+/* default settings */
 
-int small_width = DEFAULT_WIDTH, small_height = DEFAULT_HEIGHT;
+static char *default_prepare_directory = 0;
+static int default_prepare_width = DEFAULT_PREPARE_WIDTH, default_prepare_height = DEFAULT_PREPARE_HEIGHT;
+static string_list_t *default_library_directories = 0;
+static int default_small_width = DEFAULT_WIDTH, default_small_height = DEFAULT_HEIGHT;
+static float default_weight_factors[NUM_CHANNELS] = { 1.0, 1.0, 1.0 };
+static int default_metric = METRIC_SUBPIXEL;
+static int default_search = SEARCH_LOCAL;
+static int default_classic_min_distance = DEFAULT_CLASSIC_MIN_DISTANCE;
+static int default_collage_min_distance = DEFAULT_COLLAGE_MIN_DISTANCE;
+static int default_cheat_amount = 0;
+static int default_forbid_reconstruction_radius = 0;
 
-int forbid_reconstruction_radius = 0;
+/* actual settings */
 
-int benchmark_rendering = 0;
+static int small_width, small_height;
+static float weight_factors[NUM_CHANNELS];
+static int forbid_reconstruction_radius;
+
+static int benchmark_rendering = 0;
 
 static string_list_t*
 string_list_prepend_copy (string_list_t *lst, const char *str)
@@ -74,6 +88,28 @@ string_list_prepend_copy (string_list_t *lst, const char *str)
     new->next = lst;
 
     return new;
+}
+
+static char*
+strip_path (char *name)
+{
+    char *p = strrchr(name, '/');
+
+    if (p == 0)
+	return name;
+    return p + 1;
+}
+
+static metapixel_t*
+new_metapixel (void)
+{
+    metapixel_t *pixel = (metapixel_t*)malloc(sizeof(metapixel_t));
+
+    assert(pixel != 0);
+
+    memset(pixel, 0, sizeof(metapixel_t));
+
+    return pixel;
 }
 
 static unsigned char*
@@ -578,11 +614,11 @@ generate_search_coeffs (search_coefficients_t *search_coeffs, float sums[NUM_COE
 
 void
 generate_search_coeffs_for_subimage (coeffs_t *coeffs, unsigned char *image_data, int image_width, int image_height,
-				     int x, int y, int width, int height, int method)
+				     int x, int y, int width, int height, int metric)
 {
     static float *float_image = 0;
 
-    if (method == METHOD_WAVELET)
+    if (metric == METRIC_WAVELET)
     {
 	coefficient_with_index_t raw_coeffs[NUM_COEFFS];
 	int i;
@@ -622,7 +658,7 @@ generate_search_coeffs_for_subimage (coeffs_t *coeffs, unsigned char *image_data
 	for (i = 0; i < NUM_CHANNELS; ++i)
 	    coeffs->wavelet.means[i] = float_image[i];
     }
-    else if (method == METHOD_SUBPIXEL)
+    else if (metric == METRIC_SUBPIXEL)
     {
 	unsigned char *scaled_data;
 	int i;
@@ -722,11 +758,11 @@ metapixel_in_array (metapixel_t *pixel, metapixel_t **array, int size)
 }
 
 compare_func_t
-compare_func_for_method (int method)
+compare_func_for_metric (int metric)
 {
-    if (method == METHOD_WAVELET)
+    if (metric == METRIC_WAVELET)
 	return wavelet_compare;
-    else if (method == METHOD_SUBPIXEL)
+    else if (metric == METRIC_SUBPIXEL)
 	return subpixel_compare;
     else
 	assert(0);
@@ -740,14 +776,14 @@ manhattan_distance (int x1, int y1, int x2, int y2)
 }
 
 static match_t
-metapixel_nearest_to (coeffs_t *coeffs, int method, int x, int y,
+metapixel_nearest_to (coeffs_t *coeffs, int metric, int x, int y,
 		      metapixel_t **forbidden, int num_forbidden,
 		      int (*validity_func) (void*, metapixel_t*, int, int),
 		      void *validity_func_data)
 {
     float best_score = 1e99;
     metapixel_t *best_fit = 0, *pixel;
-    compare_func_t compare_func = compare_func_for_method(method);
+    compare_func_t compare_func = compare_func_for_metric(metric);
     match_t match;
 
     for (pixel = first_pixel; pixel != 0; pixel = pixel->next)
@@ -775,9 +811,9 @@ metapixel_nearest_to (coeffs_t *coeffs, int method, int x, int y,
 }
 
 static void
-get_n_metapixel_nearest_to (int n, global_match_t *matches, coeffs_t *coeffs, int method)
+get_n_metapixel_nearest_to (int n, global_match_t *matches, coeffs_t *coeffs, int metric)
 {
-    compare_func_t compare_func = compare_func_for_method(method);
+    compare_func_t compare_func = compare_func_for_metric(metric);
     int i;
     metapixel_t *pixel;
 
@@ -917,13 +953,13 @@ compute_classic_column_coords (classic_reader_t *reader, int x, int *left_x, int
 }
 
 static void
-generate_search_coeffs_for_classic_subimage (classic_reader_t *reader, int x, coeffs_t *coeffs, int method)
+generate_search_coeffs_for_classic_subimage (classic_reader_t *reader, int x, coeffs_t *coeffs, int metric)
 {
     int left_x, width;
 
     compute_classic_column_coords(reader, x, &left_x, &width);
     generate_search_coeffs_for_subimage(coeffs, reader->in_image_data, reader->in_image_width, reader->num_lines,
-					left_x, 0, width, reader->num_lines, method);
+					left_x, 0, width, reader->num_lines, metric);
 }
 
 static void
@@ -955,7 +991,7 @@ init_mosaic_from_reader (classic_reader_t *reader)
 }
 
 static mosaic_t*
-generate_local_classic (classic_reader_t *reader, int min_distance, int method)
+generate_local_classic (classic_reader_t *reader, int min_distance, int metric)
 {
     mosaic_t *mosaic = init_mosaic_from_reader(reader);
     int metawidth = reader->metawidth, metaheight = reader->metaheight;
@@ -988,9 +1024,9 @@ generate_local_classic (classic_reader_t *reader, int min_distance, int method)
 		    neighborhood[i] = mosaic->matches[ny * metawidth + nx].pixel;
 	    }
 
-	    generate_search_coeffs_for_classic_subimage(reader, x, &coeffs, method);
+	    generate_search_coeffs_for_classic_subimage(reader, x, &coeffs, metric);
 
-	    match = metapixel_nearest_to(&coeffs, method, x, y, neighborhood, neighborhood_size, 0, 0);
+	    match = metapixel_nearest_to(&coeffs, metric, x, y, neighborhood, neighborhood_size, 0, 0);
 
 	    mosaic->matches[y * metawidth + x] = match;
 
@@ -1020,12 +1056,13 @@ compare_global_matches (const void *_m1, const void *_m2)
 }
 
 static mosaic_t*
-generate_global_classic (classic_reader_t *reader, int method)
+generate_global_classic (classic_reader_t *reader, int metric)
 {
     mosaic_t *mosaic = init_mosaic_from_reader(reader);
     int metawidth = reader->metawidth, metaheight = reader->metaheight;
     int x, y;
     global_match_t *matches, *m;
+    /* FIXME: this will overflow if metawidth and/or metaheight are large! */
     int num_matches = (metawidth * metaheight) * (metawidth * metaheight);
     int i, ignore_forbidden;
     int num_locations_filled;
@@ -1051,11 +1088,16 @@ generate_global_classic (classic_reader_t *reader, int method)
 	{
 	    coeffs_t coeffs;
 
-	    generate_search_coeffs_for_classic_subimage(reader, x, &coeffs, method);
+	    generate_search_coeffs_for_classic_subimage(reader, x, &coeffs, metric);
 	    
-	    get_n_metapixel_nearest_to(metawidth * metaheight, m, &coeffs, method);
+	    get_n_metapixel_nearest_to(metawidth * metaheight, m, &coeffs, metric);
 	    for (i = 0; i < metawidth * metaheight; ++i)
 	    {
+		int j;
+
+		for (j = i + 1; j < metawidth * metaheight; ++j)
+		    assert(m[i].pixel != m[j].pixel);
+
 		m[i].x = x;
 		m[i].y = y;
 	    }
@@ -1264,7 +1306,7 @@ pixel_valid_for_collage_position (void *data, metapixel_t *pixel, int x, int y)
 }
 
 static void
-generate_collage (char *input_name, char *output_name, float scale, int min_distance, int method, int cheat)
+generate_collage (char *input_name, char *output_name, float scale, int min_distance, int metric, int cheat)
 {
     unsigned char *in_image_data, *out_image_data;
     int in_image_width, in_image_height;
@@ -1338,9 +1380,9 @@ generate_collage (char *input_name, char *output_name, float scale, int min_dist
 
     out:
 	generate_search_coeffs_for_subimage(&coeffs, in_image_data, in_image_width, in_image_height,
-					    x, y, small_width, small_height, method);
+					    x, y, small_width, small_height, metric);
 
-	match = metapixel_nearest_to(&coeffs, method, x, y, 0, 0,
+	match = metapixel_nearest_to(&coeffs, metric, x, y, 0, 0,
 				     pixel_valid_for_collage_position, (void*)min_distance);
 	paste_metapixel(match.pixel, out_image_data, in_image_width, in_image_height, x, y);
 
@@ -1367,7 +1409,7 @@ generate_collage (char *input_name, char *output_name, float scale, int min_dist
 }
 
 static int
-read_tables (const char *filename)
+read_tables (const char *library_dir)
 {
     lisp_object_t *pattern;
     lisp_object_t *obj;
@@ -1375,8 +1417,14 @@ read_tables (const char *filename)
     int num_subs;
     pools_t pools;
     allocator_t allocator;
+    int dir_strlen = strlen(library_dir);
+    char tables_name[dir_strlen + 1 + strlen(TABLES_FILENAME) + 1];
 
-    if (lisp_stream_init_path(&stream, filename) == 0)
+    strcpy(tables_name, library_dir);
+    strcat(tables_name, "/");
+    strcat(tables_name, TABLES_FILENAME);
+
+    if (lisp_stream_init_path(&stream, tables_name) == 0)
 	return 0;
 
     pattern = lisp_read_from_string("(small-image #?(string) (size #?(integer) #?(integer))"
@@ -1404,12 +1452,16 @@ read_tables (const char *filename)
 
             if (lisp_match_pattern(pattern, obj, vars, num_subs))
 	    {
-		metapixel_t *pixel = (metapixel_t*)malloc(sizeof(metapixel_t));
+		metapixel_t *pixel = new_metapixel();
 		coefficient_with_index_t coeffs[NUM_COEFFS];
 		lisp_object_t *lst;
 		int channel, i;
 
-		pixel->filename = strdup(lisp_string(vars[0]));
+		pixel->filename = (char*)malloc(dir_strlen + 1 + strlen(lisp_string(vars[0])) + 1);
+
+		strcpy(pixel->filename, library_dir);
+		strcat(pixel->filename, "/");
+		strcat(pixel->filename, lisp_string(vars[0]));
 
 		for (channel = 0; channel < NUM_CHANNELS; ++channel)
 		    pixel->means[channel] = lisp_real(vars[3 + channel]);
@@ -1457,7 +1509,7 @@ read_tables (const char *filename)
 	    }
         }
         else if (type == LISP_TYPE_PARSE_ERROR)
-            fprintf(stderr, "parse error in tables file\n");
+            fprintf(stderr, "Error: parse error in tables file.\n");
 
         if (type == LISP_TYPE_EOF)
             break;
@@ -1591,7 +1643,7 @@ free_mosaic (mosaic_t *mosaic)
 
 int
 make_classic_mosaic (char *in_image_name, char *out_image_name,
-		     int method, float scale, int search, int min_distance, int cheat,
+		     int metric, float scale, int search, int min_distance, int cheat,
 		     char *in_protocol_name, char *out_protocol_name)
 {
     mosaic_t *mosaic;
@@ -1616,9 +1668,9 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
 	classic_reader_t *reader = init_classic_reader(in_image_name, scale);
 
 	if (search == SEARCH_LOCAL)
-	    mosaic = generate_local_classic(reader, min_distance, method);
+	    mosaic = generate_local_classic(reader, min_distance, metric);
 	else if (search == SEARCH_GLOBAL)
-	    mosaic = generate_global_classic(reader, method);
+	    mosaic = generate_global_classic(reader, metric);
 	else
 	    assert(0);
 
@@ -1684,7 +1736,114 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
     return 1;
 }
 
-void
+#define RC_FILE_NAME      ".metapixelrc"
+
+static void
+read_rc_file (void)
+{
+    lisp_stream_t stream;
+    char *homedir;
+    char *filename;
+
+    homedir = getenv("HOME");
+
+    if (homedir == 0)
+    {
+	fprintf(stderr, "Warning: HOME is not in environment - cannot find rc file.\n");
+	return;
+    }
+
+    filename = (char*)malloc(strlen(homedir) + 1 + strlen(RC_FILE_NAME) + 1);
+    strcpy(filename, homedir);
+    strcat(filename, "/");
+    strcat(filename, RC_FILE_NAME);
+
+    if (access(filename, R_OK) == 0)
+    {
+	if (lisp_stream_init_path(&stream, filename) == 0)
+	    fprintf(stderr, "Warning: could not open rc file `%s'.", filename);
+	else
+	{
+	    for (;;)
+	    {
+		lisp_object_t *obj;
+		int type;
+
+		obj = lisp_read(&stream);
+		type = lisp_type(obj);
+
+		if (type != LISP_TYPE_EOF && type != LISP_TYPE_PARSE_ERROR)
+		{
+		    lisp_object_t *vars[3];
+
+		    if (lisp_match_string("(prepare-directory #?(string))", obj, vars))
+			default_prepare_directory = strdup(lisp_string(vars[0]));
+		    else if (lisp_match_string("(prepare-dimensions #?(integer) #?(integer))", obj, vars))
+		    {
+			default_prepare_width = lisp_integer(vars[0]);
+			default_prepare_height = lisp_integer(vars[1]);
+		    }
+		    else if (lisp_match_string("(library-directory #?(string))", obj, vars))
+			default_library_directories = string_list_prepend_copy(default_library_directories,
+									       lisp_string(vars[0]));
+		    else if (lisp_match_string("(small-image-dimensions #?(integer) #?(integer))", obj, vars))
+		    {
+			default_small_width = lisp_integer(vars[0]);
+			default_small_height = lisp_integer(vars[1]);
+		    }
+		    else if (lisp_match_string("(yiq-weights #?(number) #?(number) #?(number))", obj, vars))
+		    {
+			int i;
+
+			for (i = 0; i < 3; ++i)
+			    default_weight_factors[i] = lisp_real(vars[i]);
+		    }
+		    else if (lisp_match_string("(metric #?(or wavelet subpixel))", obj, vars))
+		    {
+			if (strcmp(lisp_symbol(vars[0]), "wavelet") == 0)
+			    default_metric = METRIC_WAVELET;
+			else
+			    default_metric = METRIC_SUBPIXEL;
+		    }
+		    else if (lisp_match_string("(search-method #?(or local global))", obj, vars))
+		    {
+			if (strcmp(lisp_symbol(vars[0]), "local") == 0)
+			    default_search = SEARCH_LOCAL;
+			else
+			    default_search = SEARCH_GLOBAL;
+		    }
+		    else if (lisp_match_string("(minimum-classic-distance #?(integer))", obj, vars))
+			default_classic_min_distance = lisp_integer(vars[0]);
+		    else if (lisp_match_string("(minimum-collage-distance #?(integer))", obj, vars))
+			default_collage_min_distance = lisp_integer(vars[0]);
+		    else if (lisp_match_string("(cheat-amount #?(integer))", obj, vars))
+			default_cheat_amount = lisp_integer(vars[0]);
+		    else if (lisp_match_string("(forbid-reconstruction-distance #?(integer))", obj, vars))
+			default_forbid_reconstruction_radius = lisp_integer(vars[0]);
+		    else
+		    {
+			fprintf(stderr, "Warning: unknown rc file option ");
+			lisp_dump(obj, stderr);
+			fprintf(stderr, "\n");
+		    }
+		}
+		else if (type == LISP_TYPE_PARSE_ERROR)
+		    fprintf(stderr, "Error: parse error in rc file.\n");
+
+		lisp_free(obj);
+
+		if (type == LISP_TYPE_EOF || type == LISP_TYPE_PARSE_ERROR)
+		    break;
+	    }
+
+	    lisp_stream_free_path(&stream);
+	}
+    }
+
+    free(filename);
+}
+
+static void
 usage (void)
 {
     printf("Usage:\n"
@@ -1699,7 +1858,7 @@ usage (void)
 	   "  metapixel [option ...] --batch <batchfile>\n"
 	   "      perform all the tasks in <batchfile>\n"
 	   "Options:\n"
-	   "  -t, --tables=FILE            read the tables from FILE\n"
+	   "  -l, --library=DIR            add the library in DIR\n"
 	   "  -x, --antimosaic=PIC         use PIC as an antimosaic\n"
 	   "  -w, --width=WIDTH            set width for small images\n"
 	   "  -h, --height=HEIGHT          set height for small images\n"
@@ -1722,6 +1881,16 @@ usage (void)
 	   "Report bugs and suggestions to schani@complang.tuwien.ac.at\n");
 }
 
+#define OPT_VERSION                    256
+#define OPT_HELP                       257
+#define OPT_PREPARE                    258
+#define OPT_METAPIXEL                  259
+#define OPT_BATCH                      260
+#define OPT_OUT                        261
+#define OPT_IN                         262
+#define OPT_BENCHMARK_RENDERING        263
+#define OPT_PRINT_PREPARE_SETTINGS     264
+
 #define MODE_NONE       0
 #define MODE_PREPARE    1
 #define MODE_METAPIXEL  2
@@ -1731,30 +1900,44 @@ int
 main (int argc, char *argv[])
 {
     int mode = MODE_NONE;
-    int method = METHOD_SUBPIXEL;
-    int search = SEARCH_LOCAL;
+    int metric;
+    int search;
     int collage = 0;
-    int min_distance = -1;
+    int classic_min_distance, collage_min_distance;
     int cheat = 0;
     float scale = 1.0;
     char *out_filename = 0;
     char *in_filename = 0;
     char *antimosaic_filename = 0;
-    string_list_t *tables_filenames = 0;
+    string_list_t *library_directories = 0;
+    int prepare_width = 0, prepare_height = 0;
+
+    read_rc_file();
+
+    small_width = default_small_width;
+    small_height = default_small_height;
+    memcpy(weight_factors, default_weight_factors, sizeof(weight_factors));
+    metric = default_metric;
+    search = default_search;
+    classic_min_distance = default_classic_min_distance;
+    collage_min_distance = default_collage_min_distance;
+    cheat = default_cheat_amount;
+    forbid_reconstruction_radius = default_forbid_reconstruction_radius + 1;
 
     while (1)
     {
 	static struct option long_options[] =
             {
-		{ "version", no_argument, 0, 256 },
-		{ "help", no_argument, 0, 257 },
-		{ "prepare", no_argument, 0, 258 },
-		{ "metapixel", no_argument, 0, 259 },
-		{ "batch", no_argument, 0, 260 },
-		{ "out", required_argument, 0, 261 },
-		{ "in", required_argument, 0, 262 },
-		{ "benchmark-rendering", no_argument, 0, 263 },
-		{ "tables", required_argument, 0, 't' },
+		{ "version", no_argument, 0, OPT_VERSION },
+		{ "help", no_argument, 0, OPT_HELP },
+		{ "prepare", no_argument, 0, OPT_PREPARE },
+		{ "metapixel", no_argument, 0, OPT_METAPIXEL },
+		{ "batch", no_argument, 0, OPT_BATCH },
+		{ "out", required_argument, 0, OPT_OUT },
+		{ "in", required_argument, 0, OPT_IN },
+		{ "benchmark-rendering", no_argument, 0, OPT_BENCHMARK_RENDERING },
+		{ "print-prepare-settings", no_argument, 0, OPT_PRINT_PREPARE_SETTINGS },
+		{ "library", required_argument, 0, 'l' },
 		{ "width", required_argument, 0, 'w' },
 		{ "height", required_argument, 0, 'h' },
 		{ "y-weight", required_argument, 0, 'y' },
@@ -1773,26 +1956,26 @@ main (int argc, char *argv[])
 
 	int option, option_index;
 
-	option = getopt_long(argc, argv, "t:m:e:w:h:y:i:q:s:cd:a:x:f:", long_options, &option_index);
+	option = getopt_long(argc, argv, "l:m:e:w:h:y:i:q:s:cd:a:x:f:", long_options, &option_index);
 
 	if (option == -1)
 	    break;
 
 	switch (option)
 	{
-	    case 258 :
+	    case OPT_PREPARE :
 		mode = MODE_PREPARE;
 		break;
 
-	    case 259 :
+	    case OPT_METAPIXEL :
 		mode = MODE_METAPIXEL;
 		break;
 
-	    case 260 :
+	    case OPT_BATCH :
 		mode = MODE_BATCH;
 		break;
 
-	    case 261 :
+	    case OPT_OUT :
 		if (out_filename != 0)
 		{
 		    fprintf(stderr, "the --out option can be used at most once\n");
@@ -1802,7 +1985,7 @@ main (int argc, char *argv[])
 		assert(out_filename != 0);
 		break;
 
-	    case 262 :
+	    case OPT_IN :
 		if (in_filename != 0)
 		{
 		    fprintf(stderr, "the --in option can be used at most once\n");
@@ -1812,15 +1995,21 @@ main (int argc, char *argv[])
 		assert(in_filename != 0);
 		break;
 
-	    case 263 :
+	    case OPT_BENCHMARK_RENDERING :
 		benchmark_rendering = 1;
+		break;
+
+	    case OPT_PRINT_PREPARE_SETTINGS :
+		printf("%d %d %s\n", default_prepare_width, default_prepare_height,
+		       default_prepare_directory != 0 ? default_prepare_directory : "");
+		exit(0);
 		break;
 
 	    case 'm' :
 		if (strcmp(optarg, "wavelet") == 0)
-		    method = METHOD_WAVELET;
+		    metric = METRIC_WAVELET;
 		else if (strcmp(optarg, "subpixel") == 0)
-		    method = METHOD_SUBPIXEL;
+		    metric = METRIC_SUBPIXEL;
 		else
 		{
 		    fprintf(stderr, "metric must either be subpixel or wavelet\n");
@@ -1841,11 +2030,11 @@ main (int argc, char *argv[])
 		break;
 
 	    case 'w' :
-		small_width = atoi(optarg);
+		small_width = prepare_width = atoi(optarg);
 		break;
 
 	    case 'h' :
-		small_height = atoi(optarg);
+		small_height = prepare_height = atoi(optarg);
 		break;
 
 	    case 'y' :
@@ -1862,11 +2051,6 @@ main (int argc, char *argv[])
 
 	    case 's':
 		scale = atof(optarg);
-		if (scale <= 0.0)
-		{
-		    fprintf(stderr, "Error: invalid scale factor.\n");
-		    return 1;
-		}
 		break;
 
 	    case 'c' :
@@ -1874,23 +2058,21 @@ main (int argc, char *argv[])
 		break;
 
 	    case 'd' :
-		min_distance = atoi(optarg);
-		assert(min_distance >= 0);
+		classic_min_distance = collage_min_distance = atoi(optarg);
 		break;
 
 	    case 'a' :
 		cheat = atoi(optarg);
-		assert(cheat >= 0 && cheat <= 100);
 		break;
 
-	    case 't' :
+	    case 'l' :
 		if (antimosaic_filename != 0)
 		{
 		    fprintf(stderr, "Error: --tables and --antimosaic cannot be used together.\n");
 		    return 1;
 		}
 
-		tables_filenames = string_list_prepend_copy(tables_filenames, optarg);
+		library_directories = string_list_prepend_copy(library_directories, optarg);
 		break;
 
 	    case 'x' :
@@ -1899,9 +2081,9 @@ main (int argc, char *argv[])
 		    fprintf(stderr, "Error: at most one antimosaic picture can be specified.\n");
 		    return 1;
 		}
-		else if (tables_filenames != 0)
+		else if (library_directories != 0)
 		{
-		    fprintf(stderr, "Error: --tables and --antimosaic cannot be used together.\n");
+		    fprintf(stderr, "Error: --library and --antimosaic cannot be used together.\n");
 		    return 1;
 		}
 		antimosaic_filename = strdup(optarg);
@@ -1909,10 +2091,9 @@ main (int argc, char *argv[])
 
 	    case 'f' :
 		forbid_reconstruction_radius = atoi(optarg) + 1;
-		assert(forbid_reconstruction_radius > 0);
 		break;
 
-	    case 256 :
+	    case OPT_VERSION :
 		printf("metapixel " METAPIXEL_VERSION "\n"
 		       "\n"
 		       "Copyright (C) 1997-2004 Mark Probst\n"
@@ -1932,7 +2113,7 @@ main (int argc, char *argv[])
 		       "Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.\n");
 		exit(0);
 
-	    case 257 :
+	    case OPT_HELP :
 		usage();
 		return 0;
 
@@ -1941,12 +2122,43 @@ main (int argc, char *argv[])
 	}
     }
 
-    if (mode == MODE_METAPIXEL && min_distance < 0)
+    /* check settings for soundness */
+    if (small_height <= 0)
     {
-	if (!collage)
-	    min_distance = DEFAULT_CLASSIC_MIN_DISTANCE;
-	else
-	    min_distance = DEFAULT_COLLAGE_MIN_DISTANCE;
+	fprintf(stderr, "Error: height of small images must be positive.\n");
+	return 1;
+    }
+    if (small_width <= 0)
+    {
+	fprintf(stderr, "Error: width of small images must be positive.\n");
+	return 1;
+    }
+    if (scale <= 0.0)
+    {
+	fprintf(stderr, "Error: scale factor must be positive.\n");
+	return 1;
+    }
+    if (classic_min_distance < 0)
+    {
+	fprintf(stderr, "Error: classic minimum distance must be non-negative.\n");
+	return 1;
+    }
+    if (collage_min_distance < 0)
+    {
+	fprintf(stderr, "Error: collage minimum distance must be non-negative.\n");
+	return 1;
+    }
+    if (cheat < 0 || cheat > 100)
+    {
+	fprintf(stderr, "Error: cheat amount must be in the range from 0 to 100.\n");
+	return 1;
+    }
+    /* the value in forbid_reconstruction_radius is always one more
+       than the user specified */
+    if (forbid_reconstruction_radius <= 0)
+    {
+	fprintf(stderr, "Error: forbid reconstruction distance must be non-negative.\n");
+	return 1;
     }
 
     if (in_filename != 0 || out_filename != 0)
@@ -1987,6 +2199,8 @@ main (int argc, char *argv[])
 	    return 1;
 	}
 
+	assert(prepare_width > 0 && prepare_height > 0);
+
 	inimage_name = argv[optind + 0];
 	outimage_name = argv[optind + 1];
 	tables_name = argv[optind + 2];
@@ -2008,22 +2222,22 @@ main (int argc, char *argv[])
 
 	/* generate small image */
 	scaled_data = scale_image(image_data, in_width, in_height, 0, 0,
-				  in_width, in_height, small_width, small_height);
+				  in_width, in_height, prepare_width, prepare_height);
 	assert(scaled_data != 0);
 
-	write_image(outimage_name, small_width, small_height, scaled_data, IMAGE_FORMAT_PNG);
+	write_image(outimage_name, prepare_width, prepare_height, scaled_data, IMAGE_FORMAT_PNG);
 
 	generate_metapixel_coefficients(&pixel, scaled_data, highest_coeffs);
 
 	free(scaled_data);
 
 	fprintf(tables_file, "(small-image ");
-	obj = lisp_make_string(outimage_name);
+	obj = lisp_make_string(strip_path(outimage_name));
 	lisp_dump(obj, tables_file);
 	lisp_free(obj);
 
 	fprintf(tables_file, " (size %d %d) (wavelet (means %f %f %f) (coeffs",
-		small_width, small_height,
+		prepare_width, prepare_height,
 		pixel.means[0], pixel.means[1], pixel.means[2]);
 	for (i = 0; i < NUM_COEFFS; ++i)
 	    fprintf(tables_file, " %d", highest_coeffs[i].index);
@@ -2052,6 +2266,9 @@ main (int argc, char *argv[])
 	    return 1;
 	}
 
+	if (antimosaic_filename == 0 && library_directories == 0)
+	    library_directories = default_library_directories;
+
 	if (antimosaic_filename != 0)
 	{
 	    classic_reader_t *reader = init_classic_reader(antimosaic_filename, scale);
@@ -2066,7 +2283,7 @@ main (int argc, char *argv[])
 		    static coefficient_with_index_t highest_coeffs[NUM_COEFFS];
 
 		    unsigned char *scaled_data;
-		    metapixel_t *pixel = (metapixel_t*)malloc(sizeof(metapixel_t));
+		    metapixel_t *pixel = new_metapixel();
 		    int left_x, width;
 
 		    compute_classic_column_coords(reader, x, &left_x, &width);
@@ -2097,14 +2314,14 @@ main (int argc, char *argv[])
 
 	    free_classic_reader(reader);
 	}
-	else if (tables_filenames != 0)
+	else if (library_directories != 0)
 	{
 	    string_list_t *lst;
 
-	    for (lst = tables_filenames; lst != 0; lst = lst->next)
+	    for (lst = library_directories; lst != 0; lst = lst->next)
 		if (!read_tables(lst->str))
 		{
-		    fprintf(stderr, "Error: cannot read tables file `%s'.\n", lst->str);
+		    fprintf(stderr, "Error: cannot read library table `%s/%s'.\n", lst->str, TABLES_FILENAME);
 		    return 1;
 		}
 
@@ -2119,11 +2336,11 @@ main (int argc, char *argv[])
 	if (mode == MODE_METAPIXEL)
 	{
 	    if (collage)
-		generate_collage(argv[optind], argv[optind + 1], scale, min_distance,
-				 method, cheat);
+		generate_collage(argv[optind], argv[optind + 1], scale, collage_min_distance,
+				 metric, cheat);
 	    else
 		make_classic_mosaic(argv[optind], argv[optind + 1],
-				    method, scale, search, min_distance, cheat,
+				    metric, scale, search, classic_min_distance, cheat,
 				    in_filename, out_filename);
 	}
 	else if (mode == MODE_BATCH)
@@ -2153,9 +2370,9 @@ main (int argc, char *argv[])
 		    {
 			float this_scale = scale;
 			int this_search = search;
-			int this_min_distance = min_distance;
+			int this_min_distance = classic_min_distance;
 			int this_cheat = cheat;
-			int this_method = method;
+			int this_metric = metric;
 			char *this_prot_in_filename = in_filename;
 			char *this_prot_out_filename = out_filename;
 			char *this_image_out_filename = lisp_string(vars[2]);
@@ -2209,13 +2426,13 @@ main (int argc, char *argv[])
 				    this_cheat = val;
 				    
 			    }
-			    else if (lisp_match_string("(method #?(or subpixel wavelet))",
+			    else if (lisp_match_string("(metric #?(or subpixel wavelet))",
 						       lisp_car(lst), &var))
 			    {
 				if (strcmp(lisp_symbol(var), "subpixel") == 0)
-				    this_method = METHOD_SUBPIXEL;
+				    this_metric = METRIC_SUBPIXEL;
 				else
-				    this_method = METHOD_WAVELET;
+				    this_metric = METRIC_WAVELET;
 			    }
 			    else if (lisp_match_string("(protocol #?(string))",
 						       lisp_car(lst), &var))
@@ -2229,7 +2446,7 @@ main (int argc, char *argv[])
 			}
 
 			make_classic_mosaic(this_image_in_filename, this_image_out_filename,
-					    this_method, this_scale, this_search, this_min_distance, this_cheat,
+					    this_metric, this_scale, this_search, this_min_distance, this_cheat,
 					    this_prot_in_filename, this_prot_out_filename);
 		    }
 		    else

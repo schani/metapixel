@@ -61,11 +61,10 @@ stored in <destdir>.
     exit(1);
 }
 
-my $width;
-my $height;
+my ($width, $height, $destdir) = split /\s+/, `metapixel --print-prepare-settings`;
+
 my $do_recurse;
 my $DEBUG;
-
 
 if (!GetOptions("help", \&usage,
 		"width=i", \$width,
@@ -75,28 +74,32 @@ if (!GetOptions("help", \&usage,
     usage();
 }
 
-my $opts;
-
-if ($width) {
-    $opts = "--width=$width";
-}
-if ($height) {
-    $opts .= " --height=$height";
-}
-
-if ($#ARGV != 1) {
-    usage();
-}
-
-my ($srcdir, $destdir) = @ARGV;
-
-if (! -d $srcdir || ! -r $srcdir) {
-    print "$0: directory $srcdir does not exist or is unreadable\n";
+if (!$width || $width <= 0 || !$height || $height <= 0) {
+    print "$0: Width and height of the prepared images must be specified.\n";
     exit(1);
 }
 
-if (! -d $destdir ) {
-    print "$0: directory $destdir does not exist\n";
+my $opts = "--width=$width --height=$height";
+
+if ($#ARGV != 0 && $#ARGV != 1) {
+    usage();
+}
+
+my $srcdir = $ARGV[0];
+
+$destdir = $ARGV[1] if $#ARGV > 0;
+
+if (! -d $srcdir || ! -r $srcdir) {
+    print "$0: Source directory $srcdir does not exist or is unreadable.\n";
+    exit(1);
+}
+
+unless ($destdir) {
+    print "$0: A destination directory must be specified.\n";
+    exit(1);
+}
+if (! -d $destdir) {
+    print "$0: Destination directory $destdir does not exist.\n";
     exit(1);
 }
 

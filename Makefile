@@ -7,8 +7,8 @@ MANDIR = $(PREFIX)/man
 
 VERSION = 0.10
 
-#DEBUG = -g
-OPTIMIZE = -O2
+DEBUG = -g
+#OPTIMIZE = -O2
 #PROFILE = -pg
 
 MACOS_LDOPTS = -L/sw/lib

@@ -28,6 +28,9 @@
 #define DEFAULT_WIDTH       64
 #define DEFAULT_HEIGHT      64
 
+#define DEFAULT_PREPARE_WIDTH       128
+#define DEFAULT_PREPARE_HEIGHT      128
+
 #define DEFAULT_CLASSIC_MIN_DISTANCE     5
 #define DEFAULT_COLLAGE_MIN_DISTANCE   256
 
@@ -44,11 +47,13 @@
 #define NUM_SUBPIXEL_ROWS_COLS       5
 #define NUM_SUBPIXELS                (NUM_SUBPIXEL_ROWS_COLS * NUM_SUBPIXEL_ROWS_COLS)
 
-#define METHOD_WAVELET  1
-#define METHOD_SUBPIXEL 2
+#define METRIC_WAVELET  1
+#define METRIC_SUBPIXEL 2
 
 #define SEARCH_LOCAL    1
 #define SEARCH_GLOBAL   2
+
+#define TABLES_FILENAME "tables.mxt"
 
 typedef struct
 {

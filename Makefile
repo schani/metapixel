@@ -1,7 +1,9 @@
 PREFIX = /usr/local
 INSTALL = install
+MANPAGE_XSL = /sw/share/xml/xsl/docbook-xsl/manpages/docbook.xsl
 
 BINDIR = $(PREFIX)/bin
+MANDIR = $(PREFIX)/man
 
 VERSION = 0.10
 
@@ -21,10 +23,13 @@ OBJS = metapixel.o vector.o zoom.o rwpng.o rwjpeg.o readimage.o writeimage.o lis
 CONVERT_OBJS = convert.o lispreader.o getopt.o getopt1.o
 IMAGESIZE_OBJS = imagesize.o rwpng.o rwjpeg.o readimage.o
 
-all : metapixel convert imagesize
+all : metapixel metapixel.1 convert imagesize
 
 metapixel : $(OBJS)
 	$(CC) $(LDOPTS) -o metapixel $(OBJS) -lpng -ljpeg $(LIBFFM) -lm -lz
+
+metapixel.1 : metapixel.xml
+	xsltproc --nonet $(MANPAGE_XSL) metapixel.xml
 
 convert : $(CONVERT_OBJS)
 	$(CC) $(LDOPTS) -o convert $(CONVERT_OBJS)
@@ -38,19 +43,20 @@ zoom : zoom.c rwjpeg.c rwpng.c readimage.c writeimage.c
 %.o : %.c
 	$(CC) $(CCOPTS) -c $<
 
-install : metapixel
+install : metapixel metapixel.1
 	$(INSTALL) -d $(BINDIR)
 	$(INSTALL) metapixel $(BINDIR)
 	$(INSTALL) metapixel-prepare $(BINDIR)
+	$(INSTALL) metapixel.1 $(MANDIR)/man1
 #	$(INSTALL) imagesize $(BINDIR)
 #	$(INSTALL) sizesort $(BINDIR)
 
 clean :
 	rm -f *.o metapixel convert imagesize *~
 
-dist :
+dist : metapixel.1
 	rm -rf metapixel-$(VERSION)
 	mkdir metapixel-$(VERSION)
-	cp Makefile README NEWS COPYING *.[ch] metapixel-prepare sizesort metapixel-$(VERSION)/
+	cp Makefile README NEWS COPYING *.[ch] metapixel-prepare sizesort metapixel.xml metapixel.1 metapixel-$(VERSION)/
 	tar -zcvf metapixel-$(VERSION).tar.gz metapixel-$(VERSION)
 	rm -rf metapixel-$(VERSION)

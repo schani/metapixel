@@ -65,7 +65,8 @@ int small_width = DEFAULT_WIDTH, small_height = DEFAULT_HEIGHT;
 int forbid_reconstruction_radius = 0;
 
 static unsigned char*
-scale_image (unsigned char *image, int image_width, int image_height, int x, int y, int width, int height, int new_width, int new_height)
+scale_image (unsigned char *image, int image_width, int image_height, int x, int y,
+	     int width, int height, int new_width, int new_height)
 {
     unsigned char *new_image = (unsigned char*)malloc(new_width * new_height * NUM_CHANNELS);
     unsigned char *image_start = image + (x + y * image_width) * NUM_CHANNELS;
@@ -513,7 +514,8 @@ subpixel_compare (coeffs_t *coeffs, metapixel_t *pixel, float best_score)
 
 	for (i = 0; i < NUM_SUBPIXELS; ++i)
 	{
-	    float dist = (int)coeffs->subpixel.subpixels[channel * NUM_SUBPIXELS + i] - (int)pixel->subpixels[channel * NUM_SUBPIXELS + i];
+	    float dist = (int)coeffs->subpixel.subpixels[channel * NUM_SUBPIXELS + i]
+		- (int)pixel->subpixels[channel * NUM_SUBPIXELS + i];
 
 	    score += dist * dist * weight_factors[channel];
 
@@ -543,7 +545,8 @@ compare_indexes (const void *p1, const void *p2)
 }
 
 void
-generate_search_coeffs (search_coefficients_t *search_coeffs, float sums[NUM_COEFFS], coefficient_with_index_t raw_coeffs[NUM_COEFFS])
+generate_search_coeffs (search_coefficients_t *search_coeffs, float sums[NUM_COEFFS],
+			coefficient_with_index_t raw_coeffs[NUM_COEFFS])
 {
     int i;
     float sum;
@@ -616,7 +619,8 @@ generate_search_coeffs_for_subimage (coeffs_t *coeffs, unsigned char *image_data
 	if (float_image == 0)
 	    float_image = (float*)malloc(sizeof(float) * NUM_SUBPIXELS * NUM_CHANNELS);
 
-	scaled_data = scale_image(image_data, image_width, image_height, x, y, width, height, NUM_SUBPIXEL_ROWS_COLS, NUM_SUBPIXEL_ROWS_COLS);
+	scaled_data = scale_image(image_data, image_width, image_height, x, y, width, height,
+				  NUM_SUBPIXEL_ROWS_COLS, NUM_SUBPIXEL_ROWS_COLS);
 
 	for (i = 0; i < NUM_SUBPIXELS * NUM_CHANNELS; ++i)
 	    float_image[i] = scaled_data[i];
@@ -1905,7 +1909,8 @@ main (int argc, char *argv[])
 	}
 
 	/* generate small image */
-	scaled_data = scale_image(image_data, in_width, in_height, 0, 0, in_width, in_height, small_width, small_height);
+	scaled_data = scale_image(image_data, in_width, in_height, 0, 0,
+				  in_width, in_height, small_width, small_height);
 	assert(scaled_data != 0);
 
 	write_image(outimage_name, small_width, small_height, scaled_data, IMAGE_FORMAT_PNG);

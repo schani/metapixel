@@ -25,7 +25,9 @@
 #include <assert.h>
 #include <stdlib.h>
 
+#ifdef RWIMG_PNG
 #include "rwpng.h"
+#endif
 
 #include "writeimage.h"
 
@@ -37,12 +39,16 @@ open_image_writing (const char *filename, int width, int height, int row_stride,
     image_write_func_t write_func = 0;
     image_writer_free_func_t free_func = 0;
 
-    if (format == IMAGE_FORMAT_PNG)
+    if (0)
+	assert(0);
+#ifdef RWIMG_PNG
+    else if (format == IMAGE_FORMAT_PNG)
     {
 	data = open_png_file_writing(filename, width, height, row_stride);
 	write_func = png_write_lines;
 	free_func = png_free_writer_data;
     }
+#endif
     else
 	assert(0);
 

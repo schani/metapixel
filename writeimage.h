@@ -38,8 +38,12 @@ typedef struct
     image_writer_free_func_t free_func;
 } image_writer_t;
 
+#ifdef RWIMG_PNG
 #define IMAGE_FORMAT_PNG    1
+#endif
+#ifdef RWIMG_JPEG
 #define IMAGE_FORMAT_JPEG   2
+#endif
 
 image_writer_t* open_image_writing (const char *filename, int width, int height, int row_stride, int format);
 void write_lines (image_writer_t *writer, unsigned char *lines, int num_lines);

@@ -27,19 +27,14 @@
 #include "api.h"
 
 metric_t*
-metric_init_subpixel (metric_t *metric, float weights[])
+metric_init (metric_t *metric, int kind, float weights[])
 {
-    metric->kind = METRIC_SUBPIXEL;
+    assert(kind == METRIC_SUBPIXEL);
+
+    metric->kind = kind;
     memcpy(metric->weights, weights, sizeof(float) * NUM_CHANNELS);
 
     return metric;
-}
-
-metric_t*
-metric_init_wavelet (metric_t *metric, float weights[])
-{
-    assert(0);
-    return 0;
 }
 
 void

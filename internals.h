@@ -43,9 +43,6 @@
 
 #define NUM_CHANNELS        3
 
-#define METRIC_WAVELET   1
-#define METRIC_SUBPIXEL  2
-
 #define MATCHER_LOCAL    1
 #define MATCHER_GLOBAL   2
 

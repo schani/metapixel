@@ -4,7 +4,7 @@ Changes since version 0.9:
     collages.
 
   * metapixel-prepare can now traverse the image directory
-    recursively.
+    recursively (courtesy of Jake Di Toro).
 
   * The tables file must now no longer be redirected to stdin
     but it's name must be given to the option '--tables'.

@@ -141,7 +141,7 @@ my_atoi (const char *start, const char *stop)
 }
 
 #define SCAN_FUNC_NAME _scan_mmap
-#define SCAN_DECLS     char *pos = stream->v.mmap.pos, *end = stream->v.mmap.end
+#define SCAN_DECLS     char *pos = stream->v.mmap.pos, *end = stream->v.mmap.end;
 #define NEXT_CHAR      (pos == end ? EOF : *pos++)
 #define UNGET_CHAR(c)  (--pos)
 #define TOKEN_START(o) (mmap_token_start = pos - (o))

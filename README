@@ -1,5 +1,5 @@
-Metapixel 0.9
-=============
+Metapixel 0.10
+==============
 
 Metapixel is a program for generating photomosaics.  It can generate
 classical photomosaics, in which the source image is viewed as a
@@ -56,22 +56,6 @@ The other possibility is that all your images are in a format that
 Metapixel doesn't like (it only supports JPEG and PNG).
 
 
-Upgrading from versions 0.6/0.7
--------------------------------
-
-The tables file format has changed in Metapixel 0.8, but you don't
-need to run 'metapixel-prepare' again.  There's a program called
-'convert' included in the distribution that does the job.  Just tell
-it which size your small images are, give it the old tables file on
-stdin and it writes the new one on stdout.
-
-For example, if your small images are 128 pixels wide and 96 pixels
-high, go to the directory with the tables file (usually the directory
-where the small images are) and do
-
-  convert --width=128 --height=96 <tables >tables.mxt
-
-
 Creating photomosaics
 ---------------------
 
@@ -91,17 +75,17 @@ create a classic photomosaic for the image input.jpg and write the
 output to output.png with constituent images stored in the directory
 images, use the following command line:
 
-  metapixel --metapixel input.jpg output.png <images/tables.mxt
+  metapixel --tables images/tables.mxt --metapixel input.jpg output.png
 
 To create a collage use
 
-  metapixel --collage --metapixel input.jpg output.png <images/tables.mxt
+  metapixel --tables images/tables.mxt --collage --metapixel input.jpg output.png
 
 Using the -y, -i and -q options you can change the weights for each of
 the color channels.  For example, to match only luminance, completely
 disregarding chrominance, use
 
-  metapixel -i0 -q0 --metapixel input.jpg output.png <images/tables.mxt
+  metapixel --tables images/tables.mxt -i0 -q0 --metapixel input.jpg output.png
 
 The default weight for each of the channels is 1.
 
@@ -118,6 +102,9 @@ algorithms.  The new metric, which is a trivial distance function,
 seems to give better results while not being slower than the old
 wavelet metric.  The metric can be chosen using the --metric option.
 The default is the new subpixel metric.
+
+You can use the --tables option more than once to let Metapixel use
+more than one tables file for a mosaic.
 
 
 Classic Mosaics
@@ -167,7 +154,7 @@ it has in the resulting mosaic.
 Here's how you create an antimosaic with a minimum reconstruction
 distance of 2:
 
-  metapixel -x input.jpg -f 2 --metapixel input.jpg output.png <images/tables.mxt
+  metapixel --tables images/tables.mxt -x input.jpg -f 2 --metapixel input.jpg output.png
 
 
 Protocols
@@ -197,7 +184,7 @@ a list containing lists with the following syntax:
 
 <X> and <Y> are the position of the small image.  The upper left small
 image has coordinates (0,0), the lower right (<WIDTH>-1,<HEIGHT>-1).
-<W> and <H> must both be 1 in the version of Metapixel.  <FILENAME> is
+<W> and <H> must both be 1 in this version of Metapixel.  <FILENAME> is
 the name of the small image file.
 
 A typical line in the protocol file looks like this:
@@ -260,6 +247,22 @@ together whose aspect ratios are the same with an accuracy of two
 places behind the comma.  You might now have (among others) a
 directory called /my/sorted/images/ratio_0.79 which contains all
 images whose ratio between width and height is about 0.79.
+
+
+Upgrading from versions 0.6/0.7
+-------------------------------
+
+The tables file format has changed in Metapixel 0.8, but you don't
+need to run 'metapixel-prepare' again.  There's a program called
+'convert' included in the distribution that does the job.  Just tell
+it which size your small images are, give it the old tables file on
+stdin and it writes the new one on stdout.
+
+For example, if your small images are 128 pixels wide and 96 pixels
+high, go to the directory with the tables file (usually the directory
+where the small images are) and do
+
+  convert --width=128 --height=96 <tables >tables.mxt
 
 
 Licence and Availability

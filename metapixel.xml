@@ -42,72 +42,98 @@
     <refpurpose>generator for photomosaics</refpurpose>
   </refnamediv>
   <refsynopsisdiv>
-		<cmdsynopsis>
-			<command>metapixel-prepare</command>
-			<arg><option><replaceable>options</replaceable></option></arg>
-			<arg><filename>srcdir</filename></arg>
-			<arg><filename>destdir</filename></arg>
-		</cmdsynopsis>
-		<funcsynopsisinfo>prepares the pictures in <filename>srcdir</filename> by creating resized images and a table file in <filename>destdir</filename></funcsynopsisinfo>
+    <cmdsynopsis>
+      <command>metapixel-prepare</command>
+      <arg><option><replaceable>options</replaceable></option></arg>
+      <arg><filename>srcdir</filename></arg>
+      <arg><filename>destdir</filename></arg>
+    </cmdsynopsis>
+    <funcsynopsisinfo>prepares the pictures in <filename>srcdir</filename> by creating resized images and a table file in <filename>destdir</filename></funcsynopsisinfo>
     <cmdsynopsis>
       <command>&dhpackage;</command>
       <arg><option><replaceable>options</replaceable></option></arg>
-      <arg>--metapixel <filename>input.jpg</filename> <filename>output.png</filename> &lt; <filename>path/tables.mxt</filename></arg>
+      <arg>--metapixel <filename>input.jpg</filename>
+      <filename>output.png</filename> --tables
+      <filename>destdir/tables.mxt</filename></arg>
     </cmdsynopsis>
-		<funcsynopsisinfo>creates a photomosaic <filename>output.png</filename> using <filename>input.jpg</filename> as the input image and <filename>destdir/tables.mxt</filename> as table file</funcsynopsisinfo>
+    <funcsynopsisinfo>creates a photomosaic <filename>output.png</filename> using <filename>input.jpg</filename> as the input image and <filename>destdir/tables.mxt</filename> as table file</funcsynopsisinfo>
   </refsynopsisdiv>
   <refsect1>
     <title>DESCRIPTION</title>
 
     <para>This manual page documents briefly the
-      <command>&dhpackage;</command> and <command>&dhpackage;-prepare</command>
-      commands.  For more information check the README file included in the distribution.</para>
+    <command>&dhpackage;</command> and
+    <command>&dhpackage;-prepare</command> commands.  For more
+    information check the README file included in the
+    distribution.</para>
 
-    <para><command>&dhpackage;</command> is a program for generating photomosaics. It can generate classical photomosaics, in which the source image is viewed as a matrix of equally sized rectangles for each of which a matching image is substitued, as well as collage-style photomosaics, in which rectangular parts of the source image at arbitrary positions (i.e. not aligned to a matrix) are substituted by matching images.</para>
+    <para><command>&dhpackage;</command> is a program for generating
+    photomosaics. It can generate classical photomosaics, in which the
+    source image is viewed as a matrix of equally sized rectangles for
+    each of which a matching image is substitued, as well as
+    collage-style photomosaics, in which rectangular parts of the
+    source image at arbitrary positions (i.e. not aligned to a matrix)
+    are substituted by matching images.</para>
 
-		<para><command>&dhpackage;-prepare</command> is a utility that needs to be run before metapixel can be used.  It prepares your source images so that they can be used by <command>&dhpackage;</command> to create the actual photomosaic.</para>
+    <para><command>&dhpackage;-prepare</command> is a utility that
+    needs to be run before metapixel can be used.  It prepares your
+    source images so that they can be used by
+    <command>&dhpackage;</command> to create the actual
+    photomosaic.</para>
 
   </refsect1>
-	<refsect1>
-		<title>USAGE</title>
-		<para><command>&dhpackage;-prepare <filename>srcdir</filename> <filename>destdir</filename></command> has to be run
-		first.  <filename>srcdir</filename> is the path to the directory containing the source images,
-		e.g. <filename>~/Pictures/Holidays</filename>.  <filename>destdir</filename>, e.g. <filename>~/.metapixel</filename>,
-		is the path to the directory where you want to store the rescaled images and the <filename>tables.mxt</filename>
-		index file.
-		This directory should be created manually before running <command>&dhpackage;-prepare</command>.</para>
-		
-		<para><command>&dhpackage; --metapixel <filename>input.jpg</filename> <filename>output.png</filename>
-		&lt;<filename>destdir/tables.mxt</filename></command> is then used to transform an image
-		(<filename>input.jpg</filename>) into a mosaic (<filename>output.png</filename>) using the source images (described
-		by <filename>destdir/tables.mxt</filename>).
-		</para>
-	</refsect1>
+  <refsect1>
+    <title>USAGE</title>
+    
+    <para><command>&dhpackage;-prepare <filename>srcdir</filename>
+    <filename>destdir</filename></command> has to be run first.
+    <filename>srcdir</filename> is the path to the directory
+    containing the source images,
+    e.g. <filename>~/Pictures/Holidays</filename>.
+    <filename>destdir</filename>,
+    e.g. <filename>~/.metapixel</filename>, is the path to the
+    directory where you want to store the rescaled images and the
+    <filename>tables.mxt</filename> index file.  This directory should
+    be created manually before running
+    <command>&dhpackage;-prepare</command>.</para>
+    
+    <para><command>&dhpackage; --metapixel
+    <filename>input.jpg</filename> <filename>output.png</filename>
+    --tables <filename>destdir/tables.mxt</filename></command> is then used
+    to transform an image (<filename>input.jpg</filename>) into a
+    mosaic (<filename>output.png</filename>) using the source images
+    (described by <filename>destdir/tables.mxt</filename>).
+    </para>
+  </refsect1>
   <refsect1>
     <title>OPTIONS</title>
 
-    <para>The options are described in the README file or by running <command>&dhpackage;</command> or <command>&dhpackage;-prepare</command> with the --help option.</para>
+    <para>The options are described in the README file or by running
+    <command>&dhpackage;</command> or
+    <command>&dhpackage;-prepare</command> with the --help
+    option.</para>
   </refsect1>
 
   <refsect1>
     <title>SEE ALSO</title>
 
-    <para>The README file is included in the Metapixel distribution.</para>
+    <para>The README file is included in the Metapixel
+    distribution.</para>
 
   </refsect1>
   <refsect1>
     <title>AUTHOR</title>
 
     <para>This manual page was written by &dhusername; &dhemail; for
-      the &debian; system (but may be used by others).  Permission is
-      granted to copy, distribute and/or modify this document under
-      the terms of the &gnu; General Public License, Version 2 any 
-	  later version published by the Free Software Foundation.
+    the &debian; system (but may be used by others).  Permission is
+    granted to copy, distribute and/or modify this document under the
+    terms of the &gnu; General Public License, Version 2 any later
+    version published by the Free Software Foundation.
     </para>
-	<para>
-	  On Debian systems, the complete text of the GNU General Public
-	  License can be found in /usr/share/common-licenses/GPL.
-	</para>
+    <para>
+      On Debian systems, the complete text of the GNU General Public
+      License can be found in /usr/share/common-licenses/GPL.
+    </para>
 
   </refsect1>
 </refentry>

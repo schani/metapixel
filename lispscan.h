@@ -3,7 +3,7 @@ SCAN_FUNC_NAME (lisp_stream_t *stream)
 {
     static char *delims = "\"();";
 
-    SCAN_DECLS;
+    SCAN_DECLS
 
     int c;
 

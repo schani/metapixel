@@ -25,6 +25,8 @@
 #ifndef __RWJPEG_H__
 #define __RWJPEG_H__
 
-unsigned char* read_jpeg_file (char *filename, int *width, int *height);
+void* open_jpeg_file (char *filename, int *width, int *height);
+void jpeg_read_lines (void *data, unsigned char *lines, int num_lines);
+void jpeg_free_data (void *data);
 
 #endif

@@ -756,7 +756,7 @@ paste_metapixel (metapixel_t *pixel, unsigned char *data, int width, int height,
 {
     int i;
     int pixel_width, pixel_height;
-    unsigned char *pixel_data = read_png_file(pixel->filename, &pixel_width, &pixel_height);
+    unsigned char *pixel_data = read_image(pixel->filename, &pixel_width, &pixel_height);
 
     if (pixel_width != small_width || pixel_height != small_height)
     {
@@ -793,6 +793,7 @@ usage (void)
 	   "  -y, --y-weight=WEIGHT       assign relative weight for the Y-channel\n"
 	   "  -i, --i-weight=WEIGHT       assign relative weight for the I-channel\n"
 	   "  -q, --q-weight=WEIGHT       assign relative weight for the Q-channel\n"
+	   "  -s  --scale=SCALE           scale input image by specified factor\n"
 	   "  -m, --metric=METRIC         choose metric (subpixel or wavelet)\n"
 	   "  -c, --collage               collage mode\n"
 	   "  -d, --distance=DIST         minimum distance between two instances of\n"
@@ -814,6 +815,7 @@ main (int argc, char *argv[])
     int collage = 0;
     int min_distance = 0;
     int cheat = 0;
+    float scale = 1.0;
 
     while (1)
     {
@@ -828,6 +830,7 @@ main (int argc, char *argv[])
 		{ "y-weight", required_argument, 0, 'y' },
 		{ "i-weight", required_argument, 0, 'i' },
 		{ "q-weight", required_argument, 0, 'q' },
+		{ "scale", required_argument, 0, 's' },
 		{ "collage", no_argument, 0, 'c' },
 		{ "distance", required_argument, 0, 'd' },
 		{ "cheat", required_argument, 0, 'a' },
@@ -838,7 +841,7 @@ main (int argc, char *argv[])
 	int option,
 	    option_index;
 
-	option = getopt_long(argc, argv, "m:w:h:y:i:q:cd:a:", long_options, &option_index);
+	option = getopt_long(argc, argv, "m:w:h:y:i:q:s:cd:a:", long_options, &option_index);
 
 	if (option == -1)
 	    break;
@@ -883,6 +886,15 @@ main (int argc, char *argv[])
 
 	    case 'q' :
 		weight_factors[2] = atof(optarg);
+		break;
+
+	    case 's':
+		scale = atof(optarg);
+		if (scale <= 0.0)
+		{
+		    fprintf(stderr, "invalid scale factor\n");
+		    return 1;
+		}
 		break;
 
 	    case 'c' :
@@ -1071,14 +1083,33 @@ main (int argc, char *argv[])
 	if (small_width == IMAGE_SIZE && small_height == IMAGE_SIZE)
 	    use_crop = 0;
 
-	if (!collage && (in_image_width % small_width != 0 || in_image_height % small_height != 0))
+	if (scale != 1.0 || (!collage && (in_image_width % small_width != 0 || in_image_height % small_height != 0)))
 	{
-	    int new_width = ((in_image_width - 1) / small_width + 1) * small_width;
-	    int new_height = ((in_image_height - 1) / small_height + 1) * small_height;
+	    int new_width, new_height;
 	    unsigned char *scaled_data;
 
-	    scaled_data = scale_image(in_image_data, in_image_width, in_image_height, 0, 0,
-				      in_image_width, in_image_height, new_width, new_height);
+	    if (collage)
+	    {
+		new_width = (float)in_image_width * scale;
+		new_height = (float)in_image_height * scale;
+	    }
+	    else
+	    {
+		new_width = (((int)((float)in_image_width * scale) - 1) / small_width + 1) * small_width;
+		new_height = (((int)((float)in_image_height * scale) - 1) / small_height + 1) * small_height;
+	    }
+
+	    if (new_width < 1 || new_height < 1)
+	    {
+		fprintf(stderr, "source image or scaling factor too small\n");
+		return 1;
+	    }
+
+	    printf("scaling source image to %dx%d\n", new_width, new_height);
+
+	    scaled_data = scale_image(in_image_data, in_image_width, in_image_height,
+				      0, 0, in_image_width, in_image_height,
+				      new_width, new_height);
 
 	    in_image_width = new_width;
 	    in_image_height = new_height;

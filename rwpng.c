@@ -5,7 +5,7 @@
  *
  * metapixel
  *
- * Copyright (C) 1997-1999 Mark Probst
+ * Copyright (C) 1997-2000 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -29,70 +29,98 @@
 
 #include "rwpng.h"
 
-unsigned char*
-read_png_file (char *filename, int *width, int *height)
+typedef struct
 {
-     FILE *inFile = fopen(filename, "r");
-     png_structp pngPtr = png_create_read_struct(PNG_LIBPNG_VER_STRING, 0, 0, 0);
-     png_infop infoPtr,
-	 endInfo;
-     unsigned char *data, *row;
-     int i;
-     int bps, spp;
+    FILE *file;
+    png_structp png_ptr;
+    png_infop info_ptr, end_info;
+} png_data_t;
 
-     assert(inFile != 0);
-     assert(pngPtr != 0);
+void*
+open_png_file (char *filename, int *width, int *height)
+{
+    png_data_t *data = (png_data_t*)malloc(sizeof(png_data_t));
 
-     infoPtr = png_create_info_struct(pngPtr);
-     endInfo = png_create_info_struct(pngPtr);
+    assert(data != 0);
 
-     assert(infoPtr != 0);
-     assert(endInfo != 0);
+    data->file = fopen(filename, "r");
+    assert(data->file != 0);
 
-     if (setjmp(pngPtr->jmpbuf))
-	 assert(0);
+    data->png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, 0, 0, 0);
+    assert(data->png_ptr != 0);
 
-     png_init_io(pngPtr, inFile);
+    data->info_ptr = png_create_info_struct(data->png_ptr);
+    assert(data->info_ptr != 0);
 
-     png_read_info(pngPtr, infoPtr);
+    data->end_info = png_create_info_struct(data->png_ptr);
+    assert(data->end_info != 0);
 
-     *width = infoPtr->width;
-     *height = infoPtr->height;
+    if (setjmp(data->png_ptr->jmpbuf))
+	assert(0);
 
-     assert(infoPtr->bit_depth == 8 || infoPtr->bit_depth == 16);
-     assert(infoPtr->color_type == PNG_COLOR_TYPE_RGB || infoPtr->color_type == PNG_COLOR_TYPE_RGB_ALPHA);
-     assert(infoPtr->interlace_type == PNG_INTERLACE_NONE);
+    png_init_io(data->png_ptr, data->file);
 
-     if (infoPtr->color_type == PNG_COLOR_TYPE_RGB)
-	 spp = 3;
-     else
-	 spp = 4;
+    png_read_info(data->png_ptr, data->info_ptr);
 
-     if (infoPtr->bit_depth == 16)
-	 bps = 2;
-     else
-	 bps = 1;
+    *width = data->info_ptr->width;
+    *height = data->info_ptr->height;
 
-     data = (unsigned char*)malloc(*width * *height * 3);
-     row = (unsigned char*)malloc(*width * spp * bps);
+    assert(data->info_ptr->bit_depth == 8 || data->info_ptr->bit_depth == 16);
+    assert(data->info_ptr->color_type == PNG_COLOR_TYPE_RGB || data->info_ptr->color_type == PNG_COLOR_TYPE_RGB_ALPHA);
+    assert(data->info_ptr->interlace_type == PNG_INTERLACE_NONE);
 
-     for (i = 0; i < *height; ++i)
-     {
-	 int j, channel;
+    return data;
+}
 
-	 png_read_row(pngPtr, (png_bytep)row, 0);
-	 for (j = 0; j < *width; ++j)
-	     for (channel = 0; channel < 3; ++channel)
-		 data[i * *width * 3 + j * 3 + channel] = row[j * spp * bps + channel * bps];
-     }
+void
+png_read_lines (void *_data, unsigned char *lines, int num_lines)
+{
+    png_data_t *data = (png_data_t*)_data;
+    int i;
+    int bps, spp;
+    unsigned char *row;
 
-     free(row);
+    if (setjmp(data->png_ptr->jmpbuf))
+	assert(0);
 
-     png_read_end(pngPtr, endInfo);
-     png_destroy_read_struct(&pngPtr, &infoPtr, &endInfo);
-     fclose(inFile);
+    if (data->info_ptr->color_type == PNG_COLOR_TYPE_RGB)
+	spp = 3;
+    else
+	spp = 4;
 
-     return data;
+    if (data->info_ptr->bit_depth == 16)
+	bps = 2;
+    else
+	bps = 1;
+
+    row = (unsigned char*)malloc(data->info_ptr->width * spp * bps);
+
+    for (i = 0; i < num_lines; ++i)
+    {
+	int j, channel;
+
+	png_read_row(data->png_ptr, (png_bytep)row, 0);
+	for (j = 0; j < data->info_ptr->width; ++j)
+	    for (channel = 0; channel < 3; ++channel)
+		lines[i * data->info_ptr->width * 3 + j * 3 + channel] = row[j * spp * bps + channel * bps];
+    }
+
+    free(row);
+}
+
+void
+png_free_data (void *_data)
+{
+    png_data_t *data = (png_data_t*)_data;
+
+    if (setjmp(data->png_ptr->jmpbuf))
+	assert(0);
+
+    png_read_end(data->png_ptr, data->end_info);
+    png_destroy_read_struct(&data->png_ptr, &data->info_ptr, &data->end_info);
+    fclose(data->file);
+
+    free(data);
 }
 
 void

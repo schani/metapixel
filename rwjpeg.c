@@ -28,52 +28,62 @@
 
 #include <jpeglib.h>
 
-JSAMPLE *image = 0;
-int imageLength;
-
-unsigned char*
-read_jpeg_file (char *filename, int *width, int *height)
+typedef struct
 {
+    FILE *file;
     struct jpeg_decompress_struct cinfo;
-    FILE * infile;
     struct jpeg_error_mgr jerr;
-    int row_stride, i;
-    unsigned char *image_data;
+} jpeg_data_t;
 
-    infile = fopen(filename, "r");
-    assert(infile != 0);
+void*
+open_jpeg_file (char *filename, int *width, int *height)
+{
+    jpeg_data_t *data = (jpeg_data_t*)malloc(sizeof(jpeg_data_t));
 
-    cinfo.err = jpeg_std_error(&jerr);
-    jpeg_create_decompress(&cinfo);
-    jpeg_stdio_src(&cinfo, infile);
-    jpeg_read_header(&cinfo, TRUE);
+    assert(data != 0);
 
-    if (cinfo.num_components == 1)
-	cinfo.out_color_space = JCS_GRAYSCALE;
-    else if (cinfo.num_components == 3)
-	cinfo.out_color_space = JCS_RGB;
+    data->file = fopen(filename, "r");
+    assert(data->file != 0);
+
+    data->cinfo.err = jpeg_std_error(&data->jerr);
+    jpeg_create_decompress(&data->cinfo);
+    jpeg_stdio_src(&data->cinfo, data->file);
+    jpeg_read_header(&data->cinfo, TRUE);
+
+    if (data->cinfo.num_components == 1)
+	data->cinfo.out_color_space = JCS_GRAYSCALE;
+    else if (data->cinfo.num_components == 3)
+	data->cinfo.out_color_space = JCS_RGB;
     else
 	assert(0);
 
-    *width = cinfo.image_width;
-    *height = cinfo.image_height;
+    *width = data->cinfo.image_width;
+    *height = data->cinfo.image_height;
 
-    jpeg_start_decompress(&cinfo);
+    jpeg_start_decompress(&data->cinfo);
 
-    row_stride = cinfo.image_width * 3;
-    image_data = (unsigned char*)malloc(row_stride * *height);
+    return data;
+}
 
-    for (i = 0; i < cinfo.image_height; ++i)
+void
+jpeg_read_lines (void *_data, unsigned char *lines, int num_lines)
+{
+    jpeg_data_t *data = (jpeg_data_t*)_data;
+    int row_stride, i;
+
+    row_stride = data->cinfo.image_width * 3;
+
+    for (i = 0; i < num_lines; ++i)
     {
-	unsigned char *scanline = image_data + i * row_stride;
+	unsigned char *scanline = lines + i * row_stride;
 
-	jpeg_read_scanlines(&cinfo, &scanline, 1);
+	jpeg_read_scanlines(&data->cinfo, &scanline, 1);
 
-	if (cinfo.num_components == 1)
+	if (data->cinfo.num_components == 1)
 	{
 	    int j;
 
-	    for (j = *width - 1; j >= 0; --j)
+	    for (j = data->cinfo.image_width - 1; j >= 0; --j)
 	    {
 		unsigned char value = scanline[j];
 		int k;
@@ -83,11 +93,17 @@ read_jpeg_file (char *filename, int *width, int *height)
 	    }
 	}
     }
+}
 
-    jpeg_finish_decompress(&cinfo);
-    jpeg_destroy_decompress(&cinfo);
+void
+jpeg_free_data (void *_data)
+{
+    jpeg_data_t *data = (jpeg_data_t*)_data;
 
-    fclose(infile);
+    jpeg_finish_decompress(&data->cinfo);
+    jpeg_destroy_decompress(&data->cinfo);
 
-    return image_data;
+    fclose(data->file);
+
+    free(data);
 }

@@ -25,6 +25,23 @@
 #ifndef __READIMAGE_H__
 #define __READIMAGE_H__
 
+typedef void (*image_read_func_t) (void *data, unsigned char *lines, int num_lines);
+typedef void (*image_free_func_t) (void *data);
+
+typedef struct
+{
+    int width;
+    int height;
+    int num_lines_read;
+    void *data;
+    image_read_func_t read_func;
+    image_free_func_t free_func;
+} image_reader_t;
+
+image_reader_t* open_image (char *filename);
+void read_lines (image_reader_t *reader, unsigned char *lines, int num_lines);
+void free_image_reader (image_reader_t *reader);
+
 unsigned char* read_image (char *filename, int *width, int *height);
 
 #endif

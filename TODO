@@ -1,8 +1,8 @@
 for 0.10:
 
-debian package: http://packages.debian.org/cgi-bin/search_packages.pl?searchon=names&version=all&release=all&keywords=metapixel
+allow more than one tables file
 
-man page from chris vanden berghe (with make install!!!)
+debian package: http://packages.debian.org/cgi-bin/search_packages.pl?searchon=names&version=all&release=all&keywords=metapixel
 
 ***
 

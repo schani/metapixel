@@ -1,0 +1,39 @@
+before new lispreader:
+
+Mark-Probsts-Computer:~/Work/unix/metapixel/metapixel schani$ time ./metapixel -w 128 -h 96 --metapixel ../mets/tinischani.png out.png </pix/wide.prepared/tables.mxt
+
+real    0m48.559s
+user    0m31.720s
+sys     0m1.280s
+
+real    0m45.765s
+user    0m30.670s
+sys     0m1.320s
+
+with pools, but without mmap:
+
+real    0m43.462s
+user    0m26.570s
+sys     0m1.650s
+
+real    0m37.484s
+user    0m17.960s
+sys     0m2.210s
+
+real    0m37.539s
+user    0m25.020s
+sys     0m1.800s
+
+with mmap and pools:
+
+real    0m31.829s
+user    0m20.860s
+sys     0m1.610s
+
+real    0m32.800s
+user    0m13.820s
+sys     0m1.180s
+
+real    0m32.343s
+user    0m21.100s
+sys     0m1.750s

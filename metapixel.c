@@ -1322,13 +1322,18 @@ generate_collage (char *input_name, char *output_name, float scale, int min_dist
     free(in_image_data);
 }
 
-static void
-read_tables (FILE *in)
+static int
+read_tables (const char *filename)
 {
     lisp_object_t *pattern;
     lisp_object_t *obj;
     lisp_stream_t stream;
     int num_subs;
+    pools_t pools;
+    allocator_t allocator;
+
+    if (lisp_stream_init_path(&stream, filename) == 0)
+	return 0;
 
     pattern = lisp_read_from_string("(small-image #?(string) (size #?(integer) #?(integer))"
 				    "  (wavelet (means #?(real) #?(real) #?(real)) (coeffs . #?(list)))"
@@ -1339,13 +1344,15 @@ read_tables (FILE *in)
     assert(lisp_compile_pattern(&pattern, &num_subs));
     assert(num_subs == 10);
 
-    lisp_stream_init_file(&stream, in);
+    init_pools(&pools);
+    init_pools_allocator(&allocator, &pools);
 
     for (;;)
     {
         int type;
 
-        obj = lisp_read(&stream);
+	reset_pools(&pools);
+        obj = lisp_read_with_allocator(&allocator, &stream);
         type = lisp_type(obj);
         if (type != LISP_TYPE_EOF && type != LISP_TYPE_PARSE_ERROR)
         {
@@ -1407,11 +1414,16 @@ read_tables (FILE *in)
         }
         else if (type == LISP_TYPE_PARSE_ERROR)
             fprintf(stderr, "parse error in tables file\n");
-        lisp_free(obj);
 
         if (type == LISP_TYPE_EOF)
             break;
     }
+
+    lisp_stream_free_path(&stream);
+
+    free_pools(&pools);
+
+    return 1;
 }
 
 static metapixel_t*
@@ -1624,6 +1636,8 @@ usage (void)
 	   "  metapixel [option ...] --batch <batchfile>\n"
 	   "      perform all the tasks in <batchfile>\n"
 	   "Options:\n"
+	   "  -t, --tables=FILE            read the tables from FILE\n"
+	   "  -x, --antimosaic=PIC         use PIC as an antimosaic\n"
 	   "  -w, --width=WIDTH            set width for small images\n"
 	   "  -h, --height=HEIGHT          set height for small images\n"
 	   "  -y, --y-weight=WEIGHT        assign relative weight for the Y-channel\n"
@@ -1636,7 +1650,6 @@ usage (void)
 	   "  -d, --distance=DIST          minimum distance between two instances of\n"
 	   "                               the same constituent image\n"
 	   "  -a, --cheat=PERC             cheat with specified percentage\n"
-	   "  -x, --antimosaic=PIC         use PIC as an antimosaic\n"
 	   "  -f, --forbid-reconstruction=DIST\n"
 	   "                               forbid placing antimosaic images on their\n"
 	   "                               original locations or locations around it\n"
@@ -1664,6 +1677,7 @@ main (int argc, char *argv[])
     char *out_filename = 0;
     char *in_filename = 0;
     char *antimosaic_filename = 0;
+    char *tables_filename = 0;
 
     while (1)
     {
@@ -1676,6 +1690,7 @@ main (int argc, char *argv[])
 		{ "batch", no_argument, 0, 260 },
 		{ "out", required_argument, 0, 261 },
 		{ "in", required_argument, 0, 262 },
+		{ "tables", required_argument, 0, 't' },
 		{ "width", required_argument, 0, 'w' },
 		{ "height", required_argument, 0, 'h' },
 		{ "y-weight", required_argument, 0, 'y' },
@@ -1694,7 +1709,7 @@ main (int argc, char *argv[])
 
 	int option, option_index;
 
-	option = getopt_long(argc, argv, "m:e:w:h:y:i:q:s:cd:a:x:f:", long_options, &option_index);
+	option = getopt_long(argc, argv, "t:m:e:w:h:y:i:q:s:cd:a:x:f:", long_options, &option_index);
 
 	if (option == -1)
 	    break;
@@ -1781,7 +1796,7 @@ main (int argc, char *argv[])
 		scale = atof(optarg);
 		if (scale <= 0.0)
 		{
-		    fprintf(stderr, "invalid scale factor\n");
+		    fprintf(stderr, "Error: invalid scale factor.\n");
 		    return 1;
 		}
 		break;
@@ -1800,10 +1815,29 @@ main (int argc, char *argv[])
 		assert(cheat >= 0 && cheat <= 100);
 		break;
 
+	    case 't' :
+		if (tables_filename != 0)
+		{
+		    fprintf(stderr, "Error: at most one tables file can be specified.\n");
+		    return 1;
+		}
+		else if (antimosaic_filename != 0)
+		{
+		    fprintf(stderr, "Error: --tables and --antimosaic cannot be used together.\n");
+		    return 1;
+		}
+		tables_filename = strdup(optarg);
+		break;
+
 	    case 'x' :
 		if (antimosaic_filename != 0)
 		{
-		    fprintf(stderr, "at most one antimosaic picture can be specified\n");
+		    fprintf(stderr, "Error: at most one antimosaic picture can be specified.\n");
+		    return 1;
+		}
+		else if (tables_filename != 0)
+		{
+		    fprintf(stderr, "Error: --tables and --antimosaic cannot be used together.\n");
 		    return 1;
 		}
 		antimosaic_filename = strdup(optarg);
@@ -1954,7 +1988,7 @@ main (int argc, char *argv[])
 	    return 1;
 	}
 
-	if (antimosaic_filename)
+	if (antimosaic_filename != 0)
 	{
 	    classic_reader_t *reader = init_classic_reader(antimosaic_filename, scale);
 	    int x, y;
@@ -1997,11 +2031,18 @@ main (int argc, char *argv[])
 
 	    free_classic_reader(reader);
 	}
-	else
+	else if (tables_filename != 0)
 	{
-	    read_tables(stdin);
+	    if (!read_tables(tables_filename))
+	    {
+		fprintf(stderr, "Error: cannot read tables file `%s'.\n", tables_filename);
+		return 1;
+	    }
+
 	    forbid_reconstruction_radius = 0;
 	}
+	else
+	    assert(0);
 
 	if (mode == MODE_METAPIXEL)
 	{

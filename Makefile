@@ -19,8 +19,10 @@ CCOPTS = $(MACOS_CCOPTS) -I/usr/X11R6/include -I/usr/X11R6/include/X11 -I. -Wall
 CC = gcc
 #LIBFFM = -lffm
 
-OBJS = metapixel.o vector.o zoom.o rwpng.o rwjpeg.o readimage.o writeimage.o lispreader.o getopt.o getopt1.o
-CONVERT_OBJS = convert.o lispreader.o getopt.o getopt1.o
+LISPREADER_OBJS = lispreader.o pools.o allocator.o
+OBJS = metapixel.o vector.o zoom.o rwpng.o rwjpeg.o readimage.o writeimage.o \
+       $(LISPREADER_OBJS) getopt.o getopt1.o
+CONVERT_OBJS = convert.o $(LISPREADER_OBJS) getopt.o getopt1.o
 IMAGESIZE_OBJS = imagesize.o rwpng.o rwjpeg.o readimage.o
 
 all : metapixel metapixel.1 convert imagesize

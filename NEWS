@@ -3,11 +3,23 @@ Changes since version 0.9:
   * Metapixel can now enforce a minimum image distance for
     collages.
 
-  * the default minimum distance for classical mosaics is
-    now 5 instead of 0.
-
   * metapixel-prepare can now traverse the image directory
     recursively.
+
+  * The tables file must now no longer be redirected to stdin
+    but it's name must be given to the option '--tables'.
+    This option can be used several times, so more than one
+    tables file can be read.
+
+  * The default minimum distance for classical mosaics is
+    now 5 instead of 0.
+
+  * A rudimentary man page is now included (courtesy of
+    Debian's Chris Vanden Berghe).
+
+  * Reading the tables file is now more than twice as fast.
+
+  * bugfixes
 
 Changes since version 0.8:
 

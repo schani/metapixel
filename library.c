@@ -35,8 +35,7 @@ tables_filename (const char *path)
 {
     char *name = (char*)malloc(strlen(path) + 1 + strlen(TABLES_FILENAME) + 1);
 
-    if (name == 0)
-	return 0;
+    assert(name != 0);
 
     strcpy(name, path);
     strcat(name, "/");
@@ -50,15 +49,10 @@ make_library (const char *path)
 {
     library_t *library = (library_t*)malloc(sizeof(library_t));
 
-    if (library == 0)
-	return 0;
+    assert(library != 0);
 
     library->path = strdup(path);
-    if (library->path == 0)
-    {
-	free(library);
-	return 0;
-    }
+    assert(library->path != 0);
 
     library->metapixels = 0;
     library->num_metapixels = 0;
@@ -103,6 +97,8 @@ write_metapixel_metadata (metapixel_t *metapixel, FILE *tables_file)
 {
     lisp_object_t *obj;
     int channel;
+
+    /* FIXME: handle write errors */
 
     fprintf(tables_file, "(small-image ");
     obj = lisp_make_string(metapixel->name);
@@ -156,7 +152,12 @@ read_tables (const char *library_dir, library_t *library)
     tables_name = tables_filename(library_dir);
     if (lisp_stream_init_path(&stream, tables_name) == 0)
     {
+	error_info_t info = error_make_filename_info(tables_name);
+
 	free(tables_name);
+
+	error_report(ERROR_TABLES_FILE_CANNOT_OPEN, info);
+
 	return 0;
     }
     free(tables_name);
@@ -241,10 +242,14 @@ read_tables (const char *library_dir, library_t *library)
 
 		    if (lisp_list_length(lst) != NUM_SUBPIXELS)
 		    {
-			fprintf(stderr, "Error: wrong number of subpixels in `%s'\n", pixel->filename);
+			error_info_t info = error_make_filename_info(pixel->filename);
 
-			retval = 0;
-			goto done;
+			lisp_stream_free_path(&stream);
+			free_pools(&pools);
+
+			error_report(ERROR_WRONG_NUM_SUBPIXELS, info);
+
+			return 0;
 		    }
 		    else
 			for (i = 0; i < NUM_SUBPIXELS; ++i)
@@ -261,29 +266,29 @@ read_tables (const char *library_dir, library_t *library)
 	    }
 	    else
 	    {
-		fprintf(stderr, "Error: unknown expression ");
-		lisp_dump(obj, stderr);
-		fprintf(stderr, "\n");
+		lisp_stream_free_path(&stream);
+		free_pools(&pools);
 
-		retval = 0;
-		goto done;
+		error_report(ERROR_TABLES_SYNTAX_ERROR, error_make_filename_info(library_dir));
+
+		return 0;
 	    }
         }
         else if (type == LISP_TYPE_PARSE_ERROR)
 	{
-            fprintf(stderr, "Error: parse error in tables file.\n");
+	    lisp_stream_free_path(&stream);
+	    free_pools(&pools);
 
-	    retval = 0;
-	    goto done;
+	    error_report(ERROR_TABLES_PARSE_ERROR, error_make_filename_info(library_dir));
+
+	    return 0;
 	}
 
         if (type == LISP_TYPE_EOF)
             break;
     }
 
- done:
     lisp_stream_free_path(&stream);
-
     free_pools(&pools);
 
     return retval;
@@ -295,19 +300,33 @@ library_new (const char *path)
     char *filename = tables_filename(path);
     int fd;
 
-    if (filename == 0)
-	return 0;
+    assert(filename != 0);
 
     if (access(filename, F_OK) == 0)
     {
+	error_info_t info = error_make_filename_info(filename);
+
 	free(filename);
+
+	error_report(ERROR_TABLES_FILE_EXISTS, info);
+
 	return 0;
     }
 
     fd = open(filename, O_RDWR | O_CREAT, 0666);
-    free(filename);
+
     if (fd == -1)
+    {
+	error_info_t info = error_make_filename_info(filename);
+
+	free(filename);
+
+	error_report(ERROR_TABLES_FILE_CANNOT_CREATE, info);
+
 	return 0;
+    }
+
+    free(filename);
 
     return make_library(path);
 }
@@ -319,12 +338,23 @@ library_open_without_reading (const char *path)
     int result;
 
     result = access(filename, R_OK | W_OK);
-    free(filename);
 
     if (result == 0)
+    {
+	free(filename);
+
 	return make_library(path);
+    }
     else
+    {
+	error_info_t info = error_make_filename_info(filename);
+
+	free(filename);
+
+	error_report(ERROR_TABLES_FILE_CANNOT_OPEN, info);
+
 	return 0;
+    }
 }
 
 library_t*
@@ -376,18 +406,19 @@ library_add_metapixel (library_t *library, metapixel_t *metapixel)
     }
 
     if (access(bitmap_filename, F_OK) == 0)
+    {
+	error_report(ERROR_CANNOT_FIND_SMALL_IMAGE_NAME, error_make_filename_info(bitmap_filename));
+
 	return 0;
+    }
 
     /* write the bitmap */
     if (metapixel->bitmap == 0)
 	bitmap = metapixel_get_bitmap(metapixel);
     else
-    {
 	bitmap = metapixel->bitmap;
-	if (bitmap == 0)
-	    return 0;
-    }
 
+    /* FIXME: check for errors */
     bitmap_write(bitmap, bitmap_filename);
 
     if (metapixel->bitmap == 0)
@@ -403,6 +434,9 @@ library_add_metapixel (library_t *library, metapixel_t *metapixel)
     if (file == 0)
     {
 	metapixel_free(metapixel);
+
+	error_report(ERROR_TABLES_FILE_CANNOT_OPEN, error_make_filename_info(tables_filename));
+
 	return 0;
     }
     write_metapixel_metadata(metapixel, file);

@@ -23,6 +23,8 @@
 #ifndef __METAPIXEL_API_H__
 #define __METAPIXEL_API_H__
 
+#include "error.h"
+
 #include "zoom.h"
 
 typedef struct _library_t library_t;

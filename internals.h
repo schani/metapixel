@@ -3,7 +3,7 @@
  *
  * metapixel
  *
- * Copyright (C) 2004 Mark Probst
+ * Copyright (C) 1997-2004 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -22,6 +22,8 @@
 
 #ifndef __METAPIXEL_INTERNALS_H__
 #define __METAPIXEL_INTERNALS_H__
+
+#include <stdarg.h>
 
 #include "readimage.h"
 #include "writeimage.h"

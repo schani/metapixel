@@ -12,10 +12,13 @@ aligned to a matrix) are substituted by matching images.
 Installation
 ------------
 
-In order to compile Metapixel, you need ImageMagick (tested with
-versions 4.1.0 and 4.2.7) and libpng installed at your system. To run
-the script for preparing constituent images, you will additionally
-need Perl. Most Linux distributions contain these software packages.
+In order to compile Metapixel, you need ImageMagick and libpng
+installed at your system. Metapixel has been tested with ImageMagick
+versions 4.1.0 and 4.2.7. ImageMagick 5 does NOT work. The next
+version of Metapixel will abandon ImageMagick altogether, so this
+won't be fixed. To run the script for preparing constituent images,
+you will additionally need Perl. Most Linux distributions contain
+these software packages.
 
 Edit the first line of Makefile if you want to install Metapixel
 somewhere else than /usr/local. Then, type

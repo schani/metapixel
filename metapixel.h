@@ -1,11 +1,9 @@
-/* -*- c -*- */
-
 /*
  * metapixel.h
  *
  * metapixel
  *
- * Copyright (C) 1997-2003 Mark Probst
+ * Copyright (C) 1997-2004 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -132,6 +130,12 @@ typedef struct
     int x;
     int y;
 } global_match_t;
+
+typedef struct _string_list_t
+{
+    char *str;
+    struct _string_list_t *next;
+} string_list_t;
 
 typedef float(*compare_func_t)(coeffs_t*, metapixel_t*, float);
 

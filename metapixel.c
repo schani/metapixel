@@ -1,5 +1,3 @@
-/* -*- c -*- */
-
 /*
  * metapixel.c
  *
@@ -63,6 +61,17 @@ index_t index_to_weight_ordered_index[NUM_INDEXES];
 int small_width = DEFAULT_WIDTH, small_height = DEFAULT_HEIGHT;
 
 int forbid_reconstruction_radius = 0;
+
+static string_list_t*
+string_list_prepend_copy (string_list_t *lst, const char *str)
+{
+    string_list_t *new = (string_list_t*)malloc(sizeof(string_list_t));
+
+    new->str = strdup(str);
+    new->next = lst;
+
+    return new;
+}
 
 static unsigned char*
 scale_image (unsigned char *image, int image_width, int image_height, int x, int y,
@@ -1677,7 +1686,7 @@ main (int argc, char *argv[])
     char *out_filename = 0;
     char *in_filename = 0;
     char *antimosaic_filename = 0;
-    char *tables_filename = 0;
+    string_list_t *tables_filenames = 0;
 
     while (1)
     {
@@ -1816,17 +1825,13 @@ main (int argc, char *argv[])
 		break;
 
 	    case 't' :
-		if (tables_filename != 0)
-		{
-		    fprintf(stderr, "Error: at most one tables file can be specified.\n");
-		    return 1;
-		}
-		else if (antimosaic_filename != 0)
+		if (antimosaic_filename != 0)
 		{
 		    fprintf(stderr, "Error: --tables and --antimosaic cannot be used together.\n");
 		    return 1;
 		}
-		tables_filename = strdup(optarg);
+
+		tables_filenames = string_list_prepend_copy(tables_filenames, optarg);
 		break;
 
 	    case 'x' :
@@ -1835,7 +1840,7 @@ main (int argc, char *argv[])
 		    fprintf(stderr, "Error: at most one antimosaic picture can be specified.\n");
 		    return 1;
 		}
-		else if (tables_filename != 0)
+		else if (tables_filenames != 0)
 		{
 		    fprintf(stderr, "Error: --tables and --antimosaic cannot be used together.\n");
 		    return 1;
@@ -2031,18 +2036,24 @@ main (int argc, char *argv[])
 
 	    free_classic_reader(reader);
 	}
-	else if (tables_filename != 0)
+	else if (tables_filenames != 0)
 	{
-	    if (!read_tables(tables_filename))
-	    {
-		fprintf(stderr, "Error: cannot read tables file `%s'.\n", tables_filename);
-		return 1;
-	    }
+	    string_list_t *lst;
+
+	    for (lst = tables_filenames; lst != 0; lst = lst->next)
+		if (!read_tables(lst->str))
+		{
+		    fprintf(stderr, "Error: cannot read tables file `%s'.\n", lst->str);
+		    return 1;
+		}
 
 	    forbid_reconstruction_radius = 0;
 	}
 	else
-	    assert(0);
+	{
+	    fprintf(stderr, "Error: you must give one of the option --tables and --antimosaic.\n");
+	    return 1;
+	}
 
 	if (mode == MODE_METAPIXEL)
 	{

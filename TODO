@@ -1,6 +1,6 @@
 for 0.10:
 
-allow more than one tables file
+update docs
 
 debian package: http://packages.debian.org/cgi-bin/search_packages.pl?searchon=names&version=all&release=all&keywords=metapixel
 
@@ -41,3 +41,4 @@ until all locations have metapixels: search for the highest score of
 an unused image in a location not yet given away, and use that image
 in that location.
 
+allow more than one tables file

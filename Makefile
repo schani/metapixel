@@ -56,6 +56,9 @@ install : metapixel metapixel.1
 clean :
 	rm -f *.o metapixel convert imagesize *~
 
+realclean : clean
+	rm -f metapixel.1
+
 dist : metapixel.1
 	rm -rf metapixel-$(VERSION)
 	mkdir metapixel-$(VERSION)

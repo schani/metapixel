@@ -53,6 +53,13 @@
 #define ROW_LENGTH          (IMAGE_SIZE * NUM_CHANNELS)
 #define SIGNIFICANT_COEFFS  40
 
+#define NUM_Y_CLUSTERS      10
+#define NUM_I_CLUSTERS      10
+#define NUM_Q_CLUSTERS      10
+#define MAX_NUM_CLUSTERS    MAX(NUM_Y_CLUSTERS,MAX(NUM_I_CLUSTERS,NUM_Q_CLUSTERS))
+
+#define CLUSTER(c)          (clusters[(c)[0]][(c)[1]][(c)[2]])
+
 #define NUM_COEFFS          (NUM_CHANNELS * SIGNIFICANT_COEFFS)
 
 #define NUM_INDEXES         (IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS * 2)
@@ -80,7 +87,14 @@ typedef struct _metapixel_t
     struct _metapixel_t *next;
 } metapixel_t;
 
-static metapixel_t *first_pixel = 0;
+typedef struct
+{
+    float min_values[NUM_CHANNELS];
+    float max_values[NUM_CHANNELS];
+    struct _metapixel_t *first_pixel;
+} cluster_t;
+
+static cluster_t clusters[NUM_Y_CLUSTERS][NUM_I_CLUSTERS][NUM_Q_CLUSTERS];
 
 float sqrt_of_two, sqrt_of_image_size;
 
@@ -91,6 +105,8 @@ index_t weight_ordered_index_to_index[NUM_INDEXES];
 index_t index_to_weight_ordered_index[NUM_INDEXES];
 
 int small_width = DEFAULT_WIDTH, small_height = DEFAULT_HEIGHT;
+
+int num_clusters[NUM_CHANNELS] = { NUM_Y_CLUSTERS, NUM_I_CLUSTERS, NUM_Q_CLUSTERS };
 
 static unsigned char*
 scale_image (unsigned char *image, int image_width, int image_height, int x, int y, int width, int height, int new_width, int new_height)
@@ -512,6 +528,8 @@ compute_index_weights (void)
 	index_to_weight_ordered_index[weight_ordered_index_to_index[i]] = i;
 }
 
+static int num_instant_rejects = 0;
+
 static float
 compare_images (search_coefficients_t *query, float *query_means,
 		search_coefficients_t *target, float *target_means,
@@ -530,7 +548,11 @@ compare_images (search_coefficients_t *query, float *query_means,
     for (i = 0; i < NUM_COEFFS; ++i)
     {
 	if (score - sums[i] > best_score)
+	{
+	    if (i == 0)
+		++num_instant_rejects;
 	    return 1e99;
+	}
 
 	while (target->coeffs[j] < query->coeffs[i] && j < NUM_COEFFS)
 	    ++j;
@@ -545,13 +567,6 @@ compare_images (search_coefficients_t *query, float *query_means,
     }
 
     return score;
-}
-
-void
-add_metapixel (metapixel_t *pixel)
-{
-    pixel->next = first_pixel;
-    first_pixel = pixel;
 }
 
 static int
@@ -633,27 +648,177 @@ generate_search_coeffs_for_subimage (search_coefficients_t *search_coeffs, float
 	means[i] = float_image[i];
 }
 
-metapixel_t*
-metapixel_nearest_to (search_coefficients_t *search_coeffs, float sums[NUM_COEFFS], float *query_means)
+static void
+init_clusters (void)
 {
+    int y, i, q;
+
+    for (y = 0; y < NUM_Y_CLUSTERS; ++y)
+    {
+	float y_min = (float)y / (float)NUM_Y_CLUSTERS * 255.0;
+	float y_max = (float)(y + 1) / (float)NUM_Y_CLUSTERS * 255.0;
+
+	for (i = 0; i < NUM_I_CLUSTERS; ++i)
+	{
+	    float i_min = (float)i / (float)NUM_I_CLUSTERS * 255.0;
+	    float i_max = (float)(i + 1) / (float)NUM_I_CLUSTERS * 255.0;
+
+	    for (q = 0; q < NUM_Q_CLUSTERS; ++q)
+	    {
+		float q_min = (float)q / (float)NUM_Q_CLUSTERS * 255.0;
+		float q_max = (float)(q + 1) / (float)NUM_Q_CLUSTERS * 255.0;
+
+		clusters[y][i][q].min_values[0] = y_min;
+		clusters[y][i][q].min_values[1] = i_min;
+		clusters[y][i][q].min_values[2] = q_min;
+
+		clusters[y][i][q].max_values[0] = y_max;
+		clusters[y][i][q].max_values[1] = i_max;
+		clusters[y][i][q].max_values[2] = q_max;
+
+		clusters[y][i][q].first_pixel = 0;
+	    }
+	}
+    }
+}
+
+static void
+cluster_coordinates_for_means (int coords[NUM_CHANNELS], float means[NUM_CHANNELS])
+{
+    coords[0] = MIN(floor(means[0] / 255.0 * NUM_Y_CLUSTERS), NUM_Y_CLUSTERS - 1);
+    coords[1] = MIN(floor(means[1] / 255.0 * NUM_I_CLUSTERS), NUM_I_CLUSTERS - 1);
+    coords[2] = MIN(floor(means[2] / 255.0 * NUM_Q_CLUSTERS), NUM_Q_CLUSTERS - 1);
+
+    assert(coords[0] >= 0 && coords[0] < NUM_Y_CLUSTERS);
+    assert(coords[1] >= 0 && coords[1] < NUM_I_CLUSTERS);
+    assert(coords[2] >= 0 && coords[2] < NUM_Q_CLUSTERS);
+}
+
+float
+best_possible_score_in_cluster (cluster_t *cluster, float sums[NUM_COEFFS], float means[NUM_CHANNELS])
+{
+    int i;
+    float score = 0;
+
+    for (i = 0; i < NUM_CHANNELS; ++i)
+    {
+	if (means[i] < cluster->min_values[i] || means[i] > cluster->max_values[i])
+	{
+	    float dist;
+
+	    if (means[i] < cluster->min_values[i])
+		dist = cluster->min_values[i] - means[i];
+	    else
+		dist = means[i] - cluster->max_values[i];
+
+	    score += index_weights[compute_index(0, i, 0)] * dist * 0.05;
+	}
+    }
+
+    return score - sums[0];
+}
+
+void
+add_metapixel (metapixel_t *pixel)
+{
+    int coords[NUM_CHANNELS];
+
+    cluster_coordinates_for_means(coords, pixel->means);
+
+    pixel->next = CLUSTER(coords).first_pixel;
+    CLUSTER(coords).first_pixel = pixel;
+}
+
+static int num_cluster_rejects = 0;
+
+static metapixel_t*
+metapixel_nearest_to (search_coefficients_t *search_coeffs, float sums[NUM_COEFFS], float query_means[NUM_CHANNELS])
+{
+    int center_coords[NUM_CHANNELS];
+    int dist;
     float best_score = 1e99;
     metapixel_t *best_fit = 0, *pixel;
+    int num_max;
 
-    for (pixel = first_pixel; pixel != 0; pixel = pixel->next)
+    cluster_coordinates_for_means(center_coords, query_means);
+
+    for (dist = 0; dist < MAX_NUM_CLUSTERS - 1; ++dist)
     {
-	float score = compare_images(search_coeffs, query_means, &pixel->coeffs, pixel->means, sums, best_score);
+	int dists[NUM_CHANNELS];
+	int i;
+	int out_of_reach = 1;
 
-	if (best_fit == 0 || score < best_score)
+	for (i = 0; i < NUM_CHANNELS; ++i)
+	    dists[i] = -dist;
+	num_max = NUM_CHANNELS;
+
+	do
 	{
-	    best_score = score;
-	    best_fit = pixel;
-	}
+	    int coords[NUM_CHANNELS];
+
+	    for (i = 0; i < NUM_CHANNELS; ++i)
+	    {
+		coords[i] = center_coords[i] + dists[i];
+		if (coords[i] < 0 || coords[i] >= num_clusters[i])
+		    goto next_cluster;
+	    }
+
+	    if (best_score > best_possible_score_in_cluster(&CLUSTER(coords), sums, query_means))
+	    {
+		for (pixel = CLUSTER(coords).first_pixel; pixel != 0; pixel = pixel->next)
+		{
+		    float score = compare_images(search_coeffs, query_means, &pixel->coeffs, pixel->means, sums, best_score);
+
+		    if (score < best_score)
+		    {
+			best_score = score;
+			best_fit = pixel;
+		    }
+		}
+
+		out_of_reach = 0;
+	    }
+	    else
+		++num_cluster_rejects;
+
+	next_cluster:
+	    for (i = NUM_CHANNELS - 1; i >= 0; --i)
+		if (i == NUM_CHANNELS - 1 && num_max == 1 && (dists[i] == -dist || dists[i] == dist))
+		{
+		    dists[i] = -dists[i];
+
+		    if (dists[i] == dist)
+			break;
+		}
+		else
+		{
+		    if (++dists[i] > dist)
+		    {
+			if (i == 0)
+			    goto next_dist;
+			dists[i] = -dist;
+		    }
+		    else
+		    {
+			if (dists[i] == dist)
+			    ++num_max;
+			else if (dists[i] == -dist + 1)
+			    --num_max;
+			break;
+		    }
+		}
+
+	} while (1);
+
+    next_dist:
+	if (out_of_reach)
+	    break;
     }
 
     return best_fit;
 }
 
-void
+static void
 paste_metapixel (metapixel_t *pixel, unsigned char *data, int width, int height, int x, int y)
 {
     int i;
@@ -667,7 +832,7 @@ paste_metapixel (metapixel_t *pixel, unsigned char *data, int width, int height,
     free(pixel_data);
 }
 
-void
+static void
 usage (void)
 {
     printf("Usage:\n"
@@ -789,6 +954,8 @@ main (int argc, char *argv[])
     sqrt_of_image_size = sqrt(IMAGE_SIZE);
 
     compute_index_weights();
+
+    init_clusters();
 
     if (mode == MODE_PREPARE)
     {
@@ -1000,6 +1167,8 @@ main (int argc, char *argv[])
 	printf("done\n");
 
 	write_png_file(argv[optind + 1], in_image_width, in_image_height, out_image_data);
+
+	printf("instant rejects: %d    cluster rejects: %d\n", num_instant_rejects, num_cluster_rejects);
     }
     else
     {

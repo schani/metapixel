@@ -23,7 +23,7 @@ metapixel : $(OBJS) libzoom/libzoom.a
 	$(CC) $(CCOPTS) -c $<
 
 libzoom/libzoom.a :
-	$(MAKE) -C libzoom libzoom.a
+	( cd libzoom ; $(MAKE) libzoom.a )
 
 install : metapixel
 	$(INSTALL) -d $(BINDIR)
@@ -31,7 +31,7 @@ install : metapixel
 	$(INSTALL) metapixel-prepare $(BINDIR)
 
 clean :
-	$(MAKE) -C libzoom clean
+	( cd libzoom ; $(MAKE) clean )
 	rm -f *.o metapixel *~
 
 dist :

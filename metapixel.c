@@ -1015,7 +1015,7 @@ usage (void)
 	   "                              the same constituent image\n"
 	   "  -a, --cheat=PERC            cheat with specified percentage\n"
 	   "\n"
-	   "Report bugs to schani@complang.tuwien.ac.at\n");
+	   "Report bug reports and suggestions to schani@complang.tuwien.ac.at\n");
 }
 
 #define MODE_NONE       0

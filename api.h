@@ -29,6 +29,21 @@ typedef struct _library_t library_t;
 typedef struct _metapixel_t metapixel_t;
 typedef struct _bitmap_t bitmap_t;
 typedef struct _metric_t metric_t;
+typedef struct _matcher_t matcher_t;
+typedef struct _tiling_t tiling_t;
+
+typedef struct
+{
+    metapixel_t *pixel;
+    unsigned int pixel_index;	/* used internally */
+    float score;
+} metapixel_match_t;
+
+struct _tiling_t
+{
+    int kind;
+    unsigned int metawidth, metaheight;
+};
 
 #include "internals.h"
 
@@ -80,16 +95,14 @@ void bitmap_paste (bitmap_t *dst, bitmap_t *src, unsigned int x, unsigned int y)
 /* Opacity is 0 for full transparency and 0x10000 (65536) for full opacity. */
 void bitmap_alpha_compose (bitmap_t *dst, bitmap_t *src, unsigned int opacity);
 
-#ifndef CLIENT_METAPIXEL_DATA_T
-#define CLIENT_METAPIXEL_DATA_T void
-#endif
-
 struct _metapixel_t
 {
     library_t *library;
 
     char *name;
-    char *filename;		/* only used internally */
+
+    /* Only used internally.  Can be zero (for mem libraries). */
+    char *filename;
 
     unsigned int width;
     unsigned int height;
@@ -112,13 +125,12 @@ struct _metapixel_t
     */
     unsigned char subpixels[NUM_SUBPIXELS * NUM_CHANNELS];
 
-    bitmap_t *bitmap;		/* this is != 0 iff library == 0 */
+    /* This is != 0 iff library == 0 || filename == 0, i.e., for
+       metapixels which are not in a library or only in a mem
+       library. */
+    bitmap_t *bitmap;
 
     metapixel_t *next;		/* next in library */
-
-    /* The following is only used by the command line metapixel and
-       will be removed when that has been rewritten. */
-    CLIENT_METAPIXEL_DATA_T *client_data;
 };
 
 struct _library_t
@@ -131,35 +143,32 @@ struct _library_t
 
 typedef struct
 {
-} tiling_t;
-
-struct _metric_t
-{
-    int kind;
-    float weights[NUM_CHANNELS];
-};
-
-typedef struct
-{
-} matcher_t;
-
-typedef struct
-{
+    tiling_t tiling;
+    metapixel_match_t *matches;
 } classic_mosaic_t;
 
 /* library_new and library_open return 0 on failure. */
 /* library_new will not create the directory! */
-/* library_open_without_reading opens a library but doesn't read
-   the tables file. */
 library_t* library_new (const char *path);
 library_t* library_open (const char *path);
+/* library_open_without_reading opens a library but doesn't read
+   the tables file.  Returns 0 on failure. */
 library_t* library_open_without_reading (const char *path);
+
+/* Creates a library which is not (yet) saved to disk.  Of course, the
+   small images take up memory. */
+library_t* library_new_mem (void);
+
+/* Saves a mem library or copies an external library.  Modifies the
+   library data structure to accomodate for the change.  Returns 0 on
+   failure. */
+int library_save (library_t *library, const char *path);
 
 void library_close (library_t *library);
 
 /* Copies the metapixel data structure and adds the copy to the
-   library.  Returns 0 on failure. */
-int library_add_metapixel (library_t *library, metapixel_t *metapixel);
+   library.  Returns the copied metapixel or 0 on failure. */
+metapixel_t* library_add_metapixel (library_t *library, metapixel_t *metapixel);
 
 metapixel_t* metapixel_new_from_bitmap (bitmap_t *bitmap, const char *name,
 					unsigned int scaled_width, unsigned int scaled_height);
@@ -172,7 +181,13 @@ bitmap_t* metapixel_get_bitmap (metapixel_t *metapixel);
 /* Not functional yet. */
 void metapixel_set_enabled (metapixel_t *metapixel, int enabled);
 
-tiling_t* tiling_init_rectangular (tiling_t *tiling, unsigned int small_width, unsigned int small_height);
+/* metawidth and metaheight are the number of metapixels across the
+   width and height of the image, respectively. */
+tiling_t* tiling_init_rectangular (tiling_t *tiling, unsigned int metawidth, unsigned int metaheight);
+
+void tiling_get_metapixel_coords (tiling_t *tiling, unsigned int image_width, unsigned int image_height,
+				  unsigned int metapixel_x, unsigned int metapixel_y,
+				  unsigned int *x, unsigned int *y, unsigned int *width, unsigned int *height);
 
 /* These do not allocate memory for the metric. */
 metric_t* metric_init_subpixel (metric_t *metric, float weights[]);
@@ -182,14 +197,36 @@ metric_t* metric_init_wavelet (metric_t *metric, float weights[]);
 matcher_t* matcher_init_local (matcher_t *matcher, metric_t *metric, unsigned int min_distance);
 matcher_t* matcher_init_global (matcher_t *matcher, metric_t *metric);
 
-classic_mosaic_t* generate_classic_mosaic (int num_libraries, library_t **libraries,
-					   bitmap_t *in_image, float in_image_scale,
-					   tiling_t *tiling, matcher_t *matcher);
+classic_reader_t* classic_reader_new_from_file (const char *image_filename, tiling_t *tiling);
+classic_reader_t* classic_reader_new_from_bitmap (bitmap_t *bitmap, tiling_t *tiling);
+void classic_reader_free (classic_reader_t *reader);
 
-/* Cheat must be in the range from 0 (full transparency, i.e., no
-   cheating) to 0x10000 (full opacity). */
-bitmap_t* make_collage_mosaic (int num_libraries, library_t **libraries, bitmap_t *in_image, float in_image_scale,
-			       unsigned int small_width, unsigned int small_height,
-			       int min_distance, metric_t *metric, unsigned int cheat);
+classic_writer_t* classic_writer_new_for_file (const char *filename, unsigned int width, unsigned int height);
+classic_writer_t* classic_writer_new_for_bitmap (bitmap_t *bitmap);
+void classic_writer_free (classic_writer_t *writer);
+
+/* forbid_reconstruction_radius is only relevant for antimosaics.  If
+   the mosaic to be generated is not from an antimosaic, it must be
+   0. */
+classic_mosaic_t* classic_generate (int num_libraries, library_t **libraries,
+				    classic_reader_t *reader, matcher_t *matcher,
+				    unsigned int forbid_reconstruction_radius);
+classic_mosaic_t* classic_generate_from_bitmap (int num_libraries, library_t **libraries,
+						bitmap_t *in_image, tiling_t *tiling, matcher_t *matcher,
+						unsigned int forbid_reconstruction_radius);
+void classic_free (classic_mosaic_t *mosaic);
+
+/* cheat must be in the range from 0 (full transparency, i.e., no
+   cheating) to 0x10000 (full opacity).  If cheat == 0, then
+   reader/in_image can be 0. */
+int classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int cheat,
+		   classic_writer_t *writer);
+/* width and height are the width and height of the resulting bitmap. */
+bitmap_t* classic_paste_to_bitmap (classic_mosaic_t *mosaic, unsigned int width, unsigned int height,
+				   bitmap_t *in_image, unsigned int cheat);
+
+bitmap_t* collage_make (int num_libraries, library_t **libraries, bitmap_t *in_image, float in_image_scale,
+			unsigned int small_width, unsigned int small_height,
+			int min_distance, metric_t *metric, unsigned int cheat);
 
 #endif

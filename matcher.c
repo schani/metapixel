@@ -1,9 +1,9 @@
 /*
- * metapixel.h
+ * matcher.c
  *
  * metapixel
  *
- * Copyright (C) 1997-2004 Mark Probst
+ * Copyright (C) 2004 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -20,29 +20,23 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef __METAPIXEL_H__
-#define __METAPIXEL_H__
-
-#include "readimage.h"
-
-#define DEFAULT_WIDTH       64
-#define DEFAULT_HEIGHT      64
-
-#define DEFAULT_PREPARE_WIDTH       128
-#define DEFAULT_PREPARE_HEIGHT      128
-
-#define DEFAULT_CLASSIC_MIN_DISTANCE     5
-#define DEFAULT_COLLAGE_MIN_DISTANCE   256
-
-#define SEARCH_LOCAL         1
-#define SEARCH_GLOBAL        2
-
 #include "api.h"
 
-typedef struct _string_list_t
+matcher_t*
+matcher_init_local (matcher_t *matcher, metric_t *metric, unsigned int min_distance)
 {
-    char *str;
-    struct _string_list_t *next;
-} string_list_t;
+    matcher->kind = MATCHER_LOCAL;
+    matcher->metric = *metric;
+    matcher->v.local.min_distance = min_distance;
 
-#endif
+    return matcher;
+}
+
+matcher_t*
+matcher_init_global (matcher_t *matcher, metric_t *metric)
+{
+    matcher->kind = MATCHER_GLOBAL;
+    matcher->metric = *metric;
+
+    return matcher;
+}

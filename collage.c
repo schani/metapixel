@@ -83,9 +83,9 @@ free_positions (position_t *positions)
 }
 
 bitmap_t*
-make_collage_mosaic (int num_libraries, library_t **libraries, bitmap_t *in_bitmap, float in_image_scale,
-		     unsigned int small_width, unsigned int small_height,
-		     int min_distance, metric_t *metric, unsigned int cheat)
+collage_make (int num_libraries, library_t **libraries, bitmap_t *in_bitmap, float in_image_scale,
+	      unsigned int small_width, unsigned int small_height,
+	      int min_distance, metric_t *metric, unsigned int cheat)
 {
     bitmap_t *out_bitmap;
     char *bitmap;
@@ -132,7 +132,7 @@ make_collage_mosaic (int num_libraries, library_t **libraries, bitmap_t *in_bitm
 	int i, j;
 	int x, y;
 	coeffs_t coeffs;
-	match_t match;
+	metapixel_match_t match;
 	collage_position_valid_data_t valid_data = { min_distance, collage_positions };
 
 	while (1)

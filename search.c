@@ -36,7 +36,7 @@ metapixel_in_array (metapixel_t *pixel, metapixel_t **array, int size)
     return 0;
 }
 
-match_t
+metapixel_match_t
 search_metapixel_nearest_to (int num_libraries, library_t **libraries,
 			     coeffs_t *coeffs, metric_t *metric, int x, int y,
 			     metapixel_t **forbidden, int num_forbidden,
@@ -48,7 +48,7 @@ search_metapixel_nearest_to (int num_libraries, library_t **libraries,
     metapixel_t *best_fit = 0;
     unsigned int best_index = (unsigned int)-1;
     compare_func_t compare_func = metric_compare_func_for_metric(metric);
-    match_t match;
+    metapixel_match_t match;
 
     FOR_EACH_METAPIXEL(pixel, pixel_index)
     {

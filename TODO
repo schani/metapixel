@@ -2,6 +2,8 @@ there's a bug in the zoom code: zoom coribelly to 64x64 and then to
 5x5 and you get a very different image than if zooming to 128x128 and
 then to 5x5!
 
+mosaic writing and reading to file.
+
 ***
 
 for 0.11:

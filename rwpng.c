@@ -35,6 +35,7 @@ typedef struct
     png_structp png_ptr;
     png_infop info_ptr, end_info;
     int row_stride;
+    int have_read;
 } png_data_t;
 
 void*
@@ -69,6 +70,8 @@ open_png_file_reading (const char *filename, int *width, int *height)
     assert(data->info_ptr->bit_depth == 8 || data->info_ptr->bit_depth == 16);
     assert(data->info_ptr->color_type == PNG_COLOR_TYPE_RGB || data->info_ptr->color_type == PNG_COLOR_TYPE_RGB_ALPHA);
     assert(data->info_ptr->interlace_type == PNG_INTERLACE_NONE);
+
+    data->have_read = 0;
 
     return data;
 }
@@ -107,6 +110,8 @@ png_read_lines (void *_data, unsigned char *lines, int num_lines)
     }
 
     free(row);
+
+    data->have_read = 1;
 }
 
 void
@@ -117,7 +122,8 @@ png_free_reader_data (void *_data)
     if (setjmp(data->png_ptr->jmpbuf))
 	assert(0);
 
-    png_read_end(data->png_ptr, data->end_info);
+    if (data->have_read)
+	png_read_end(data->png_ptr, data->end_info);
     png_destroy_read_struct(&data->png_ptr, &data->info_ptr, &data->end_info);
     fclose(data->file);
 

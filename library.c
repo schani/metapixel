@@ -353,7 +353,7 @@ library_close (library_t *library)
     free(library);
 }
 
-int
+metapixel_t*
 library_add_metapixel (library_t *library, metapixel_t *metapixel)
 {
     char bitmap_filename[strlen(library->path) + 1 + strlen(metapixel->name) + 1 + 6 + 1];
@@ -414,7 +414,7 @@ library_add_metapixel (library_t *library, metapixel_t *metapixel)
 
     ++library->num_metapixels;
 
-    return 1;
+    return metapixel;
 }
 
 unsigned int

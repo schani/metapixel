@@ -102,17 +102,6 @@ string_list_length (string_list_t *lst)
 }
 
 static void
-assert_client_data (metapixel_t *pixel)
-{
-    if (pixel->client_data == 0)
-    {
-	pixel->client_data = (client_metapixel_data_t*)malloc(sizeof(client_metapixel_data_t));
-	assert(pixel->client_data != 0);
-	memset(pixel->client_data, 0, sizeof(client_metapixel_data_t));
-    }
-}
-
-static void
 init_metric (metric_t *metric, int kind)
 {
     if (kind == METRIC_SUBPIXEL)
@@ -126,293 +115,6 @@ init_metric (metric_t *metric, int kind)
 	assert(0);
 }
 
-static classic_reader_t*
-init_classic_reader (char *input_name, float scale)
-{
-    classic_reader_t *reader = (classic_reader_t*)malloc(sizeof(classic_reader_t));
-
-    assert(reader != 0);
-
-    reader->image_reader = open_image_reading(input_name);
-    if (reader->image_reader == 0)
-    {
-	fprintf(stderr, "cannot read image `%s'\n", input_name);
-	exit(1);
-    }
-
-    reader->in_image_width = reader->image_reader->width;
-    reader->in_image_height = reader->image_reader->height;
-
-    reader->out_image_width = (((int)((float)reader->in_image_width * scale) - 1) / small_width + 1) * small_width;
-    reader->out_image_height = (((int)((float)reader->in_image_height * scale) - 1) / small_height + 1) * small_height;
-
-    assert(reader->out_image_width % small_width == 0);
-    assert(reader->out_image_height % small_height == 0);
-
-    reader->metawidth = reader->out_image_width / small_width;
-    reader->metaheight = reader->out_image_height / small_height;
-
-    reader->in_image = 0;
-    reader->y = 0;
-
-    return reader;
-}
-
-static void
-read_classic_row (classic_reader_t *reader)
-{
-    unsigned char *image_data;
-
-    if (reader->in_image != 0)
-    {
-	assert(reader->y > 0);
-	bitmap_free(reader->in_image);
-    }
-    else
-	assert(reader->y == 0);
-
-    reader->num_lines = (reader->y + 1) * reader->in_image_height / reader->metaheight
-	- reader->y * reader->in_image_height / reader->metaheight;
-
-    image_data = (unsigned char*)malloc(reader->num_lines * reader->in_image_width * NUM_CHANNELS);
-    assert(image_data != 0);
-
-    read_lines(reader->image_reader, image_data, reader->num_lines);
-
-    ++reader->y;
-
-    reader->in_image = bitmap_new_packed(COLOR_RGB_8, reader->in_image_width, reader->num_lines, image_data);
-    assert(reader->in_image != 0);
-}
-
-static void
-compute_classic_column_coords (classic_reader_t *reader, int x, int *left_x, int *width)
-{
-    *left_x = x * reader->in_image_width / reader->metawidth;
-    *width = (x + 1) * reader->in_image_width / reader->metawidth - *left_x;
-}
-
-static void
-generate_search_coeffs_for_classic_subimage (classic_reader_t *reader, int x, coeffs_t *coeffs, metric_t *metric)
-{
-    int left_x, width;
-
-    compute_classic_column_coords(reader, x, &left_x, &width);
-    metric_generate_coeffs_for_subimage(coeffs, reader->in_image,
-					left_x, 0, width, reader->num_lines, metric);
-}
-
-static void
-free_classic_reader (classic_reader_t *reader)
-{
-    if (reader->in_image != 0)
-	bitmap_free(reader->in_image);
-    free_image_reader(reader->image_reader);
-    free(reader);
-}
-
-static mosaic_t*
-init_mosaic_from_reader (classic_reader_t *reader)
-{
-    mosaic_t *mosaic = (mosaic_t*)malloc(sizeof(mosaic_t));
-    int metawidth = reader->metawidth, metaheight = reader->metaheight;
-    int i;
-
-    assert(mosaic != 0);
-
-    mosaic->metawidth = metawidth;
-    mosaic->metaheight = metaheight;
-    mosaic->matches = (match_t*)malloc(sizeof(match_t) * metawidth * metaheight);
-
-    for (i = 0; i < metawidth * metaheight; ++i)
-	mosaic->matches[i].pixel = 0;
-
-    return mosaic;
-}
-
-static mosaic_t*
-generate_local_classic (classic_reader_t *reader, int min_distance, metric_t *metric)
-{
-    mosaic_t *mosaic = init_mosaic_from_reader(reader);
-    int metawidth = reader->metawidth, metaheight = reader->metaheight;
-    int x, y;
-    metapixel_t **neighborhood = 0;
-    int neighborhood_diameter = min_distance * 2 + 1;
-    int neighborhood_size = (neighborhood_diameter * neighborhood_diameter - 1) / 2;
-
-    if (min_distance > 0)
-	neighborhood = (metapixel_t**)malloc(sizeof(metapixel_t*) * neighborhood_size);
-
-    for (y = 0; y < metaheight; ++y)
-    {
-	read_classic_row(reader);
-
-	// bitmap_write(reader->in_image, "/tmp/metarow.png");
-
-	for (x = 0; x < metawidth; ++x)
-	{
-	    match_t match;
-	    int i;
-	    coeffs_t coeffs;
-
-	    for (i = 0; i < neighborhood_size; ++i)
-	    {
-		int nx = x + i % neighborhood_diameter - min_distance;
-		int ny = y + i / neighborhood_diameter - min_distance;
-
-		if (nx < 0 || nx >= metawidth || ny < 0 || ny >= metaheight)
-		    neighborhood[i] = 0;
-		else
-		    neighborhood[i] = mosaic->matches[ny * metawidth + nx].pixel;
-	    }
-
-	    generate_search_coeffs_for_classic_subimage(reader, x, &coeffs, metric);
-
-	    match = search_metapixel_nearest_to(num_libraries, libraries,
-						&coeffs, metric, x, y, neighborhood, neighborhood_size,
-						forbid_reconstruction_radius, 0, 0);
-
-	    if (match.pixel == 0)
-	    {
-		fprintf(stderr, "Error: cannot find a matching image - try using a shorter distance.\n");
-		exit(1);
-	    }
-
-	    mosaic->matches[y * metawidth + x] = match;
-
-	    printf(".");
-	    fflush(stdout);
-	}
-    }
-
-    free(neighborhood);
-
-    printf("\n");
-
-    return mosaic;
-}
-
-static int
-compare_global_matches (const void *_m1, const void *_m2)
-{
-    global_match_t *m1 = (global_match_t*)_m1;
-    global_match_t *m2 = (global_match_t*)_m2;
-
-    if (m1->score < m2->score)
-	return -1;
-    if (m1->score > m2->score)
-	return 1;
-    return 0;
-}
-
-static mosaic_t*
-generate_global_classic (classic_reader_t *reader, metric_t *metric)
-{
-    mosaic_t *mosaic = init_mosaic_from_reader(reader);
-    int metawidth = reader->metawidth, metaheight = reader->metaheight;
-    int x, y;
-    global_match_t *matches, *m;
-    /* FIXME: this will overflow if metawidth and/or metaheight are large! */
-    int num_matches = (metawidth * metaheight) * (metawidth * metaheight);
-    int i, ignore_forbidden;
-    int num_locations_filled;
-
-    if (num_metapixels < metawidth * metaheight)
-    {
-	fprintf(stderr,
-		"global search method needs at least as much\n"
-		"metapixels as there are locations\n");
-	exit(1);
-    }
-
-    matches = (global_match_t*)malloc(sizeof(global_match_t) * num_matches);
-    assert(matches != 0);
-
-    m = matches;
-    for (y = 0; y < metaheight; ++y)
-    {
-	read_classic_row(reader);
-
-	for (x = 0; x < metawidth; ++x)
-	{
-	    coeffs_t coeffs;
-
-	    generate_search_coeffs_for_classic_subimage(reader, x, &coeffs, metric);
-	    
-	    search_n_metapixel_nearest_to(num_libraries, libraries, metawidth * metaheight, m, &coeffs, metric);
-	    for (i = 0; i < metawidth * metaheight; ++i)
-	    {
-		int j;
-
-		for (j = i + 1; j < metawidth * metaheight; ++j)
-		    assert(m[i].pixel != m[j].pixel);
-
-		m[i].x = x;
-		m[i].y = y;
-	    }
-
-	    m += metawidth * metaheight;
-
-	    printf(".");
-	    fflush(stdout);
-	}
-    }
-
-    qsort(matches, num_matches, sizeof(global_match_t), compare_global_matches);
-
-    FOR_EACH_METAPIXEL(pixel, pixel_index)
-	assert_client_data(pixel);
-	pixel->client_data->flag = 0;
-    END_FOR_EACH_METAPIXEL
-
-    num_locations_filled = 0;
-    for (ignore_forbidden = 0; ignore_forbidden < 2; ++ignore_forbidden)
-    {
-	for (i = 0; i < num_matches; ++i)
-	{
-	    int index = matches[i].y * metawidth + matches[i].x;
-
-	    if (!ignore_forbidden
-		&& matches[i].pixel->anti_x >= 0 && matches[i].pixel->anti_y >= 0
-		&& (utils_manhattan_distance(matches[i].x, matches[i].y,
-					     matches[i].pixel->anti_x,
-					     matches[i].pixel->anti_y)
-		    < forbid_reconstruction_radius))
-		continue;
-
-	    if (matches[i].pixel->client_data->flag)
-		continue;
-
-	    if (num_locations_filled >= metawidth * metaheight)
-		break;
-
-	    if (mosaic->matches[index].pixel == 0)
-	    {
-		if (forbid_reconstruction_radius > 0 && ignore_forbidden)
-		{
-		    printf("!");
-		    fflush(stdout);
-		}
-		mosaic->matches[index].pixel = matches[i].pixel;
-		mosaic->matches[index].score = matches[i].score;
-
-		matches[i].pixel->client_data->flag = 1;
-
-		++num_locations_filled;
-	    }
-	}
-	if (forbid_reconstruction_radius == 0)
-	    break;
-    }
-    assert(num_locations_filled == metawidth * metaheight);
-
-    free(matches);
-
-    printf("\n");
-
-    return mosaic;
-}
-
 static void
 print_current_time (void)
 {
@@ -421,120 +123,6 @@ print_current_time (void)
     gettimeofday(&tv, 0);
 
     printf("time: %lu %lu\n", (unsigned long)tv.tv_sec, (unsigned long)tv.tv_usec);
-}
-
-static void
-paste_classic (mosaic_t *mosaic, char *input_name, char *output_name, int cheat)
-{
-    image_reader_t *reader;
-    image_writer_t *writer = 0;
-    int out_image_width, out_image_height;
-    int x, y;
-    unsigned char *out_image_data;
-    int in_image_width, in_image_height;
-    int metawidth = mosaic->metawidth, metaheight = mosaic->metaheight;
-    bitmap_t *out_bitmap;
-
-    if (cheat > 0)
-    {
-	reader = open_image_reading(input_name);
-	if (reader == 0)
-	{
-	    fprintf(stderr, "cannot read image `%s'\n", input_name);
-	    exit(1);
-	}
-
-	in_image_width = reader->width;
-	in_image_height = reader->height;
-    }
-    else
-    {
-	reader = 0;
-	in_image_width = in_image_height = 0;
-    }
-
-    out_image_width = mosaic->metawidth * small_width;
-    out_image_height = mosaic->metaheight * small_height;
-
-    if (!benchmark_rendering)
-    {
-	writer = open_image_writing(output_name, out_image_width, out_image_height,
-				    out_image_width * 3, IMAGE_FORMAT_PNG);
-	if (writer == 0)
-	{
-	    fprintf(stderr, "cannot write image `%s'\n", output_name);
-	    exit(1);
-	}
-    }
-
-    out_bitmap = bitmap_new_empty(COLOR_RGB_8, out_image_width, small_height);
-    assert(out_bitmap != 0);
-
-    out_image_data = out_bitmap->data;
-
-    if (benchmark_rendering)
-	print_current_time();
-
-    for (y = 0; y < metaheight; ++y)
-    {
-	for (x = 0; x < metawidth; ++x)
-	{
-	    if (benchmark_rendering)
-		assert(mosaic->matches[y * metawidth + x].pixel->bitmap != 0);
-
-	    if (!metapixel_paste(mosaic->matches[y * metawidth + x].pixel,
-				 out_bitmap, x * small_width, 0, small_width, small_height))
-		/* FIXME: this could go wrong! */
-		assert(0);
-	    if (!benchmark_rendering)
-	    {
-		printf("X");
-		fflush(stdout);
-	    }
-	}
-
-	if (cheat > 0)
-	{
-	    int num_lines = (y + 1) * in_image_height / metaheight - y * in_image_height / metaheight;
-	    unsigned char *in_image_data = (unsigned char*)malloc(num_lines * in_image_width * NUM_CHANNELS);
-	    bitmap_t *in_bitmap;
-	    bitmap_t *source_bitmap;
-
-	    assert(in_image_data != 0);
-
-	    read_lines(reader, in_image_data, num_lines);
-
-	    in_bitmap = bitmap_new_packed(COLOR_RGB_8, in_image_width, num_lines, in_image_data);
-	    assert(in_bitmap != 0);
-
-	    if (in_image_width != out_image_width || num_lines != small_height)
-		source_bitmap = bitmap_scale(in_bitmap, out_image_width, small_height, FILTER_MITCHELL);
-	    else
-		source_bitmap = in_bitmap;
-
-	    bitmap_alpha_compose(out_bitmap, source_bitmap, cheat * 0x10000 / 100);
-
-	    if (source_bitmap != in_bitmap)
-		bitmap_free(source_bitmap);
-
-	    bitmap_free(in_bitmap);
-	}
-
-	if (!benchmark_rendering)
-	    write_lines(writer, out_image_data, small_height);
-    }
-
-    if (benchmark_rendering)
-	print_current_time();
-
-    bitmap_free(out_bitmap);
-
-    if (!benchmark_rendering)
-	free_image_writer(writer);
-    if (cheat > 0)
-	free_image_reader(reader);
-
-    printf("\n");
 }
 
 static void
@@ -551,9 +139,9 @@ generate_collage (char *input_name, char *output_name, float scale, int min_dist
     }
 
     init_metric(&metric, metric_kind);
-    out_bitmap = make_collage_mosaic(num_libraries, libraries, in_bitmap, scale,
-				     small_width, small_height,
-				     min_distance, &metric, cheat * 0x10000 / 100);
+    out_bitmap = collage_make(num_libraries, libraries, in_bitmap, scale,
+			      small_width, small_height,
+			      min_distance, &metric, cheat * 0x10000 / 100);
     assert(out_bitmap != 0);
 
     bitmap_free(in_bitmap);
@@ -574,12 +162,12 @@ find_metapixel (char *filename)
     return 0;
 }
 
-static mosaic_t*
+static classic_mosaic_t*
 read_protocol (FILE *in)
 {
     lisp_object_t *obj;
     lisp_stream_t stream;
-    mosaic_t *mosaic = (mosaic_t*)malloc(sizeof(mosaic_t));
+    classic_mosaic_t *mosaic = (classic_mosaic_t*)malloc(sizeof(classic_mosaic_t));
     int type;
 
     lisp_stream_init_file(&stream, in);
@@ -597,10 +185,9 @@ read_protocol (FILE *in)
 	    int num_pixels;
 	    lisp_object_t *lst;
 
-	    mosaic->metawidth = lisp_integer(vars[0]);
-	    mosaic->metaheight = lisp_integer(vars[1]);
-	    num_pixels = mosaic->metawidth * mosaic->metaheight;
-	    mosaic->matches = (match_t*)malloc(sizeof(match_t) * num_pixels);
+	    tiling_init_rectangular(&mosaic->tiling, lisp_integer(vars[0]), lisp_integer(vars[1]));
+	    num_pixels = mosaic->tiling.metawidth * mosaic->tiling.metaheight;
+	    mosaic->matches = (metapixel_match_t*)malloc(sizeof(metapixel_match_t) * num_pixels);
 
 	    for (i = 0; i < num_pixels; ++i)
 		mosaic->matches[i].pixel = 0;
@@ -631,7 +218,7 @@ read_protocol (FILE *in)
 			exit(1);
 		    }
 
-		    if (mosaic->matches[y * mosaic->metawidth + x].pixel != 0)
+		    if (mosaic->matches[y * mosaic->tiling.metawidth + x].pixel != 0)
 		    {
 			fprintf(stderr, "location (%d,%d) is assigned to twice\n", x, y);
 			exit(1);
@@ -645,7 +232,7 @@ read_protocol (FILE *in)
 			exit(1);
 		    }
 
-		    mosaic->matches[y * mosaic->metawidth + x].pixel = pixel;
+		    mosaic->matches[y * mosaic->tiling.metawidth + x].pixel = pixel;
 		}
 		else
 		{
@@ -674,11 +261,55 @@ read_protocol (FILE *in)
     return mosaic;
 }
 
-void
-free_mosaic (mosaic_t *mosaic)
+static int
+get_image_size (const char *filename, unsigned int *width, unsigned int *height)
 {
-    free(mosaic->matches);
-    free(mosaic);
+    image_reader_t *reader = open_image_reading(filename);
+
+    if (reader == 0)
+	return 0;
+
+    *width = reader->width;
+    *height = reader->height;
+
+    free_image_reader(reader);
+
+    return 1;
+}
+
+static int
+calculate_metasize (const char *filename, float scale, unsigned int *metawidth, unsigned int *metaheight)
+{
+    unsigned int width, height;
+
+    if (!get_image_size(filename, &width, &height))
+	return 0;
+
+    width = width * scale;
+    height = height * scale;
+
+    *metawidth = (width + small_width - 1) / small_width;
+    *metaheight = (height + small_height - 1) / small_height;
+
+    return 1;
+}
+
+static classic_reader_t*
+make_classic_reader (const char *in_image_name, float in_image_scale)
+{
+    tiling_t tiling;
+    classic_reader_t *reader;
+    unsigned int metawidth, metaheight;
+
+    if (!calculate_metasize(in_image_name, in_image_scale, &metawidth, &metaheight))
+	return 0;
+
+    tiling_init_rectangular(&tiling, metawidth, metaheight);
+
+    reader = classic_reader_new_from_file(in_image_name, &tiling);
+    assert(reader != 0);
+
+    return reader;
 }
 
 int
@@ -686,7 +317,7 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
 		     int metric_kind, float scale, int search, int min_distance, int cheat,
 		     char *in_protocol_name, char *out_protocol_name)
 {
-    mosaic_t *mosaic;
+    classic_mosaic_t *mosaic;
     int x, y;
 
     if (in_protocol_name != 0)
@@ -695,7 +326,8 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
 
 	if (protocol_in == 0)
 	{
-	    fprintf(stderr, "cannot open protocol file for reading `%s': %s\n", in_protocol_name, strerror(errno));
+	    fprintf(stderr, "Error: cannot open protocol file for reading `%s': %s.\n",
+		    in_protocol_name, strerror(errno));
 	    return 0;
 	}
 
@@ -705,19 +337,30 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
     }
     else
     {
-	classic_reader_t *reader = init_classic_reader(in_image_name, scale);
+	classic_reader_t *reader;
 	metric_t metric;
+	matcher_t matcher;
+
+	reader = make_classic_reader(in_image_name, scale);
+
+	if (reader == 0)
+	{
+	    fprintf(stderr, "Error: cannot open input image `%s'.\n", in_image_name);
+	    return 0;
+	}
 
 	init_metric(&metric, metric_kind);
 
 	if (search == SEARCH_LOCAL)
-	    mosaic = generate_local_classic(reader, min_distance, &metric);
+	    matcher_init_local(&matcher, &metric, min_distance);
 	else if (search == SEARCH_GLOBAL)
-	    mosaic = generate_global_classic(reader, &metric);
+	    matcher_init_global(&matcher, &metric);
 	else
 	    assert(0);
 
-	free_classic_reader(reader);
+	mosaic = classic_generate(num_libraries, libraries, reader, &matcher, forbid_reconstruction_radius);
+
+	classic_reader_free(reader);
     }
 
     assert(mosaic != 0);
@@ -726,7 +369,7 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
     {
 	int i;
 
-	for (i = 0; i < mosaic->metawidth * mosaic->metaheight; ++i)
+	for (i = 0; i < mosaic->tiling.metawidth * mosaic->tiling.metaheight; ++i)
 	{
 	    metapixel_t *pixel = mosaic->matches[i].pixel;
 
@@ -750,12 +393,13 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
 	}
 	else
 	{
-	    fprintf(protocol_out, "(mosaic (size %d %d)\n(metapixels\n", mosaic->metawidth, mosaic->metaheight);
-	    for (y = 0; y < mosaic->metaheight; ++y)
+	    fprintf(protocol_out, "(mosaic (size %d %d)\n(metapixels\n",
+		    mosaic->tiling.metawidth, mosaic->tiling.metaheight);
+	    for (y = 0; y < mosaic->tiling.metaheight; ++y)
 	    {
-		for (x = 0; x < mosaic->metawidth; ++x)
+		for (x = 0; x < mosaic->tiling.metawidth; ++x)
 		{
-		    match_t *match = &mosaic->matches[y * mosaic->metawidth + x];
+		    metapixel_match_t *match = &mosaic->matches[y * mosaic->tiling.metawidth + x];
 		    lisp_object_t *obj = lisp_make_string(match->pixel->filename);
 
 		    fprintf(protocol_out, "(%d %d 1 1 ", x, y);
@@ -771,9 +415,37 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
 	fclose(protocol_out);
     }
 
-    paste_classic(mosaic, in_image_name, out_image_name, cheat);
+    {
+	classic_reader_t *reader = 0;
+	classic_writer_t *writer;
+	unsigned int metawidth, metaheight;
 
-    free_mosaic(mosaic);
+	if (!calculate_metasize(in_image_name, scale, &metawidth, &metaheight))
+	{
+	    fprintf(stderr, "Error: could not read input image `%s'.\n", in_image_name);
+
+	    classic_free(mosaic);
+	    return 0;
+	}
+
+	if (cheat > 0)
+	{
+	    reader = make_classic_reader(in_image_name, scale);
+	    assert(reader != 0);
+	}
+
+	writer = classic_writer_new_for_file(out_image_name, metawidth * small_width, metaheight * small_height);
+	assert(writer != 0);
+
+	classic_paste(mosaic, reader, cheat * 0x10000 / 100, writer);
+
+	classic_writer_free(writer);
+
+	if (cheat > 0)
+	    classic_reader_free(reader);
+    }
+
+    classic_free(mosaic);
 
     return 1;
 }

@@ -1,0 +1,28 @@
+TEST: everything from the start: prepare, then do mosaics of all
+kinds.
+
+> Vergiss es,
+> habe nicht beachtet, dass DISTANCE < Anzahl kleiner Bilder sein sollte
+
+
+DONE:
+
+metapixel should check whether it can open the small images, otherwise
+the output image is garbage !!!!!!!!!!!!
+
+metapixel-prepare should check if it can really run metapixel (if it's
+in path).
+
+garble input image, i.e. take small images directly from input image.
+make sure that no small image takes the place it had in the original
+image.
+
+metapixel should be able to process files with spaces.  (cannot read
+tables file).
+
+better (and much slower) image generation: for each metapixel
+location, compute score of each small image.  then, do the following
+until all locations have metapixels: search for the highest score of
+an unused image in a location not yet given away, and use that image
+in that location.
+

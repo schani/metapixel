@@ -1,0 +1,88 @@
+#!/usr/bin/perl
+
+# metapixel-prepare --- prepare images for metapixeling.
+
+# Copyright (C) 1999 Mark Probst
+
+# Author: Mark Probst <schani@complang.tuwien.ac.at>
+# Maintainer: Mark Probst <schani@complang.tuwien.ac.at>
+# Version: 0.1
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2, or (at your option)
+# any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, you can either send email to this
+# program's maintainer or write to: The Free Software Foundation,
+# Inc.; 675 Massachusetts Avenue; Cambridge, MA 02139, USA.
+
+use strict;
+
+use Getopt::Long;
+use File::Basename;
+use IO::Handle;
+
+sub usage {
+    print STDERR "Usage: $0 [OPTION]... <srcdir> <destdir>
+
+Prepares all images in <srcdir> for use as small images in
+photomosaics. The scaled versions and the table file are
+stored in <destdir>.
+
+  --help             display this help and exit
+  --width=WIDTH      specify width of small images
+  --height=HEIGHT    specify height of small images
+";
+    exit(1);
+}
+
+my $width;
+my $height;
+
+if (!GetOptions("help", \&usage,
+		"width=i", \$width,
+		"height=i", \$height)) {
+    usage();
+}
+
+my $opts;
+
+if ($width) {
+    $opts = "--width=$width";
+}
+if ($height) {
+    $opts .= " --height=$height";
+}
+
+if ($#ARGV != 1) {
+    usage();
+}
+
+my ($srcdir, $destdir) = @ARGV;
+
+if (! -d $srcdir || ! -r $srcdir) {
+    print "$0: directory $srcdir does not exist or is unreadable\n";
+    exit(1);
+}
+
+if (! -d $destdir ) {
+    print "$0: directory $destdir does not exist\n";
+    exit(1);
+}
+
+STDOUT->autoflush(1);
+
+foreach my $filename (glob("$srcdir/*")) {
+    if (-f $filename && -r $filename) {
+	my ($name, $path, $suffix) = fileparse($filename);
+	`metapixel $opts --prepare $filename $destdir/$name$suffix.png $destdir/tables`;
+	print ".";
+    }
+}

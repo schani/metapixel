@@ -587,15 +587,18 @@ generate_search_coeffs_for_subimage (search_coefficients_t search_coeffs[3], flo
     {
 	int j;
 
-	x /= small_width;
-	y /= small_height;
+	if (small_width != IMAGE_SIZE || small_height != IMAGE_SIZE)
+	{
+	    x = x / small_width * IMAGE_SIZE;
+	    y = y / small_height * IMAGE_SIZE;
+	}
 
 	for (j = 0; j < IMAGE_SIZE; ++j)
 	    for (i = 0; i < IMAGE_SIZE; ++i)
 	    {
-		float_image[(j * IMAGE_SIZE + i) * 3 + 0] = DownScale(image->pixels[(y * IMAGE_SIZE + j) * image->columns + x * IMAGE_SIZE + i].red);
-		float_image[(j * IMAGE_SIZE + i) * 3 + 1] = DownScale(image->pixels[(y * IMAGE_SIZE + j) * image->columns + x * IMAGE_SIZE + i].green);
-		float_image[(j * IMAGE_SIZE + i) * 3 + 2] = DownScale(image->pixels[(y * IMAGE_SIZE + j) * image->columns + x * IMAGE_SIZE + i].blue);
+		float_image[(j * IMAGE_SIZE + i) * 3 + 0] = DownScale(image->pixels[(y + j) * image->columns + x + i].red);
+		float_image[(j * IMAGE_SIZE + i) * 3 + 1] = DownScale(image->pixels[(y + j) * image->columns + x + i].green);
+		float_image[(j * IMAGE_SIZE + i) * 3 + 2] = DownScale(image->pixels[(y + j) * image->columns + x + i].blue);
 	    }
     }
 
@@ -975,8 +978,7 @@ main (int argc, char *argv[])
 		}
 
 	    out:
-		generate_search_coeffs_for_subimage(search_coeffs, means, image,
-						    x * small_width, y * small_height, use_crop);
+		generate_search_coeffs_for_subimage(search_coeffs, means, image, x, y, use_crop);
 
 		pixel = metapixel_nearest_to(search_coeffs, means);
 		paste_metapixel(pixel, out_image_data, in_image_width, in_image_height, x, y);

@@ -65,7 +65,9 @@ struct _bitmap_t
 
     unsigned char *data;
 
-    int refcount;
+    int refcount;		/* if negative, the data doesn't
+				   belong to the bitmap and must not
+				   be freed */
     bitmap_t *super;
 };
 
@@ -76,6 +78,11 @@ bitmap_t* bitmap_new (int color, unsigned int width, unsigned int height,
 /* bitmap_new_copying doesn't take possession of data. */
 bitmap_t* bitmap_new_copying (int color, unsigned int width, unsigned int height,
 			      unsigned int pixel_stride, unsigned int row_stride, unsigned char *data);
+/* bitmap_new_dont_possess doesn't take possession of data, but
+   doesn't copy it either, hence the bitmap must be freed before the
+   data is. */
+bitmap_t* bitmap_new_dont_possess (int color, unsigned int width, unsigned int height,
+				   unsigned int pixel_stride, unsigned int row_stride, unsigned char *data);
 /* This is the same as bitmap_new, only that pixel_stride and
    row_stride are assumed to take on their minimal values. */
 bitmap_t* bitmap_new_packed (int color, unsigned int width, unsigned int height,

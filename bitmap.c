@@ -40,8 +40,11 @@ color_channels (int color)
 static void
 ref_bitmap (bitmap_t *bitmap)
 {
-    assert(bitmap->refcount > 0);
-    ++bitmap->refcount;
+    assert(bitmap->refcount != 0);
+    if (bitmap->refcount > 0)
+	++bitmap->refcount;
+    else
+	--bitmap->refcount;
 }
 
 bitmap_t*
@@ -84,6 +87,19 @@ bitmap_new_copying (int color, unsigned int width, unsigned int height,
 }
 
 bitmap_t*
+bitmap_new_dont_possess (int color, unsigned int width, unsigned int height,
+			 unsigned int pixel_stride, unsigned int row_stride, unsigned char *data)
+{
+    bitmap_t *bitmap = bitmap_new(color, width, height, pixel_stride, row_stride, data);
+
+    assert(bitmap != 0);
+
+    bitmap->refcount = -1;
+
+    return bitmap;
+}
+
+bitmap_t*
 bitmap_new_packed (int color, unsigned int width, unsigned int height,
 		   unsigned char *data)
 {
@@ -108,17 +124,29 @@ bitmap_new_empty (int color, unsigned int width, unsigned int height)
 void
 bitmap_free (bitmap_t *bitmap)
 {
-    assert(bitmap->refcount > 0);
+    assert(bitmap->refcount != 0);
 
-    --bitmap->refcount;
-
-    if (bitmap->refcount == 0)
+    if (bitmap->refcount > 0)
     {
-	if (bitmap->super != 0)
-	    bitmap_free(bitmap->super);
-	else
-	    free(bitmap->data);
-	free(bitmap);
+	--bitmap->refcount;
+
+	if (bitmap->refcount == 0)
+	{
+	    if (bitmap->super != 0)
+		bitmap_free(bitmap->super);
+	    else
+		free(bitmap->data);
+	    free(bitmap);
+	}
+    }
+    else
+    {
+	++bitmap->refcount;
+
+	assert(bitmap->super == 0);
+
+	if (bitmap->refcount == 0)
+	    free(bitmap);
     }
 }
 

@@ -277,7 +277,7 @@ generate_search_coeffs_for_classic_subimage (classic_reader_t *reader, int x, co
 
 static classic_mosaic_t*
 generate_local (int num_libraries, library_t **libraries, classic_reader_t *reader, int min_distance, metric_t *metric,
-		unsigned int forbid_reconstruction_radius)
+		unsigned int forbid_reconstruction_radius, progress_report_func_t report_func)
 {
     classic_mosaic_t *mosaic = init_mosaic_from_reader(reader);
     int metawidth = reader->tiling.metawidth, metaheight = reader->tiling.metaheight;
@@ -285,12 +285,17 @@ generate_local (int num_libraries, library_t **libraries, classic_reader_t *read
     metapixel_t **neighborhood = 0;
     int neighborhood_diameter = min_distance * 2 + 1;
     int neighborhood_size = (neighborhood_diameter * neighborhood_diameter - 1) / 2;
+    float num_metapixels = (float)(metawidth * metaheight);
+    float last_report = 0.0;
 
     if (min_distance > 0)
     {
 	neighborhood = (metapixel_t**)malloc(sizeof(metapixel_t*) * neighborhood_size);
 	assert(neighborhood != 0);
     }
+
+    if (report_func != 0)
+	report_func(0.0);
 
     for (y = 0; y < metaheight; ++y)
     {
@@ -335,6 +340,17 @@ generate_local (int num_libraries, library_t **libraries, classic_reader_t *read
 	    printf(".");
 	    fflush(stdout);
 #endif
+
+	    if (report_func != 0)
+	    {
+		float progress = (float)(y * metawidth + (x + 1)) / num_metapixels;
+
+		if (progress - last_report >= PROGRESS_REPORT_GRANULARITY)
+		{
+		    report_func(progress);
+		    last_report = progress;
+		}
+	    }
 	}
     }
 
@@ -362,7 +378,7 @@ compare_global_matches (const void *_m1, const void *_m2)
 
 static classic_mosaic_t*
 generate_global (int num_libraries, library_t **libraries, classic_reader_t *reader, metric_t *metric,
-		 unsigned int forbid_reconstruction_radius)
+		 unsigned int forbid_reconstruction_radius, progress_report_func_t report_func)
 {
     classic_mosaic_t *mosaic;
     int metawidth = reader->tiling.metawidth, metaheight = reader->tiling.metaheight;
@@ -374,6 +390,7 @@ generate_global (int num_libraries, library_t **libraries, classic_reader_t *rea
     int num_locations_filled;
     unsigned int num_metapixels = library_count_metapixels(num_libraries, libraries);
     char *flags;
+    float last_report = 0.0;
 
     if (library_count_metapixels(num_libraries, libraries) < metawidth * metaheight)
     {
@@ -386,6 +403,9 @@ generate_global (int num_libraries, library_t **libraries, classic_reader_t *rea
 
     matches = (global_match_t*)malloc(sizeof(global_match_t) * num_matches);
     assert(matches != 0);
+
+    if (report_func != 0)
+	report_func(0.0);
 
     m = matches;
     for (y = 0; y < metaheight; ++y)
@@ -416,6 +436,17 @@ generate_global (int num_libraries, library_t **libraries, classic_reader_t *rea
 	    printf(".");
 	    fflush(stdout);
 #endif
+
+	    if (report_func != 0)
+	    {
+		float progress = (float)(y * metawidth + (x + 1)) / (float)(metawidth * metaheight);
+
+		if (progress - last_report >= PROGRESS_REPORT_GRANULARITY)
+		{
+		    report_func(progress);
+		    last_report = progress;
+		}
+	    }
 	}
     }
 
@@ -482,15 +513,17 @@ generate_global (int num_libraries, library_t **libraries, classic_reader_t *rea
 classic_mosaic_t*
 classic_generate (int num_libraries, library_t **libraries,
 		  classic_reader_t *reader, matcher_t *matcher,
-		  unsigned int forbid_reconstruction_radius)
+		  unsigned int forbid_reconstruction_radius,
+		  progress_report_func_t report_func)
 {
     classic_mosaic_t *mosaic;
 
     if (matcher->kind == MATCHER_LOCAL)
 	mosaic = generate_local(num_libraries, libraries, reader, matcher->v.local.min_distance, &matcher->metric,
-				forbid_reconstruction_radius);
+				forbid_reconstruction_radius, report_func);
     else if (matcher->kind == MATCHER_GLOBAL)
-	mosaic = generate_global(num_libraries, libraries, reader, &matcher->metric, forbid_reconstruction_radius);
+	mosaic = generate_global(num_libraries, libraries, reader, &matcher->metric, forbid_reconstruction_radius,
+				 report_func);
     else
 	assert(0);
 
@@ -501,14 +534,16 @@ classic_generate (int num_libraries, library_t **libraries,
 classic_mosaic_t*
 classic_generate_from_bitmap (int num_libraries, library_t **libraries,
 			      bitmap_t *in_image, tiling_t *tiling, matcher_t *matcher,
-			      unsigned int forbid_reconstruction_radius)
+			      unsigned int forbid_reconstruction_radius,
+			      progress_report_func_t report_func)
 {
     classic_reader_t *reader = classic_reader_new_from_bitmap(in_image, tiling);
     classic_mosaic_t *mosaic;
 
     assert(reader != 0);
 
-    mosaic = classic_generate(num_libraries, libraries, reader, matcher, forbid_reconstruction_radius);
+    mosaic = classic_generate(num_libraries, libraries, reader, matcher,
+			      forbid_reconstruction_radius, report_func);
 
     classic_reader_free(reader);
 
@@ -525,11 +560,13 @@ classic_free (classic_mosaic_t *mosaic)
 
 int
 classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int cheat,
-	       classic_writer_t *writer)
+	       classic_writer_t *writer, progress_report_func_t report_func)
 {
     int x, y;
     unsigned int out_image_width = writer->out_image_width;
     unsigned int out_image_height = writer->out_image_height;
+    float last_report = 0.0;
+    float num_metapixels;
 
     if (cheat > 0)
 	assert(reader != 0);
@@ -540,6 +577,11 @@ classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int 
     */
 
     assert(mosaic->tiling.kind == TILING_RECTANGULAR);
+
+    num_metapixels = (float)(mosaic->tiling.metawidth * mosaic->tiling.metaheight);
+
+    if (report_func != 0)
+	report_func(0.0);
 
     for (y = 0; y < mosaic->tiling.metaheight; ++y)
     {
@@ -575,6 +617,17 @@ classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int 
 		printf("X");
 		fflush(stdout);
 #endif
+	    }
+
+	    if (report_func != 0)
+	    {
+		float progress = (float)(y * mosaic->tiling.metawidth + (x + 1)) / num_metapixels;
+
+		if (progress - last_report >= PROGRESS_REPORT_GRANULARITY)
+		{
+		    report_func(progress);
+		    last_report = progress;
+		}
 	    }
 	}
 
@@ -615,7 +668,7 @@ classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int 
 
 bitmap_t*
 classic_paste_to_bitmap (classic_mosaic_t *mosaic, unsigned int width, unsigned int height,
-			 bitmap_t *in_image, unsigned int cheat)
+			 bitmap_t *in_image, unsigned int cheat, progress_report_func_t report_func)
 {
     bitmap_t *out_bitmap = bitmap_new_empty(COLOR_RGB_8, width, height);
     classic_writer_t *writer;
@@ -633,7 +686,7 @@ classic_paste_to_bitmap (classic_mosaic_t *mosaic, unsigned int width, unsigned 
 	assert(reader != 0);
     }
 
-    if (!classic_paste(mosaic, reader, cheat, writer))
+    if (!classic_paste(mosaic, reader, cheat, writer, report_func))
     {
 	bitmap_free(out_bitmap);
 	out_bitmap = 0;

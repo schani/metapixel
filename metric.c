@@ -27,11 +27,12 @@
 #include "api.h"
 
 metric_t*
-metric_init (metric_t *metric, int kind, float weights[])
+metric_init (metric_t *metric, int kind, int color_space, float weights[])
 {
     assert(kind == METRIC_SUBPIXEL);
 
     metric->kind = kind;
+    metric->color_space = color_space;
     memcpy(metric->weights, weights, sizeof(float) * NUM_CHANNELS);
 
     return metric;

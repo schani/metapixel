@@ -43,6 +43,8 @@
 
 #define NUM_CHANNELS        3
 
+#define PROGRESS_REPORT_GRANULARITY   0.01
+
 #define MATCHER_LOCAL    1
 #define MATCHER_GLOBAL   2
 
@@ -93,6 +95,7 @@ typedef union
 struct _metric_t
 {
     int kind;
+    int color_space;
     float weights[NUM_CHANNELS];
 };
 

@@ -109,10 +109,6 @@ void bitmap_paste (bitmap_t *dst, bitmap_t *src, unsigned int x, unsigned int y)
 /* Opacity is 0 for full transparency and 0x10000 (65536) for full opacity. */
 void bitmap_alpha_compose (bitmap_t *dst, bitmap_t *src, unsigned int opacity);
 
-#define COLOR_SPACE_RGB        1
-#define COLOR_SPACE_HSV        2
-#define COLOR_SPACE_YIQ        3
-
 struct _metapixel_t
 {
     library_t *library;
@@ -165,6 +161,9 @@ typedef struct
     metapixel_match_t *matches;
 } classic_mosaic_t;
 
+/* value will be in the range 0.0 to 1.0 */
+typedef void (*progress_report_func_t) (float value);
+
 /* library_new and library_open return 0 on failure. */
 /* library_new will not create the directory! */
 library_t* library_new (const char *path);
@@ -211,8 +210,12 @@ void tiling_get_metapixel_coords (tiling_t *tiling, unsigned int image_width, un
 #define METRIC_SUBPIXEL  2
 #define METRIC_MIPMAP    3
 
+#define COLOR_SPACE_RGB        1
+#define COLOR_SPACE_HSV        2
+#define COLOR_SPACE_YIQ        3
+
 /* These do not allocate memory for the metric. */
-metric_t* metric_init (metric_t *metric, int kind, float weights[]);
+metric_t* metric_init (metric_t *metric, int kind, int color_space, float weights[]);
 
 /* These do not allocate memory for the matcher. */
 matcher_t* matcher_init_local (matcher_t *matcher, metric_t *metric, unsigned int min_distance);
@@ -231,10 +234,12 @@ void classic_writer_free (classic_writer_t *writer);
    0. */
 classic_mosaic_t* classic_generate (int num_libraries, library_t **libraries,
 				    classic_reader_t *reader, matcher_t *matcher,
-				    unsigned int forbid_reconstruction_radius);
+				    unsigned int forbid_reconstruction_radius,
+				    progress_report_func_t report_func);
 classic_mosaic_t* classic_generate_from_bitmap (int num_libraries, library_t **libraries,
 						bitmap_t *in_image, tiling_t *tiling, matcher_t *matcher,
-						unsigned int forbid_reconstruction_radius);
+						unsigned int forbid_reconstruction_radius,
+						progress_report_func_t report_func);
 /* If some metapixel in the mosaic isn't in one of the supplied
    libraries, classic_read tries to open the library.  If
    *num_new_libraries is >0 after classic_read returns, then each
@@ -254,10 +259,10 @@ void classic_free (classic_mosaic_t *mosaic);
    cheating) to 0x10000 (full opacity).  If cheat == 0, then
    reader/in_image can be 0. */
 int classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int cheat,
-		   classic_writer_t *writer);
+		   classic_writer_t *writer, progress_report_func_t report_func);
 /* width and height are the width and height of the resulting bitmap. */
 bitmap_t* classic_paste_to_bitmap (classic_mosaic_t *mosaic, unsigned int width, unsigned int height,
-				   bitmap_t *in_image, unsigned int cheat);
+				   bitmap_t *in_image, unsigned int cheat, progress_report_func_t report_func);
 
 bitmap_t* collage_make (int num_libraries, library_t **libraries, bitmap_t *in_image, float in_image_scale,
 			unsigned int small_width, unsigned int small_height,

@@ -12,7 +12,7 @@ CCOPTS = -I/usr/X11R6/include -I/usr/X11R6/include/X11 -Wall -O9 $(PROFILE) -DME
 CC = gcc
 #LIBFFM = -lffm
 
-OBJS = metapixel.o vector.o rwpng.o rwjpeg.o readimage.o getopt.o getopt1.o
+OBJS = metapixel.o vector.o rwpng.o rwjpeg.o readimage.o writeimage.o getopt.o getopt1.o
 
 all : metapixel
 

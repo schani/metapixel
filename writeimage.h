@@ -1,7 +1,7 @@
 /* -*- c -*- */
 
 /*
- * readimage.h
+ * writeimage.h
  *
  * metapixel
  *
@@ -22,26 +22,29 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef __READIMAGE_H__
-#define __READIMAGE_H__
+#ifndef __WRITEIMAGE_H__
+#define __WRITEIMAGE_H__
 
-typedef void (*image_read_func_t) (void *data, unsigned char *lines, int num_lines);
-typedef void (*image_reader_free_func_t) (void *data);
+typedef void (*image_write_func_t) (void *data, unsigned char *lines, int num_lines);
+typedef void (*image_writer_free_func_t) (void *data);
 
 typedef struct
 {
     int width;
     int height;
-    int num_lines_read;
+    int num_lines_written;
     void *data;
-    image_read_func_t read_func;
-    image_reader_free_func_t free_func;
-} image_reader_t;
+    image_write_func_t write_func;
+    image_writer_free_func_t free_func;
+} image_writer_t;
 
-image_reader_t* open_image_reading (char *filename);
-void read_lines (image_reader_t *reader, unsigned char *lines, int num_lines);
-void free_image_reader (image_reader_t *reader);
+#define IMAGE_FORMAT_PNG    1
+#define IMAGE_FORMAT_JPEG   2
 
-unsigned char* read_image (char *filename, int *width, int *height);
+image_writer_t* open_image_writing (char *filename, int width, int height, int format);
+void write_lines (image_writer_t *writer, unsigned char *lines, int num_lines);
+void free_image_writer (image_writer_t *writer);
+
+void write_image (char *filename, int width, int height, unsigned char *lines, int format);
 
 #endif

@@ -32,8 +32,8 @@
 #include "getopt.h"
 
 #include "vector.h"
-#include "rwpng.h"
 #include "readimage.h"
+#include "writeimage.h"
 #include "libzoom/raw.h"
 #include "libzoom/zoom.h"
 
@@ -642,7 +642,8 @@ generate_search_coeffs (search_coefficients_t *search_coeffs, float sums[NUM_COE
 }
 
 void
-generate_search_coeffs_for_subimage (coeffs_t *coeffs, unsigned char *image_data, int width, int height, int x, int y, int use_crop, int method)
+generate_search_coeffs_for_subimage (coeffs_t *coeffs, unsigned char *image_data, int image_width, int image_height,
+				     int x, int y, int width, int height, int method)
 {
     static float *float_image = 0;
 
@@ -654,11 +655,11 @@ generate_search_coeffs_for_subimage (coeffs_t *coeffs, unsigned char *image_data
 	if (float_image == 0)
 	    float_image = (float*)malloc(sizeof(float) * IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS);
 
-	if (use_crop)
+	if (width != IMAGE_SIZE || height != IMAGE_SIZE)
 	{
 	    unsigned char *scaled_data;
 
-	    scaled_data = scale_image(image_data, width, height, x, y, small_width, small_height, IMAGE_SIZE, IMAGE_SIZE);
+	    scaled_data = scale_image(image_data, image_width, image_height, x, y, width, height, IMAGE_SIZE, IMAGE_SIZE);
 	    assert(scaled_data != 0);
 
 	    for (i = 0; i < IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS; ++i)
@@ -674,7 +675,7 @@ generate_search_coeffs_for_subimage (coeffs_t *coeffs, unsigned char *image_data
 		for (i = 0; i < IMAGE_SIZE; ++i)
 		    for (channel = 0; channel < NUM_CHANNELS; ++channel)
 			float_image[(j * IMAGE_SIZE + i) * NUM_CHANNELS + channel] =
-			    image_data[((y + j) * width + (x + i)) * NUM_CHANNELS + channel];
+			    image_data[((y + j) * image_width + (x + i)) * NUM_CHANNELS + channel];
 	}
 
 	transform_rgb_to_yiq(float_image, IMAGE_SIZE * IMAGE_SIZE);
@@ -695,7 +696,7 @@ generate_search_coeffs_for_subimage (coeffs_t *coeffs, unsigned char *image_data
 	if (float_image == 0)
 	    float_image = (float*)malloc(sizeof(float) * NUM_SUBPIXELS * NUM_CHANNELS);
 
-	scaled_data = scale_image(image_data, width, height, x, y, small_width, small_height, NUM_SUBPIXEL_ROWS_COLS, NUM_SUBPIXEL_ROWS_COLS);
+	scaled_data = scale_image(image_data, image_width, image_height, x, y, width, height, NUM_SUBPIXEL_ROWS_COLS, NUM_SUBPIXEL_ROWS_COLS);
 
 	for (i = 0; i < NUM_SUBPIXELS * NUM_CHANNELS; ++i)
 	    float_image[i] = scaled_data[i];
@@ -773,6 +774,220 @@ paste_metapixel (metapixel_t *pixel, unsigned char *data, int width, int height,
 	       pixel_data + NUM_CHANNELS * i * small_width, NUM_CHANNELS * small_width);
 
     free(pixel_data);
+}
+
+static void
+generate_classic (char *input_name, char *output_name, float scale, int min_distance, int method, int cheat)
+{
+    metapixel_t **metapixels, **neighborhood = 0;
+    int x, y;
+    int metawidth, metaheight;
+    int neighborhood_diameter = min_distance * 2 + 1;
+    int neighborhood_size = (neighborhood_diameter * neighborhood_diameter - 1) / 2;
+    int in_image_width, in_image_height;
+    int out_image_width, out_image_height;
+    image_reader_t *reader;
+    image_writer_t *writer;
+    unsigned char *out_image_data;
+
+    reader = open_image_reading(input_name);
+    if (reader == 0)
+    {
+	fprintf(stderr, "cannot read image %s\n", input_name);
+	exit(1);
+    }
+
+    in_image_width = reader->width;
+    in_image_height = reader->height;
+
+    out_image_width = (((int)((float)in_image_width * scale) - 1) / small_width + 1) * small_width;
+    out_image_height = (((int)((float)in_image_height * scale) - 1) / small_height + 1) * small_height;
+
+    assert(out_image_width % small_width == 0);
+    assert(out_image_height % small_height == 0);
+
+    writer = open_image_writing(output_name, out_image_width, out_image_height, IMAGE_FORMAT_PNG);
+    if (writer == 0)
+    {
+	fprintf(stderr, "cannot write image %s\n", output_name);
+	exit(1);
+    }
+
+    metawidth = out_image_width / small_width;
+    metaheight = out_image_height / small_height;
+
+    metapixels = (metapixel_t**)malloc(sizeof(metapixel_t*) * metawidth * metaheight);
+    if (min_distance > 0)
+	neighborhood = (metapixel_t**)malloc(sizeof(metapixel_t*) * neighborhood_size);
+
+    out_image_data = (unsigned char*)malloc(out_image_width * small_height * NUM_CHANNELS);
+
+    for (y = 0; y < metaheight; ++y)
+    {
+	int num_lines = (y + 1) * in_image_height / metaheight - y * in_image_height / metaheight;
+	unsigned char *in_image_data = (unsigned char*)malloc(num_lines * in_image_width * NUM_CHANNELS);
+
+	assert(in_image_data != 0);
+
+	read_lines(reader, in_image_data, num_lines);
+
+	for (x = 0; x < metawidth; ++x)
+	{
+	    metapixel_t *pixel;
+	    int i;
+	    coeffs_t coeffs;
+	    int left_x = x * in_image_width / metawidth;
+	    int width = (x + 1) * in_image_width / metawidth - left_x;
+
+	    for (i = 0; i < neighborhood_size; ++i)
+	    {
+		int nx = x + i % neighborhood_diameter - min_distance;
+		int ny = y + i / neighborhood_diameter - min_distance;
+
+		if (nx < 0 || nx >= metawidth || ny < 0 || ny >= metaheight)
+		    neighborhood[i] = 0;
+		else
+		    neighborhood[i] = metapixels[ny * metawidth + nx];
+	    }
+
+	    generate_search_coeffs_for_subimage(&coeffs, in_image_data, in_image_width, num_lines,
+						left_x, 0, width, num_lines, method);
+
+	    pixel = metapixel_nearest_to(&coeffs, neighborhood, neighborhood_size, method);
+	    paste_metapixel(pixel, out_image_data, out_image_width, small_height, x * small_width, 0);
+
+	    metapixels[y * metawidth + x] = pixel;
+
+	    printf(".");
+	    fflush(stdout);
+	}
+
+	if (cheat > 0)
+	{
+	    unsigned char *source_data;
+
+	    if (in_image_width != out_image_width || num_lines != small_height)
+		source_data = scale_image(in_image_data, in_image_width, num_lines,
+					  0, 0, in_image_width, num_lines,
+					  out_image_width, small_height);
+	    else
+		source_data = in_image_data;
+
+	    alpha_compose(out_image_data, out_image_width, small_height, source_data, cheat);
+
+	    if (source_data != in_image_data)
+		free(source_data);
+	}
+
+	free(in_image_data);
+
+	write_lines(writer, out_image_data, small_height);
+    }
+
+    free(out_image_data);
+
+    free_image_writer(writer);
+    free_image_reader(reader);
+
+    printf("\n");
+}
+
+static void
+generate_collage (char *input_name, char *output_name, float scale, int method, int cheat)
+{
+    unsigned char *in_image_data, *out_image_data;
+    int in_image_width, in_image_height;
+    char *bitmap;
+    int num_pixels_done = 0;
+
+    in_image_data = read_image(input_name, &in_image_width, &in_image_height);
+    if (in_image_data == 0)
+    {
+	fprintf(stderr, "could not read image %s\n", input_name);
+	exit(1);
+    }
+
+    if (scale != 1.0)
+    {
+	int new_width = (float)in_image_width * scale;
+	int new_height = (float)in_image_height * scale;
+	unsigned char *scaled_data;
+
+	if (new_width < small_width || new_height < small_height)
+	{
+	    fprintf(stderr, "source image or scaling factor too small\n");
+	    exit(1);
+	}
+
+	printf("scaling source image to %dx%d\n", new_width, new_height);
+
+	scaled_data = scale_image(in_image_data, in_image_width, in_image_height,
+				  0, 0, in_image_width, in_image_height,
+				  new_width, new_height);
+
+	in_image_width = new_width;
+	in_image_height = new_height;
+
+	free(in_image_data);
+	in_image_data = scaled_data;
+    }
+
+    out_image_data = (unsigned char*)malloc(in_image_width * in_image_height * NUM_CHANNELS);
+
+    bitmap = (char*)malloc(in_image_width * in_image_height);
+    memset(bitmap, 0, in_image_width * in_image_height);
+
+    while (num_pixels_done < in_image_width * in_image_height)
+    {
+	int i, j;
+	int x, y;
+	coeffs_t coeffs;
+	metapixel_t *pixel;
+
+	while (1)
+	{
+	    x = random() % in_image_width - small_width / 2;
+	    y = random() % in_image_height - small_height / 2;
+
+	    if (x < 0)
+		x = 0;
+	    if (x + small_width > in_image_width)
+		x = in_image_width - small_width;
+
+	    if (y < 0)
+		y = 0;
+	    if (y + small_height > in_image_height)
+		y = in_image_height - small_height;
+
+	    for (j = 0; j < small_height; ++j)
+		for (i = 0; i < small_width; ++i)
+		    if (!bitmap[(y + j) * in_image_width + x + i])
+			goto out;
+	}
+
+    out:
+	generate_search_coeffs_for_subimage(&coeffs, in_image_data, in_image_width, in_image_height, x, y, small_width, small_height, method);
+
+	pixel = metapixel_nearest_to(&coeffs, 0, 0, method);
+	paste_metapixel(pixel, out_image_data, in_image_width, in_image_height, x, y);
+
+	for (j = 0; j < small_height; ++j)
+	    for (i = 0; i < small_width; ++i)
+		if (!bitmap[(y + j) * in_image_width + x + i])
+		{
+		    bitmap[(y + j) * in_image_width + x + i] = 1;
+		    ++num_pixels_done;
+		}
+
+	printf(".");
+	fflush(stdout);
+    }
+
+    write_image(output_name, in_image_width, in_image_height, out_image_data, IMAGE_FORMAT_PNG);
+
+    free(bitmap);
+    free(out_image_data);
+    free(in_image_data);
 }
 
 void
@@ -982,7 +1197,7 @@ main (int argc, char *argv[])
 	scaled_data = scale_image(image_data, in_width, in_height, 0, 0, in_width, in_height, small_width, small_height);
 	assert(scaled_data != 0);
 
-	write_png_file(outimage_name, small_width, small_height, scaled_data);
+	write_image(outimage_name, small_width, small_height, scaled_data, IMAGE_FORMAT_PNG);
 
 	/* generate wavelet coefficients */
 	if (small_width != IMAGE_SIZE || small_height != IMAGE_SIZE)
@@ -1033,10 +1248,6 @@ main (int argc, char *argv[])
     }
     else if (mode == MODE_METAPIXEL)
     {
-	unsigned char *in_image_data, *out_image_data;
-	int in_image_width, in_image_height;
-	int use_crop = 1;
-
 	if (argc - optind != 2)
 	{
 	    usage();
@@ -1073,162 +1284,10 @@ main (int argc, char *argv[])
 	    add_metapixel(pixel);
 	} while (!feof(stdin));
 
-	in_image_data = read_image(argv[optind], &in_image_width, &in_image_height);
-	if (in_image_data == 0)
-	{
-	    fprintf(stderr, "could not read image %s\n", argv[optind]);
-	    return 1;
-	}
-
-	if (small_width == IMAGE_SIZE && small_height == IMAGE_SIZE)
-	    use_crop = 0;
-
-	if (scale != 1.0 || (!collage && (in_image_width % small_width != 0 || in_image_height % small_height != 0)))
-	{
-	    int new_width, new_height;
-	    unsigned char *scaled_data;
-
-	    if (collage)
-	    {
-		new_width = (float)in_image_width * scale;
-		new_height = (float)in_image_height * scale;
-	    }
-	    else
-	    {
-		new_width = (((int)((float)in_image_width * scale) - 1) / small_width + 1) * small_width;
-		new_height = (((int)((float)in_image_height * scale) - 1) / small_height + 1) * small_height;
-	    }
-
-	    if (new_width < 1 || new_height < 1)
-	    {
-		fprintf(stderr, "source image or scaling factor too small\n");
-		return 1;
-	    }
-
-	    printf("scaling source image to %dx%d\n", new_width, new_height);
-
-	    scaled_data = scale_image(in_image_data, in_image_width, in_image_height,
-				      0, 0, in_image_width, in_image_height,
-				      new_width, new_height);
-
-	    in_image_width = new_width;
-	    in_image_height = new_height;
-
-	    free(in_image_data);
-	    in_image_data = scaled_data;
-	}
-
-	out_image_data = (unsigned char*)malloc(in_image_width * in_image_height * NUM_CHANNELS);
-
 	if (!collage)
-	{
-	    metapixel_t **metapixels, **neighborhood = 0;
-	    int x, y;
-	    int metawidth, metaheight;
-	    int neighborhood_diameter = min_distance * 2 + 1;
-	    int neighborhood_size = (neighborhood_diameter * neighborhood_diameter - 1) / 2;
-
-	    assert(in_image_width % small_width == 0);
-	    assert(in_image_height % small_height == 0);
-
-	    metawidth = in_image_width / small_width;
-	    metaheight = in_image_height / small_height;
-
-	    metapixels = (metapixel_t**)malloc(sizeof(metapixel_t*) * metawidth * metaheight);
-	    if (min_distance > 0)
-		neighborhood = (metapixel_t**)malloc(sizeof(metapixel_t*) * neighborhood_size);
-
-	    for (y = 0; y < metaheight; ++y)
-		for (x = 0; x < metawidth; ++x)
-		{
-		    metapixel_t *pixel;
-		    int i;
-		    coeffs_t coeffs;
-
-		    for (i = 0; i < neighborhood_size; ++i)
-		    {
-			int nx = x + i % neighborhood_diameter - min_distance;
-			int ny = y + i / neighborhood_diameter - min_distance;
-
-			if (nx < 0 || nx >= metawidth || ny < 0 || ny >= metaheight)
-			    neighborhood[i] = 0;
-			else
-			    neighborhood[i] = metapixels[ny * metawidth + nx];
-		    }
-
-		    generate_search_coeffs_for_subimage(&coeffs, in_image_data, in_image_width, in_image_height,
-							x * small_width, y * small_height, use_crop, method);
-
-		    pixel = metapixel_nearest_to(&coeffs, neighborhood, neighborhood_size, method);
-		    paste_metapixel(pixel, out_image_data, in_image_width, in_image_height, x * small_width, y * small_height);
-
-		    metapixels[y * metawidth + x] = pixel;
-
-		    printf(".");
-		    fflush(stdout);
-		}
-	}
+	    generate_classic(argv[optind], argv[optind + 1], scale, min_distance, method, cheat);
 	else
-	{
-	    char *bitmap;
-	    int num_pixels_done = 0;
-
-	    bitmap = (char*)malloc(in_image_width * in_image_height);
-	    memset(bitmap, 0, in_image_width * in_image_height);
-
-	    while (num_pixels_done < in_image_width * in_image_height)
-	    {
-		int i, j;
-		int x, y;
-		coeffs_t coeffs;
-		metapixel_t *pixel;
-
-		while (1)
-		{
-		    x = random() % in_image_width - small_width / 2;
-		    y = random() % in_image_height - small_height / 2;
-
-		    if (x < 0)
-			x = 0;
-		    if (x + small_width > in_image_width)
-			x = in_image_width - small_width;
-
-		    if (y < 0)
-			y = 0;
-		    if (y + small_height > in_image_height)
-			y = in_image_height - small_height;
-
-		    for (j = 0; j < small_height; ++j)
-			for (i = 0; i < small_width; ++i)
-			    if (!bitmap[(y + j) * in_image_width + x + i])
-				goto out;
-		}
-
-	    out:
-		generate_search_coeffs_for_subimage(&coeffs, in_image_data, in_image_width, in_image_height, x, y, use_crop, method);
-
-		pixel = metapixel_nearest_to(&coeffs, 0, 0, method);
-		paste_metapixel(pixel, out_image_data, in_image_width, in_image_height, x, y);
-
-		for (j = 0; j < small_height; ++j)
-		    for (i = 0; i < small_width; ++i)
-			if (!bitmap[(y + j) * in_image_width + x + i])
-			{
-			    bitmap[(y + j) * in_image_width + x + i] = 1;
-			    ++num_pixels_done;
-			}
-
-		printf(".");
-		fflush(stdout);
-	    }
-	}
-
-	if (cheat > 0)
-	    alpha_compose(out_image_data, in_image_width, in_image_height, in_image_data, cheat);
-
-	printf("done\n");
-
-	write_png_file(argv[optind + 1], in_image_width, in_image_height, out_image_data);
+	    generate_collage(argv[optind], argv[optind + 1], scale, method, cheat);
     }
     else
     {

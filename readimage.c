@@ -32,7 +32,7 @@
 #include "rwpng.h"
 
 image_reader_t*
-open_image (char *filename)
+open_image_reading (char *filename)
 {
     unsigned char magic[4];
     FILE *file;
@@ -40,7 +40,7 @@ open_image (char *filename)
     int width, height;
     image_reader_t *reader;
     image_read_func_t read_func;
-    image_free_func_t free_func;
+    image_reader_free_func_t free_func;
 
     file = fopen(filename, "r");
     if (file == 0)
@@ -62,9 +62,9 @@ open_image (char *filename)
     }
     else if (memcmp(magic, "\x89PNG", 4) == 0)
     {
-	data = open_png_file(filename, &width, &height);
+	data = open_png_file_reading(filename, &width, &height);
 	read_func = png_read_lines;
-	free_func = png_free_data;
+	free_func = png_free_reader_data;
     }
     else
 	return 0;
@@ -104,7 +104,7 @@ free_image_reader (image_reader_t *reader)
 unsigned char*
 read_image (char *filename, int *width, int *height)
 {
-    image_reader_t *reader = open_image(filename);
+    image_reader_t *reader = open_image_reading(filename);
     unsigned char *data;
 
     if (reader == 0)

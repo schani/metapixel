@@ -3,7 +3,7 @@
 #include <string.h>
 
 #include "../readimage.h"
-#include "../rwpng.h"
+#include "../writeimage.h"
 
 #include "raw.h"
 
@@ -77,7 +77,7 @@ raw_close (raw_pic_t *pic)
     {
 	assert(pic->data != 0);
 	assert(pic->filename != 0);
-	write_png_file(pic->filename, pic->width, pic->height, pic->data);
+	write_image(pic->filename, pic->width, pic->height, pic->data, IMAGE_FORMAT_PNG);
     }
 
     if (pic->data != 0)

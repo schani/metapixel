@@ -25,10 +25,12 @@
 #ifndef __RWPNG_H__
 #define __RWPNG_H__
 
-void* open_png_file (char *filename, int *width, int *height);
+void* open_png_file_reading (char *filename, int *width, int *height);
 void png_read_lines (void *data, unsigned char *lines, int num_lines);
-void png_free_data (void *data);
+void png_free_reader_data (void *data);
 
-void write_png_file (char *filename, int width, int height, unsigned char *data);
+void* open_png_file_writing (char *filename, int width, int height);
+void png_write_lines (void *data, unsigned char *lines, int num_lines);
+void png_free_writer_data (void *data);
 
 #endif

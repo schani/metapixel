@@ -137,7 +137,9 @@ struct _metapixel_t
     wavelet_coefficients_t coeffs;
     float means[NUM_CHANNELS];
     */
-    unsigned char subpixels[NUM_SUBPIXELS * NUM_CHANNELS];
+    unsigned char subpixels_rgb[NUM_SUBPIXELS * NUM_CHANNELS];
+    unsigned char subpixels_hsv[NUM_SUBPIXELS * NUM_CHANNELS];
+    unsigned char subpixels_yiq[NUM_SUBPIXELS * NUM_CHANNELS];
 
     /* This is != 0 iff library == 0 || filename == 0, i.e., for
        metapixels which are not in a library or only in a mem

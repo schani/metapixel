@@ -164,6 +164,9 @@ metapixel_t* metapixel_new (const char *name, unsigned int scaled_width, unsigne
 int metapixel_paste (metapixel_t *pixel, bitmap_t *image, unsigned int x, unsigned int y,
 		     unsigned int small_width, unsigned int small_height);
 
+/* Converts the RGB subpixel data to HSV and YIQ */
+void metapixel_complete_subpixel (metapixel_t *pixel);
+
 void wavelet_decompose_image (float *image);
 void wavelet_find_highest_coeffs (float *image, coefficient_with_index_t highest_coeffs[NUM_WAVELET_COEFFS]);
 void wavelet_generate_coeffs (wavelet_coefficients_t *search_coeffs, float sums[NUM_WAVELET_COEFFS],
@@ -173,7 +176,7 @@ void wavelet_generate_coeffs (wavelet_coefficients_t *search_coeffs, float sums[
 void init_wavelet (void);
 
 typedef float (*compare_func_t) (coeffs_t *coeffs, metapixel_t *pixel,
-				 float best_score, float weights[]);
+				 float best_score, int color_space, float weights[]);
 
 void metric_generate_coeffs_for_subimage (coeffs_t *coeffs, bitmap_t *bitmap,
 					  int x, int y, int width, int height, metric_t *metric);
@@ -199,8 +202,9 @@ void classic_reader_free (classic_reader_t *reader);
 
 int utils_manhattan_distance (int x1, int y1, int x2, int y2);
 
-/* FIXME: this must go! (must be a static function in some module) */
-void transform_rgb_to_yiq (float *image, int num_pixels);
+void color_rgb_to_yiq (unsigned char *yiq, unsigned char *rgb);
+void color_rgb_to_hsv (unsigned char *hsv, unsigned char *rgb);
+void color_convert_rgb_pixels (unsigned char *dst, unsigned char *rgb, unsigned int num_pixels, int color_space);
 
 #define FOR_EACH_METAPIXEL(p,i) { unsigned int library_index; \
                                   unsigned int i = 0; \

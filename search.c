@@ -59,7 +59,8 @@ search_metapixel_nearest_to (int num_libraries, library_t **libraries,
 		< forbid_reconstruction_radius))
 	    continue;
 
-	score = compare_func(coeffs, pixel, best_score, metric->weights);
+	score = compare_func(coeffs, pixel, best_score,
+			     metric->color_space, metric->weights);
 
 	if (score < best_score && !metapixel_in_array(pixel, forbidden, num_forbidden)
 	    && (validity_func == 0 || validity_func(validity_func_data, pixel, pixel_index, x, y)))
@@ -91,7 +92,8 @@ search_n_metapixel_nearest_to (int num_libraries, library_t **libraries,
     i = 0;
     FOR_EACH_METAPIXEL(pixel, pixel_index)
     {
-	float score = compare_func(coeffs, pixel, (i < n) ? 1e99 : matches[n - 1].score, metric->weights);
+	float score = compare_func(coeffs, pixel, (i < n) ? 1e99 : matches[n - 1].score,
+				   metric->color_space, metric->weights);
 
 	if (i < n || score < matches[n - 1].score)
 	{

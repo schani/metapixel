@@ -122,13 +122,13 @@ write_metapixel_metadata (metapixel_t *metapixel, FILE *tables_file)
     fprintf(tables_file, ")) (subpixel");
     for (channel = 0; channel < NUM_CHANNELS; ++channel)
     {
-	static char *channel_names[] = { "y", "i", "q" };
+	static char *channel_names[] = { "r", "g", "b" };
 
 	int i;
 
 	fprintf(tables_file, " (%s", channel_names[channel]);
 	for (i = 0; i < NUM_SUBPIXELS; ++i)
-	    fprintf(tables_file, " %d", (int)metapixel->subpixels[channel * NUM_SUBPIXELS + i]);
+	    fprintf(tables_file, " %d", (int)metapixel->subpixels_rgb[channel * NUM_SUBPIXELS + i]);
 	fprintf(tables_file, ")");
     }
     fprintf(tables_file, ") (anti %d %d))\n", metapixel->anti_x, metapixel->anti_y);
@@ -164,7 +164,7 @@ read_tables (const char *library_dir, library_t *library)
 
     pattern = lisp_read_from_string("(small-image #?(string) #?(string) (size #?(integer) #?(integer) #?(real))"
 				    "  (wavelet (means #?(real) #?(real) #?(real)) (coeffs . #?(list)))"
-				    "  (subpixel (y . #?(list)) (i . #?(list)) (q . #?(list)))"
+				    "  (subpixel (r . #?(list)) (g . #?(list)) (b . #?(list)))"
 				    "  (anti #?(integer) #?(integer)))");
     assert(pattern != 0
 	   && lisp_type(pattern) != LISP_TYPE_EOF
@@ -254,10 +254,12 @@ read_tables (const char *library_dir, library_t *library)
 		    else
 			for (i = 0; i < NUM_SUBPIXELS; ++i)
 			{
-			    pixel->subpixels[channel * NUM_SUBPIXELS + i] = lisp_integer(lisp_car(lst));
+			    pixel->subpixels_rgb[channel * NUM_SUBPIXELS + i] = lisp_integer(lisp_car(lst));
 			    lst = lisp_cdr(lst);
 			}
 		}
+
+		metapixel_complete_subpixel(pixel);
 
 		/*
 		pixel->data = 0;

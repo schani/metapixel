@@ -42,9 +42,6 @@ void
 metric_generate_coeffs_for_subimage (coeffs_t *coeffs, bitmap_t *bitmap,
 				     int x, int y, int width, int height, metric_t *metric)
 {
-    /* FIXME: not reentrant */
-    static float *float_image = 0;
-
     if (metric->kind == METRIC_WAVELET)
     {
 	/*
@@ -90,12 +87,6 @@ metric_generate_coeffs_for_subimage (coeffs_t *coeffs, bitmap_t *bitmap,
     else if (metric->kind == METRIC_SUBPIXEL)
     {
 	bitmap_t *sub_bitmap, *scaled_bitmap;
-	int i;
-	int channel;
-
-	if (float_image == 0)
-	    float_image = (float*)malloc(sizeof(float) * NUM_SUBPIXELS * NUM_CHANNELS);
-	assert(float_image != 0);
 
 	sub_bitmap = bitmap_sub(bitmap, x, y, width, height);
 	assert(sub_bitmap != 0);
@@ -113,16 +104,10 @@ metric_generate_coeffs_for_subimage (coeffs_t *coeffs, bitmap_t *bitmap,
 	assert(scaled_bitmap->pixel_stride == NUM_CHANNELS);
 	assert(scaled_bitmap->row_stride == NUM_SUBPIXEL_ROWS_COLS * NUM_CHANNELS);
 
-	for (i = 0; i < NUM_SUBPIXELS * NUM_CHANNELS; ++i)
-	    float_image[i] = scaled_bitmap->data[i];
+	color_convert_rgb_pixels(coeffs->subpixel.subpixels, scaled_bitmap->data,
+				 NUM_SUBPIXELS, metric->color_space);
 
 	bitmap_free(scaled_bitmap);
-
-	transform_rgb_to_yiq(float_image, NUM_SUBPIXELS);
-
-	for (channel = 0; channel < NUM_CHANNELS; ++channel)
-	    for (i = 0; i < NUM_SUBPIXELS; ++i)
-		coeffs->subpixel.subpixels[channel * NUM_SUBPIXELS + i] = float_image[i * NUM_CHANNELS + channel];
     }
     else
 	assert(0);
@@ -168,11 +153,28 @@ wavelet_compare (coeffs_t *coeffs, metapixel_t *pixel, float best_score)
 }
 */
 
+static unsigned char*
+subpixels_for_color_space (metapixel_t *pixel, int color_space)
+{
+    switch (color_space)
+    {
+	case COLOR_SPACE_RGB :
+	    return pixel->subpixels_rgb;
+	case COLOR_SPACE_HSV :
+	    return pixel->subpixels_hsv;
+	case COLOR_SPACE_YIQ :
+	    return pixel->subpixels_yiq;
+	default :
+	    assert(0);
+    }
+}
+
 static float
-subpixel_compare (coeffs_t *coeffs, metapixel_t *pixel, float best_score, float weight_factors[NUM_CHANNELS])
+subpixel_compare (coeffs_t *coeffs, metapixel_t *pixel, float best_score, int color_space, float weight_factors[NUM_CHANNELS])
 {
     int channel;
     float score = 0.0;
+    unsigned char *subpixels = subpixels_for_color_space(pixel, color_space);
 
     for (channel = 0; channel < NUM_CHANNELS; ++channel)
     {
@@ -180,8 +182,8 @@ subpixel_compare (coeffs_t *coeffs, metapixel_t *pixel, float best_score, float 
 
 	for (i = 0; i < NUM_SUBPIXELS; ++i)
 	{
-	    float dist = (int)coeffs->subpixel.subpixels[channel * NUM_SUBPIXELS + i]
-		- (int)pixel->subpixels[channel * NUM_SUBPIXELS + i];
+	    float dist = (int)coeffs->subpixel.subpixels[i * NUM_CHANNELS + channel]
+		- (int)subpixels[i * NUM_CHANNELS + channel];
 
 	    score += dist * dist * weight_factors[channel];
 

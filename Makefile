@@ -21,7 +21,7 @@ CC = gcc
 #LIBFFM = -lffm
 
 LISPREADER_OBJS = lispreader.o pools.o allocator.o
-OBJS = main.o bitmap.o metric.o matcher.o tiling.o metapixel.o library.o classic.o collage.o search.o utils.o error.o \
+OBJS = main.o bitmap.o color.o metric.o matcher.o tiling.o metapixel.o library.o classic.o collage.o search.o utils.o error.o \
        vector.o zoom.o rwpng.o rwjpeg.o readimage.o writeimage.o \
        $(LISPREADER_OBJS) getopt.o getopt1.o
 CONVERT_OBJS = convert.o $(LISPREADER_OBJS) getopt.o getopt1.o

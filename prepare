@@ -1,0 +1,8 @@
+#!/bin/bash
+
+for fn in $1/*.jpg
+do
+    bn=`basename $fn`
+    metapixel --prepare $fn $2/${bn%%.jpg}.png $2/tables
+    echo -n "."
+done

@@ -30,6 +30,9 @@
 #define DEFAULT_WIDTH       64
 #define DEFAULT_HEIGHT      64
 
+#define DEFAULT_CLASSIC_MIN_DISTANCE     5
+#define DEFAULT_COLLAGE_MIN_DISTANCE   256
+
 #define NUM_CHANNELS        3
 
 #define IMAGE_SIZE          64
@@ -62,6 +65,12 @@ typedef struct
     index_t coeffs[NUM_COEFFS];
 } search_coefficients_t;
 
+typedef struct _position_t
+{
+    int x, y;
+    struct _position_t *next;
+} position_t;
+
 typedef struct _metapixel_t
 {
     char *filename;
@@ -71,6 +80,7 @@ typedef struct _metapixel_t
     int flag;
     unsigned char *data;	/* only used if from an antimosaic */
     int anti_x, anti_y;		/* ditto */
+    position_t *collage_positions; /* only used in collages */
     struct _metapixel_t *next;
 } metapixel_t;
 

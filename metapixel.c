@@ -724,7 +724,10 @@ manhattan_distance (int x1, int y1, int x2, int y2)
 }
 
 static match_t
-metapixel_nearest_to (coeffs_t *coeffs, metapixel_t **forbidden, int num_forbidden, int method, int x, int y)
+metapixel_nearest_to (coeffs_t *coeffs, int method, int x, int y,
+		      metapixel_t **forbidden, int num_forbidden,
+		      int (*validity_func) (void*, metapixel_t*, int, int),
+		      void *validity_func_data)
 {
     float best_score = 1e99;
     metapixel_t *best_fit = 0, *pixel;
@@ -741,7 +744,8 @@ metapixel_nearest_to (coeffs_t *coeffs, metapixel_t **forbidden, int num_forbidd
 
 	score = compare_func(coeffs, pixel, best_score);
 
-	if (score < best_score && !metapixel_in_array(pixel, forbidden, num_forbidden))
+	if (score < best_score && !metapixel_in_array(pixel, forbidden, num_forbidden)
+	    && (validity_func == 0 || validity_func(validity_func_data, pixel, x, y)))
 	{
 	    best_score = score;
 	    best_fit = pixel;
@@ -965,7 +969,7 @@ generate_local_classic (classic_reader_t *reader, int min_distance, int method)
 
 	    generate_search_coeffs_for_classic_subimage(reader, x, &coeffs, method);
 
-	    match = metapixel_nearest_to(&coeffs, neighborhood, neighborhood_size, method, x, y);
+	    match = metapixel_nearest_to(&coeffs, method, x, y, neighborhood, neighborhood_size, 0, 0);
 
 	    mosaic->matches[y * metawidth + x] = match;
 
@@ -1182,7 +1186,37 @@ paste_classic (mosaic_t *mosaic, char *input_name, char *output_name, int cheat)
 }
 
 static void
-generate_collage (char *input_name, char *output_name, float scale, int method, int cheat)
+pixel_add_collage_position (metapixel_t *pixel, int x, int y)
+{
+    position_t *position = (position_t*)malloc(sizeof(position_t));
+
+    assert(position != 0);
+
+    position->x = x;
+    position->y = y;
+
+    position->next = pixel->collage_positions;
+    pixel->collage_positions = position;
+}
+
+static int
+pixel_valid_for_collage_position (void *data, metapixel_t *pixel, int x, int y)
+{
+    int min_distance = (int)data;
+    position_t *position;
+
+    if (min_distance <= 0)
+	return 1;
+
+    for (position = pixel->collage_positions; position != 0; position = position->next)
+	if (manhattan_distance(x, y, position->x, position->y) < min_distance)
+	    return 0;
+
+    return 1;
+}
+
+static void
+generate_collage (char *input_name, char *output_name, float scale, int min_distance, int method, int cheat)
 {
     unsigned char *in_image_data, *out_image_data;
     int in_image_width, in_image_height;
@@ -1255,10 +1289,15 @@ generate_collage (char *input_name, char *output_name, float scale, int method, 
 	}
 
     out:
-	generate_search_coeffs_for_subimage(&coeffs, in_image_data, in_image_width, in_image_height, x, y, small_width, small_height, method);
+	generate_search_coeffs_for_subimage(&coeffs, in_image_data, in_image_width, in_image_height,
+					    x, y, small_width, small_height, method);
 
-	match = metapixel_nearest_to(&coeffs, 0, 0, method, x, y);
+	match = metapixel_nearest_to(&coeffs, method, x, y, 0, 0,
+				     pixel_valid_for_collage_position, (void*)min_distance);
 	paste_metapixel(match.pixel, out_image_data, in_image_width, in_image_height, x, y);
+
+	if (min_distance > 0)
+	    pixel_add_collage_position(match.pixel, x, y);
 
 	for (j = 0; j < small_height; ++j)
 	    for (i = 0; i < small_width; ++i)
@@ -1351,6 +1390,7 @@ read_tables (FILE *in)
 		}
 
 		pixel->data = 0;
+		pixel->collage_positions = 0;
 
 		add_metapixel(pixel);
 	    }
@@ -1614,7 +1654,7 @@ main (int argc, char *argv[])
     int method = METHOD_SUBPIXEL;
     int search = SEARCH_LOCAL;
     int collage = 0;
-    int min_distance = 0;
+    int min_distance = -1;
     int cheat = 0;
     float scale = 1.0;
     char *out_filename = 0;
@@ -1799,6 +1839,14 @@ main (int argc, char *argv[])
 	}
     }
 
+    if (mode == MODE_METAPIXEL && min_distance < 0)
+    {
+	if (!collage)
+	    min_distance = DEFAULT_CLASSIC_MIN_DISTANCE;
+	else
+	    min_distance = DEFAULT_COLLAGE_MIN_DISTANCE;
+    }
+
     if (in_filename != 0 || out_filename != 0)
     {
 	if (mode != MODE_METAPIXEL)
@@ -1928,6 +1976,7 @@ main (int argc, char *argv[])
 		    pixel->data = scaled_data;
 		    pixel->anti_x = x;
 		    pixel->anti_y = y;
+		    pixel->collage_positions = 0;
 
 		    pixel->filename = (char*)malloc(64);
 		    sprintf(pixel->filename, "(%d,%d)", x, y);
@@ -1952,7 +2001,8 @@ main (int argc, char *argv[])
 	if (mode == MODE_METAPIXEL)
 	{
 	    if (collage)
-		generate_collage(argv[optind], argv[optind + 1], scale, method, cheat);
+		generate_collage(argv[optind], argv[optind + 1], scale, min_distance,
+				 method, cheat);
 	    else
 		make_classic_mosaic(argv[optind], argv[optind + 1],
 				    method, scale, search, min_distance, cheat,

@@ -1,3 +1,10 @@
+implement classic mosaics with nonstandard tiling, i.e., triangles and
+hexagons.
+
+implement masks for collages
+
+implement larger tiles
+
 TEST: everything from the start: prepare, then do mosaics of all
 kinds.
 

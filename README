@@ -132,13 +132,14 @@ locations in the image.
 
 Note that "global" is much slower and uses more memory than "local".
 
-The --distance option lets you specify the minimal distance between
+The "--distance" option lets you specify the minimal distance between
 two occurences of the same constituent image in the target image for
-the "local" algorithm.  The default distance is 0, which means that it
-is allowed for one image to be placed in two adjacent elements in the
-matrix.  Distance 1 means that there must be at least one other image
-between two occurences of the same image.  Note that Metapixel is
-forced to select non-optimal matches for distances greater 0.
+the "local" algorithm.  Distance 0 means that it is allowed for the
+same image to occur in adjacent positions in the matrix.  The default
+distance is 5, which means that there must be at least 5 images
+"between" two occurences of the same image in the matrix.  Note that
+Metapixel is forced to select non-optimal matches for distances
+greater 0.
 
 
 Antimosaics
@@ -207,7 +208,19 @@ matching score is not part of the protocol syntax.
 Collages
 --------
 
-Note that Metapixel uses ridiculous amounts of main memory for collage
+To create a collage, you have to use the "--collage" option in
+addition to "--metapixel".
+
+You can also specify a minimum distance between two occurences of the
+same image, which is measured in pixels.  The default value is 256.
+Use the "--distance" option to change it.  Note that the distance is
+measured between the centers of the images, not their edges, i.e., a
+minimum distance of 10 means that the centers of two occurences of the
+same image must be at least 10 pixels apart.  This will usually mean
+that they are allowed to overlap, unless you use very tiny small
+images.
+
+Note that Metapixel uses ridiculous amounts of memory for collage
 mosaics.  To create a collage photomosaics of size 2048x2048 your
 machine should at least have 64MBytes RAM.
 

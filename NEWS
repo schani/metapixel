@@ -1,3 +1,11 @@
+Changes since version 0.9:
+
+  * Metapixel can now enforce a minimum image distance for
+    collages.
+
+  * the default minimum distance for classical mosaics is
+    now 5 instead of 0
+
 Changes since version 0.8:
 
   * fixed a bug that prevented global search from working on

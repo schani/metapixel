@@ -1,3 +1,11 @@
+Changes since version 0.5:
+
+  * introduces the subpixel image comparison metric
+
+Changes since version 0.4:
+
+  * cheat option
+
 Changes since version 0.3:
 
   * bugfixes

@@ -28,7 +28,7 @@
       <li>Metapixel generates not only classical mosaics but also collage-style
         photomosaics (see <a href="examples.html">examples</a>).
 
-      <li>The matching algorithms matches not only color but also form.
+      <li>The matching algorithms match not only color but also form.
 
       <li>Metapixel is fast. It takes about 75 seconds to generate a classical
         photomosaic for a 2048x2432 image with constituent images of size 64x64
@@ -50,6 +50,19 @@
     <h2>News</h2>
 
     <blockquote>
+      <p><b>01-15-2000</b> Released version 0.6. 
+
+      <blockquote>
+        This version features a new image matching metric which is
+        actually an implementation of a trivial distance metric: the
+        constituent image to be compared to and the subimage to be
+        compared are both scaled to a size of 5x5 pixels and the sum
+        of the distances of their pixels is used as the score, with
+        lower scores meaning a better match.
+      </blockquote>
+
+      <p><b>01-09-2000</b> Released version 0.5.
+
       <p><b>01-06-2000</b> Released version 0.4.
 
       <p><b>01-04-2000</b> Released version 0.3.
@@ -62,8 +75,8 @@
     <h2>Download</h2>
 
     <blockquote>
-      You can download the source code for version 0.5
-      <a href="metapixel-0.5.tar.gz">here</a>.
+      You can download the source code for version 0.6
+      <a href="metapixel-0.6.tar.gz">here</a>.
     </blockquote>
 
     <h2>Legal Conditions</h2>

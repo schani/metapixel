@@ -57,6 +57,12 @@
 
 #define NUM_INDEXES         (IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS * 2)
 
+#define NUM_SUBPIXEL_ROWS_COLS       5
+#define NUM_SUBPIXELS                (NUM_SUBPIXEL_ROWS_COLS * NUM_SUBPIXEL_ROWS_COLS)
+
+#define METHOD_WAVELET  1
+#define METHOD_SUBPIXEL 2
+
 typedef struct
 {
     int index;
@@ -77,8 +83,25 @@ typedef struct _metapixel_t
     char filename[1024];	/* FIXME: should be done dynamically */
     search_coefficients_t coeffs;
     float means[NUM_CHANNELS];
+    unsigned char subpixels[NUM_SUBPIXELS * NUM_CHANNELS];
     struct _metapixel_t *next;
 } metapixel_t;
+
+typedef union
+{
+    struct
+    {
+	search_coefficients_t coeffs;
+	float means[NUM_CHANNELS];
+	float sums[NUM_COEFFS];
+    } wavelet;
+    struct
+    {
+	unsigned char subpixels[NUM_SUBPIXELS * NUM_CHANNELS];
+    } subpixel;
+} coeffs_t;
+
+typedef float(*compare_func_t)(coeffs_t*, metapixel_t*, float);
 
 static metapixel_t *first_pixel = 0;
 
@@ -221,7 +244,7 @@ cut_last_coefficients (float *image, int channel, int howmany)
 }
 
 void
-transform_rgb_to_yiq (float *image)
+transform_rgb_to_yiq (float *image, int num_pixels)
 {
     static Matrix3D conversion_matrix =
     {
@@ -232,7 +255,7 @@ transform_rgb_to_yiq (float *image)
 
     int i;
 
-    for (i = 0; i < IMAGE_SIZE * IMAGE_SIZE; ++i)
+    for (i = 0; i < num_pixels; ++i)
     {
 	Vector3D rgb_vec,
 	    yiq_vec;
@@ -243,8 +266,8 @@ transform_rgb_to_yiq (float *image)
 		     image[NUM_CHANNELS * i + 2]);
 	MultMatrixVector3D(&yiq_vec, (const Matrix3D*)&conversion_matrix, &rgb_vec);
 	image[NUM_CHANNELS * i + 0] = yiq_vec.x;
-	image[NUM_CHANNELS * i + 1] = yiq_vec.y + 127.5;
-	image[NUM_CHANNELS * i + 2] = yiq_vec.z + 127.5;
+	image[NUM_CHANNELS * i + 1] = yiq_vec.y / 1.192 + 127.5;
+	image[NUM_CHANNELS * i + 2] = yiq_vec.z / 1.051 + 128.106565176;
     }
 }
 
@@ -522,10 +545,13 @@ compute_index_weights (void)
 }
 
 static float
-compare_images (search_coefficients_t *query, float *query_means,
-		search_coefficients_t *target, float *target_means,
-		float sums[NUM_COEFFS], float best_score)
+wavelet_compare (coeffs_t *coeffs, metapixel_t *pixel, float best_score)
 {
+    search_coefficients_t *query = &coeffs->wavelet.coeffs;
+    float *query_means = coeffs->wavelet.means;
+    float *sums = coeffs->wavelet.sums;
+    search_coefficients_t *target = &pixel->coeffs;
+    float *target_means = pixel->means;
     float score = 0.0;
     int i;
     int j;
@@ -551,6 +577,30 @@ compare_images (search_coefficients_t *query, float *query_means,
 	    continue;
 
 	score -= index_weights[weight_ordered_index_to_index[target->coeffs[j]]];
+    }
+
+    return score;
+}
+
+static float
+subpixel_compare (coeffs_t *coeffs, metapixel_t *pixel, float best_score)
+{
+    int channel;
+    float score = 0.0;
+
+    for (channel = 0; channel < NUM_CHANNELS; ++channel)
+    {
+	int i;
+
+	for (i = 0; i < NUM_SUBPIXELS; ++i)
+	{
+	    float dist = (int)coeffs->subpixel.subpixels[channel * NUM_SUBPIXELS + i] - (int)pixel->subpixels[channel * NUM_SUBPIXELS + i];
+
+	    score += dist * dist * weight_factors[channel];
+
+	    if (score >= best_score)
+		return 1e99;
+	}
     }
 
     return score;
@@ -592,48 +642,74 @@ generate_search_coeffs (search_coefficients_t *search_coeffs, float sums[NUM_COE
 }
 
 void
-generate_search_coeffs_for_subimage (search_coefficients_t *search_coeffs, float sums[NUM_COEFFS], float means[NUM_CHANNELS],
-				     unsigned char *image_data, int width, int height, int x, int y, int use_crop)
+generate_search_coeffs_for_subimage (coeffs_t *coeffs, unsigned char *image_data, int width, int height, int x, int y, int use_crop, int method)
 {
     static float *float_image = 0;
 
-    int i;
-    coefficient_with_index_t raw_coeffs[NUM_COEFFS];
+    if (method == METHOD_WAVELET)
+    {
+	coefficient_with_index_t raw_coeffs[NUM_COEFFS];
+	int i;
 
-    if (float_image == 0)
-	float_image = (float*)malloc(sizeof(float) * IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS);
+	if (float_image == 0)
+	    float_image = (float*)malloc(sizeof(float) * IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS);
 
-    if (use_crop)
+	if (use_crop)
+	{
+	    unsigned char *scaled_data;
+
+	    scaled_data = scale_image(image_data, width, height, x, y, small_width, small_height, IMAGE_SIZE, IMAGE_SIZE);
+	    assert(scaled_data != 0);
+
+	    for (i = 0; i < IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS; ++i)
+		float_image[i] = scaled_data[i];
+
+	    free(scaled_data);
+	}
+	else
+	{
+	    int j, channel;
+
+	    for (j = 0; j < IMAGE_SIZE; ++j)
+		for (i = 0; i < IMAGE_SIZE; ++i)
+		    for (channel = 0; channel < NUM_CHANNELS; ++channel)
+			float_image[(j * IMAGE_SIZE + i) * NUM_CHANNELS + channel] =
+			    image_data[((y + j) * width + (x + i)) * NUM_CHANNELS + channel];
+	}
+
+	transform_rgb_to_yiq(float_image, IMAGE_SIZE * IMAGE_SIZE);
+	decompose_image(float_image);
+	find_highest_coefficients(float_image, raw_coeffs);
+
+	generate_search_coeffs(&coeffs->wavelet.coeffs, coeffs->wavelet.sums, raw_coeffs);
+
+	for (i = 0; i < NUM_CHANNELS; ++i)
+	    coeffs->wavelet.means[i] = float_image[i];
+    }
+    else if (method == METHOD_SUBPIXEL)
     {
 	unsigned char *scaled_data;
+	int i;
+	int channel;
 
-	scaled_data = scale_image(image_data, width, height, x, y, small_width, small_height, IMAGE_SIZE, IMAGE_SIZE);
-	assert(scaled_data != 0);
+	if (float_image == 0)
+	    float_image = (float*)malloc(sizeof(float) * NUM_SUBPIXELS * NUM_CHANNELS);
 
-	for (i = 0; i < IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS; ++i)
+	scaled_data = scale_image(image_data, width, height, x, y, small_width, small_height, NUM_SUBPIXEL_ROWS_COLS, NUM_SUBPIXEL_ROWS_COLS);
+
+	for (i = 0; i < NUM_SUBPIXELS * NUM_CHANNELS; ++i)
 	    float_image[i] = scaled_data[i];
 
 	free(scaled_data);
+
+	transform_rgb_to_yiq(float_image, NUM_SUBPIXELS);
+
+	for (channel = 0; channel < NUM_CHANNELS; ++channel)
+	    for (i = 0; i < NUM_SUBPIXELS; ++i)
+		coeffs->subpixel.subpixels[channel * NUM_SUBPIXELS + i] = float_image[i * NUM_CHANNELS + channel];
     }
     else
-    {
-	int j, channel;
-
-	for (j = 0; j < IMAGE_SIZE; ++j)
-	    for (i = 0; i < IMAGE_SIZE; ++i)
-		for (channel = 0; channel < NUM_CHANNELS; ++channel)
-		    float_image[(j * IMAGE_SIZE + i) * NUM_CHANNELS + channel] =
-			image_data[((y + j) * width + (x + i)) * NUM_CHANNELS + channel];
-    }
-
-    transform_rgb_to_yiq(float_image);
-    decompose_image(float_image);
-    find_highest_coefficients(float_image, raw_coeffs);
-
-    generate_search_coeffs(search_coeffs, sums, raw_coeffs);
-
-    for (i = 0; i < NUM_CHANNELS; ++i)
-	means[i] = float_image[i];
+	assert(0);
 }
 
 static int
@@ -648,14 +724,22 @@ metapixel_in_array (metapixel_t *pixel, metapixel_t **array, int size)
 }
 
 static metapixel_t*
-metapixel_nearest_to (search_coefficients_t *search_coeffs, float sums[NUM_COEFFS], float *query_means, metapixel_t **forbidden, int num_forbidden)
+metapixel_nearest_to (coeffs_t *coeffs, metapixel_t **forbidden, int num_forbidden, int method)
 {
     float best_score = 1e99;
     metapixel_t *best_fit = 0, *pixel;
+    compare_func_t compare_func = 0;
+
+    if (method == METHOD_WAVELET)
+	compare_func = wavelet_compare;
+    else if (method == METHOD_SUBPIXEL)
+	compare_func = subpixel_compare;
+    else
+	assert(0);
 
     for (pixel = first_pixel; pixel != 0; pixel = pixel->next)
     {
-	float score = compare_images(search_coeffs, query_means, &pixel->coeffs, pixel->means, sums, best_score);
+	float score = compare_func(coeffs, pixel, best_score);
 
 	if (score < best_score && !metapixel_in_array(pixel, forbidden, num_forbidden))
 	{
@@ -709,6 +793,7 @@ usage (void)
 	   "  -y, --y-weight=WEIGHT       assign relative weight for the Y-channel\n"
 	   "  -i, --i-weight=WEIGHT       assign relative weight for the I-channel\n"
 	   "  -q, --q-weight=WEIGHT       assign relative weight for the Q-channel\n"
+	   "  -m, --metric=METRIC         choose metric (subpixel or wavelet)\n"
 	   "  -c, --collage               collage mode\n"
 	   "  -d, --distance=DIST         minimum distance between two instances of\n"
 	   "                              the same constituent image\n"
@@ -725,6 +810,7 @@ int
 main (int argc, char *argv[])
 {
     int mode = MODE_NONE;
+    int method = METHOD_SUBPIXEL;
     int collage = 0;
     int min_distance = 0;
     int cheat = 0;
@@ -735,8 +821,8 @@ main (int argc, char *argv[])
             {
 		{ "version", no_argument, 0, 256 },
 		{ "help", no_argument, 0, 257 },
-		{ "prepare", no_argument, 0, 'p' },
-		{ "metapixel", no_argument, 0, 'm' },
+		{ "prepare", no_argument, 0, 258 },
+		{ "metapixel", no_argument, 0, 259 },
 		{ "width", required_argument, 0, 'w' },
 		{ "height", required_argument, 0, 'h' },
 		{ "y-weight", required_argument, 0, 'y' },
@@ -745,25 +831,38 @@ main (int argc, char *argv[])
 		{ "collage", no_argument, 0, 'c' },
 		{ "distance", required_argument, 0, 'd' },
 		{ "cheat", required_argument, 0, 'a' },
+		{ "metric", required_argument, 0, 'm' },
 		{ 0, 0, 0, 0 }
 	    };
 
 	int option,
 	    option_index;
 
-	option = getopt_long(argc, argv, "pmw:h:y:i:q:cd:a:", long_options, &option_index);
+	option = getopt_long(argc, argv, "m:w:h:y:i:q:cd:a:", long_options, &option_index);
 
 	if (option == -1)
 	    break;
 
 	switch (option)
 	{
-	    case 'p' :
+	    case 258 :
 		mode = MODE_PREPARE;
 		break;
 
-	    case 'm' :
+	    case 259 :
 		mode = MODE_METAPIXEL;
+		break;
+
+	    case 'm' :
+		if (strcmp(optarg, "wavelet") == 0)
+		    method = METHOD_WAVELET;
+		else if (strcmp(optarg, "subpixel") == 0)
+		    method = METHOD_SUBPIXEL;
+		else
+		{
+		    fprintf(stderr, "method must either be subpixel or wavelet\n");
+		    return 1;
+		}
 		break;
 
 	    case 'w' :
@@ -873,7 +972,7 @@ main (int argc, char *argv[])
 
 	write_png_file(outimage_name, small_width, small_height, scaled_data);
 
-	/* generate coefficients */
+	/* generate wavelet coefficients */
 	if (small_width != IMAGE_SIZE || small_height != IMAGE_SIZE)
 	{
 	    free(scaled_data);
@@ -885,7 +984,9 @@ main (int argc, char *argv[])
 	for (i = 0; i < IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS; ++i)
 	    float_image[i] = scaled_data[i];
 
-	transform_rgb_to_yiq(float_image);
+	free(scaled_data);
+
+	transform_rgb_to_yiq(float_image, IMAGE_SIZE * IMAGE_SIZE);
 	decompose_image(float_image);
 	
 	find_highest_coefficients(float_image, highest_coeffs);
@@ -897,6 +998,24 @@ main (int argc, char *argv[])
 	for (i = 0; i < NUM_COEFFS; ++i)
 	    fprintf(tables_file, "%d ", highest_coeffs[i].index);
 	fprintf(tables_file, "\n");
+
+	/* generate subpixel coefficients */
+	scaled_data = scale_image(image_data, in_width, in_height, 0, 0, in_width, in_height, NUM_SUBPIXEL_ROWS_COLS, NUM_SUBPIXEL_ROWS_COLS);
+	assert(scaled_data != 0);
+
+	for (i = 0; i < NUM_SUBPIXELS * NUM_CHANNELS; ++i)
+	    float_image[i] = scaled_data[i];
+
+	transform_rgb_to_yiq(float_image, NUM_SUBPIXELS);
+
+	for (channel = 0; channel < NUM_CHANNELS; ++channel)
+	{
+	    for (i = 0; i < NUM_SUBPIXELS; ++i)
+		fprintf(tables_file, "%d ", (int)float_image[i * NUM_CHANNELS + channel]);
+	    fprintf(tables_file, "\n");
+	}
+
+	free(scaled_data);
 
 	fclose(tables_file);
     }
@@ -916,20 +1035,28 @@ main (int argc, char *argv[])
 	{
 	    coefficient_with_index_t coeffs[NUM_COEFFS];
 	    metapixel_t *pixel = (metapixel_t*)malloc(sizeof(metapixel_t));
-	    int channel;
-	    int i;
+	    int i, channel;
 	    float sums[NUM_COEFFS];
 
 	    scanf("%s", pixel->filename);
-	    assert(strlen(pixel->filename) > 0);
 	    if (feof(stdin))
 		break;
+	    assert(strlen(pixel->filename) > 0);
 	    for (channel = 0; channel < 3; ++channel)
 		scanf("%f", &pixel->means[channel]);
 	    for (i = 0; i < NUM_COEFFS; ++i)
 		scanf("%d", &coeffs[i].index);
 
 	    generate_search_coeffs(&pixel->coeffs, sums, coeffs);
+
+	    for (channel = 0; channel < NUM_CHANNELS; ++channel)
+		for (i = 0; i < NUM_SUBPIXELS; ++i)
+		{
+		    int val;
+
+		    scanf("%d", &val);
+		    pixel->subpixels[channel * NUM_SUBPIXELS + i] = val;
+		}
 
 	    add_metapixel(pixel);
 	} while (!feof(stdin));
@@ -983,11 +1110,9 @@ main (int argc, char *argv[])
 	    for (y = 0; y < metaheight; ++y)
 		for (x = 0; x < metawidth; ++x)
 		{
-		    search_coefficients_t search_coeffs;
 		    metapixel_t *pixel;
-		    float means[3];
-		    float sums[NUM_COEFFS];
 		    int i;
+		    coeffs_t coeffs;
 
 		    for (i = 0; i < neighborhood_size; ++i)
 		    {
@@ -1000,10 +1125,10 @@ main (int argc, char *argv[])
 			    neighborhood[i] = metapixels[ny * metawidth + nx];
 		    }
 
-		    generate_search_coeffs_for_subimage(&search_coeffs, sums, means, in_image_data, in_image_width, in_image_height,
-							x * small_width, y * small_height, use_crop);
+		    generate_search_coeffs_for_subimage(&coeffs, in_image_data, in_image_width, in_image_height,
+							x * small_width, y * small_height, use_crop, method);
 
-		    pixel = metapixel_nearest_to(&search_coeffs, sums, means, neighborhood, neighborhood_size);
+		    pixel = metapixel_nearest_to(&coeffs, neighborhood, neighborhood_size, method);
 		    paste_metapixel(pixel, out_image_data, in_image_width, in_image_height, x * small_width, y * small_height);
 
 		    metapixels[y * metawidth + x] = pixel;
@@ -1024,10 +1149,8 @@ main (int argc, char *argv[])
 	    {
 		int i, j;
 		int x, y;
-		search_coefficients_t search_coeffs;
-		float sums[NUM_COEFFS];
+		coeffs_t coeffs;
 		metapixel_t *pixel;
-		float means[NUM_CHANNELS];
 
 		while (1)
 		{
@@ -1051,9 +1174,9 @@ main (int argc, char *argv[])
 		}
 
 	    out:
-		generate_search_coeffs_for_subimage(&search_coeffs, sums, means, in_image_data, in_image_width, in_image_height, x, y, use_crop);
+		generate_search_coeffs_for_subimage(&coeffs, in_image_data, in_image_width, in_image_height, x, y, use_crop, method);
 
-		pixel = metapixel_nearest_to(&search_coeffs, sums, means, 0, 0);
+		pixel = metapixel_nearest_to(&coeffs, 0, 0, method);
 		paste_metapixel(pixel, out_image_data, in_image_width, in_image_height, x, y);
 
 		for (j = 0; j < small_height; ++j)

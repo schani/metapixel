@@ -1,4 +1,4 @@
-Metapixel 0.5
+Metapixel 0.6
 =============
 
 Metapixel is a program for generating photomosaics. It can generate
@@ -47,6 +47,9 @@ images and the table file should be stored. It also accepts parameters
 specifying the size of the scaled down images. Just call it - it
 prints out usage information.
 
+Note that you have to do the preparation step again for version 0.6,
+since the format is not compatible with earlier versions.
+
 
 Creating photomosaics
 ---------------------
@@ -94,6 +97,12 @@ percentage of 30 makes the photomosaic appear noticably better but is
 yet small enough to go unnoticed without close inspection in most
 circumstances.
 
+As of version 0.6, Metapixel implements two different matching
+algorithms. The new metric, which is a trivial distance function,
+seems to give better results while not being slower than the old
+wavelet metric. The metric can be chosen using the --metric
+option. The default is the new subpixel metric.
+
 Note that Metapixel uses ridiculous amounts of main memory. To create
 photomosaics of size 2048x2048 your machine should at least have
 64MBytes RAM.
@@ -102,9 +111,13 @@ photomosaics of size 2048x2048 your machine should at least have
 The matching algorithm
 ----------------------
 
-The algorithm that does the image matching is described in the paper
-'Fast Multiresolution Image Querying' by Charles E. Jacobs, Adam
-Finkelstein and David H. Salesin.
+The algorithm that does the image matching via wavelets is described
+in the paper 'Fast Multiresolution Image Querying' by Charles
+E. Jacobs, Adam Finkelstein and David H. Salesin.
+
+The new subpixel metric is very trivial. I suggest you consult the
+source if you are interested in it. The matching function is
+subpixel_compare().
 
 
 Licence and Availability

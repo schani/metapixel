@@ -20,6 +20,7 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
+#include <sys/time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -61,6 +62,8 @@ index_t index_to_weight_ordered_index[NUM_INDEXES];
 int small_width = DEFAULT_WIDTH, small_height = DEFAULT_HEIGHT;
 
 int forbid_reconstruction_radius = 0;
+
+int benchmark_rendering = 0;
 
 static string_list_t*
 string_list_prepend_copy (string_list_t *lst, const char *str)
@@ -817,26 +820,31 @@ paste_metapixel (metapixel_t *pixel, unsigned char *data, int width, int height,
     unsigned char *pixel_data;
 
     if (pixel->data != 0)
+    {
 	pixel_data = pixel->data;
+	pixel_width = pixel->width;
+	pixel_height = pixel->height;
+    }
     else
     {
 	pixel_data = read_image(pixel->filename, &pixel_width, &pixel_height);
 
 	if (pixel_data == 0)
 	{
-	    fprintf(stderr, "cannot read metapixel file `%s'\n", pixel->filename);
+	    fprintf(stderr, "Error: cannot read metapixel file `%s'\n", pixel->filename);
 	    exit(1);
 	}
+    }
 
-	if (pixel_width != small_width || pixel_height != small_height)
-	{
-	    unsigned char *scaled_data = scale_image(pixel_data, pixel_width, pixel_height,
-						     0, 0, pixel_width, pixel_height,
-						     small_width, small_height);
+    if (pixel_width != small_width || pixel_height != small_height)
+    {
+	unsigned char *scaled_data = scale_image(pixel_data, pixel_width, pixel_height,
+						 0, 0, pixel_width, pixel_height,
+						 small_width, small_height);
 
+	if (pixel->data == 0)
 	    free(pixel_data);
-	    pixel_data = scaled_data;
-	}
+	pixel_data = scaled_data;
     }
 
     for (i = 0; i < small_height; ++i)
@@ -1111,10 +1119,20 @@ generate_global_classic (classic_reader_t *reader, int method)
 }
 
 static void
+print_current_time (void)
+{
+    struct timeval tv;
+
+    gettimeofday(&tv, 0);
+
+    printf("time: %lu %lu\n", (unsigned long)tv.tv_sec, (unsigned long)tv.tv_usec);
+}
+
+static void
 paste_classic (mosaic_t *mosaic, char *input_name, char *output_name, int cheat)
 {
     image_reader_t *reader;
-    image_writer_t *writer;
+    image_writer_t *writer = 0;
     int out_image_width, out_image_height;
     int x, y;
     unsigned char *out_image_data;
@@ -1142,23 +1160,35 @@ paste_classic (mosaic_t *mosaic, char *input_name, char *output_name, int cheat)
     out_image_width = mosaic->metawidth * small_width;
     out_image_height = mosaic->metaheight * small_height;
 
-    writer = open_image_writing(output_name, out_image_width, out_image_height, IMAGE_FORMAT_PNG);
-    if (writer == 0)
+    if (!benchmark_rendering)
     {
-	fprintf(stderr, "cannot write image `%s'\n", output_name);
-	exit(1);
+	writer = open_image_writing(output_name, out_image_width, out_image_height, IMAGE_FORMAT_PNG);
+	if (writer == 0)
+	{
+	    fprintf(stderr, "cannot write image `%s'\n", output_name);
+	    exit(1);
+	}
     }
 
     out_image_data = (unsigned char*)malloc(out_image_width * small_height * NUM_CHANNELS);
+
+    if (benchmark_rendering)
+	print_current_time();
 
     for (y = 0; y < metaheight; ++y)
     {
 	for (x = 0; x < metawidth; ++x)
 	{
+	    if (benchmark_rendering)
+		assert(mosaic->matches[y * metawidth + x].pixel->data != 0);
+
 	    paste_metapixel(mosaic->matches[y * metawidth + x].pixel, out_image_data, out_image_width,
 			    small_height, x * small_width, 0);
-	    printf("X");
-	    fflush(stdout);
+	    if (!benchmark_rendering)
+	    {
+		printf("X");
+		fflush(stdout);
+	    }
 	}
 
 	if (cheat > 0)
@@ -1186,12 +1216,17 @@ paste_classic (mosaic_t *mosaic, char *input_name, char *output_name, int cheat)
 	    free(in_image_data);
 	}
 
-	write_lines(writer, out_image_data, small_height);
+	if (!benchmark_rendering)
+	    write_lines(writer, out_image_data, small_height);
     }
+
+    if (benchmark_rendering)
+	print_current_time();
 
     free(out_image_data);
 
-    free_image_writer(writer);
+    if (!benchmark_rendering)
+	free_image_writer(writer);
     if (cheat > 0)
 	free_image_reader(reader);
 
@@ -1590,6 +1625,25 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
 	free_classic_reader(reader);
     }
 
+    assert(mosaic != 0);
+
+    if (benchmark_rendering)
+    {
+	int i;
+
+	for (i = 0; i < mosaic->metawidth * mosaic->metaheight; ++i)
+	{
+	    metapixel_t *pixel = mosaic->matches[i].pixel;
+
+	    if (pixel->data == 0)
+	    {
+		pixel->data = read_image(pixel->filename, &pixel->width, &pixel->height);
+
+		assert(pixel->data != 0);
+	    }
+	}
+    }
+
     if (out_protocol_name != 0)
     {
 	FILE *protocol_out = fopen(out_protocol_name, "w");
@@ -1699,6 +1753,7 @@ main (int argc, char *argv[])
 		{ "batch", no_argument, 0, 260 },
 		{ "out", required_argument, 0, 261 },
 		{ "in", required_argument, 0, 262 },
+		{ "benchmark-rendering", no_argument, 0, 263 },
 		{ "tables", required_argument, 0, 't' },
 		{ "width", required_argument, 0, 'w' },
 		{ "height", required_argument, 0, 'h' },
@@ -1755,6 +1810,10 @@ main (int argc, char *argv[])
 		}
 		in_filename = strdup(optarg);
 		assert(in_filename != 0);
+		break;
+
+	    case 263 :
+		benchmark_rendering = 1;
 		break;
 
 	    case 'm' :
@@ -2018,6 +2077,8 @@ main (int argc, char *argv[])
 		    generate_metapixel_coefficients(pixel, scaled_data, highest_coeffs);
 
 		    pixel->data = scaled_data;
+		    pixel->width = small_width;
+		    pixel->height = small_height;
 		    pixel->anti_x = x;
 		    pixel->anti_y = y;
 		    pixel->collage_positions = 0;

@@ -108,28 +108,39 @@ sub process_dir {
 
     print "Processing dir: $pdir\n" if $DEBUG;
 
-    foreach my $filename (glob("\"$pdir/*\"")) {
-	print "Testing file: $filename\n" if $DEBUG;
+    if (opendir DIR, $pdir)
+    {
+	my @files = grep !/^\.\.?$/, readdir DIR;
 
-	if (-f $filename && -r $filename) {
-	    my ($name, $path, $suffix) = fileparse($filename);
+	closedir DIR;
 
-	    print "Processing: $filename\n" if $DEBUG;
+	foreach my $filename (@files) {
+	    my $fullname = "$pdir/$filename";
 
-	    my $thumbname = disambiguate_filename("$destdir/$name$suffix", ".png");
-	    
-	    `metapixel $opts --prepare "$filename" "$thumbname" "$destdir/tables.mxt"`;
-	    if ($? != 0) {
-		print "Error running metapixel - skipping file $filename\n"
+	    print "Testing file: $fullname\n" if $DEBUG;
+
+	    if (-f $fullname && -r $fullname) {
+		my ($name, $path, $suffix) = fileparse($fullname);
+
+		print "Processing: $fullname\n" if $DEBUG;
+
+		my $thumbname = disambiguate_filename("$destdir/$name$suffix", ".png");
+		
+		`metapixel $opts --prepare "$fullname" "$thumbname" "$destdir/tables.mxt"`;
+		if ($? != 0) {
+		    print "Error running metapixel - skipping file $fullname\n"
+		    }
+		else
+		{
+		    print "." if !$DEBUG;
+		}
 	    }
-	    else
-	    {
-		print "." if !$DEBUG;
+	    elsif (-d $fullname && -r $fullname && $do_recurse) {
+		process_dir($fullname, $do_recurse);
 	    }
 	}
-	elsif (-d $filename && -r $filename && $do_recurse) {
-	    process_dir($filename, $do_recurse);
-	}
+    } else {
+	print "Error: cannot open directory $pdir\n";
     }
 }
 

@@ -33,10 +33,9 @@
 #include "getopt.h"
 
 #include "vector.h"
+#include "zoom.h"
 #include "readimage.h"
 #include "writeimage.h"
-#include "libzoom/raw.h"
-#include "libzoom/zoom.h"
 #include "lispreader.h"
 
 #include "metapixel.h"
@@ -69,43 +68,13 @@ static unsigned char*
 scale_image (unsigned char *image, int image_width, int image_height, int x, int y, int width, int height, int new_width, int new_height)
 {
     unsigned char *new_image = (unsigned char*)malloc(new_width * new_height * NUM_CHANNELS);
-    Pic pic, new_pic;
-    Window_box window, new_window;
-    Filt *filt;
+    unsigned char *image_start = image + (x + y * image_width) * NUM_CHANNELS;
 
-    pic_create_raw(&pic, image, image_width, image_height);
-    pic_create_raw(&new_pic, new_image, new_width, new_height);
-
-    window_set(x, y, x + width - 1, y + height - 1, (Window*)&window);
-    window_box_set_size(&window);
-
-    window_set(0, 0, new_width - 1, new_height - 1, (Window*)&new_window);
-    window_box_set_size(&new_window);
-
-    filt = filt_find("mitchell");
-    assert(filt != 0);
-
-    zoom(&pic, &window, &new_pic, &new_window, filt, filt);
-
-    return ((raw_pic_t*)new_pic.data)->data;
-
-    /*
-    int i, j;
-
-    for (j = 0; j < new_height; ++j)
-	for (i = 0; i < new_width; ++i)
-	{
-	    int old_x = i * width / new_width;
-	    int old_y = j * height / new_height;
-	    int channel;
-
-	    for (channel = 0; channel < NUM_CHANNELS; ++channel)
-		new_image[(j * new_width + i) * NUM_CHANNELS + channel] =
-		    image[((y + old_y) * image_width + (x + old_x)) * NUM_CHANNELS + channel];
-	}
+    zoom_image(new_image, image_start, get_filter(FILTER_MITCHELL), NUM_CHANNELS,
+	       new_width, new_height, new_width * NUM_CHANNELS,
+	       width, height, image_width * NUM_CHANNELS);
 
     return new_image;
-    */
 }
 
 void
@@ -1094,7 +1063,7 @@ generate_global_classic (classic_reader_t *reader, int method)
 	    if (matches[i].pixel->flag)
 		continue;
 
-	    if (num_locations_filled >= metaheight * metaheight)
+	    if (num_locations_filled >= metawidth * metaheight)
 		break;
 
 	    if (mosaic->matches[index].pixel == 0)
@@ -1313,8 +1282,19 @@ generate_collage (char *input_name, char *output_name, float scale, int method, 
 static void
 read_tables (FILE *in)
 {
+    lisp_object_t *pattern;
     lisp_object_t *obj;
     lisp_stream_t stream;
+    int num_subs;
+
+    pattern = lisp_read_from_string("(small-image #?(string) (size #?(integer) #?(integer))"
+				    "  (wavelet (means #?(real) #?(real) #?(real)) (coeffs . #?(list)))"
+				    "  (subpixel (y . #?(list)) (i . #?(list)) (q . #?(list))))");
+    assert(pattern != 0
+	   && lisp_type(pattern) != LISP_TYPE_EOF
+	   && lisp_type(pattern) != LISP_TYPE_PARSE_ERROR);
+    assert(lisp_compile_pattern(&pattern, &num_subs));
+    assert(num_subs == 10);
 
     lisp_stream_init_file(&stream, in);
 
@@ -1328,10 +1308,7 @@ read_tables (FILE *in)
         {
             lisp_object_t *vars[10];
 
-            if (lisp_match_string("(small-image #?(string) (size #?(integer) #?(integer))"
-				  "  (wavelet (means #?(real) #?(real) #?(real)) (coeffs . #?(list)))"
-				  "  (subpixel (y . #?(list)) (i . #?(list)) (q . #?(list))))",
-				  obj, vars))
+            if (lisp_match_pattern(pattern, obj, vars, num_subs))
 	    {
 		metapixel_t *pixel = (metapixel_t*)malloc(sizeof(metapixel_t));
 		coefficient_with_index_t coeffs[NUM_COEFFS];
@@ -1385,7 +1362,7 @@ read_tables (FILE *in)
 	    }
         }
         else if (type == LISP_TYPE_PARSE_ERROR)
-            fprintf(stderr, "parse error\n");
+            fprintf(stderr, "parse error in tables file\n");
         lisp_free(obj);
 
         if (type == LISP_TYPE_EOF)
@@ -1506,6 +1483,89 @@ read_protocol (FILE *in)
 }
 
 void
+free_mosaic (mosaic_t *mosaic)
+{
+    free(mosaic->matches);
+    free(mosaic);
+}
+
+int
+make_classic_mosaic (char *in_image_name, char *out_image_name,
+		     int method, float scale, int search, int min_distance, int cheat,
+		     char *in_protocol_name, char *out_protocol_name)
+{
+    mosaic_t *mosaic;
+    int x, y;
+
+    if (in_protocol_name != 0)
+    {
+	FILE *protocol_in = fopen(in_protocol_name, "r");
+
+	if (protocol_in == 0)
+	{
+	    fprintf(stderr, "cannot open protocol file for reading `%s': %s\n", in_protocol_name, strerror(errno));
+	    return 0;
+	}
+
+	mosaic = read_protocol(protocol_in);
+
+	fclose(protocol_in);
+    }
+    else
+    {
+	classic_reader_t *reader = init_classic_reader(in_image_name, scale);
+
+	if (search == SEARCH_LOCAL)
+	    mosaic = generate_local_classic(reader, min_distance, method);
+	else if (search == SEARCH_GLOBAL)
+	    mosaic = generate_global_classic(reader, method);
+	else
+	    assert(0);
+
+	free_classic_reader(reader);
+    }
+
+    if (out_protocol_name != 0)
+    {
+	FILE *protocol_out = fopen(out_protocol_name, "w");
+
+	if (protocol_out == 0)
+	{
+	    fprintf(stderr, "cannot open protocol file `%s' for writing: %s\n", out_protocol_name, strerror(errno));
+	    /* FIXME: free stuff */
+	    return 0;
+	}
+	else
+	{
+	    fprintf(protocol_out, "(mosaic (size %d %d)\n(metapixels\n", mosaic->metawidth, mosaic->metaheight);
+	    for (y = 0; y < mosaic->metaheight; ++y)
+	    {
+		for (x = 0; x < mosaic->metawidth; ++x)
+		{
+		    match_t *match = &mosaic->matches[y * mosaic->metawidth + x];
+		    lisp_object_t *obj = lisp_make_string(match->pixel->filename);
+
+		    fprintf(protocol_out, "(%d %d 1 1 ", x, y);
+		    lisp_dump(obj, protocol_out);
+		    fprintf(protocol_out, ") ; %f\n", match->score);
+
+		    lisp_free(obj);
+		}
+	    }
+	    fprintf(protocol_out, "))\n");
+	}
+
+	fclose(protocol_out);
+    }
+
+    paste_classic(mosaic, in_image_name, out_image_name, cheat);
+
+    free_mosaic(mosaic);
+
+    return 1;
+}
+
+void
 usage (void)
 {
     printf("Usage:\n"
@@ -1517,6 +1577,8 @@ usage (void)
 	   "      calculate and output tables for <file>\n"
 	   "  metapixel [option ...] --metapixel <in> <out>\n"
 	   "      transform <in> to <out>\n"
+	   "  metapixel [option ...] --batch <batchfile>\n"
+	   "      perform all the tasks in <batchfile>\n"
 	   "Options:\n"
 	   "  -w, --width=WIDTH            set width for small images\n"
 	   "  -h, --height=HEIGHT          set height for small images\n"
@@ -1543,6 +1605,7 @@ usage (void)
 #define MODE_NONE       0
 #define MODE_PREPARE    1
 #define MODE_METAPIXEL  2
+#define MODE_BATCH      3
 
 int
 main (int argc, char *argv[])
@@ -1566,8 +1629,9 @@ main (int argc, char *argv[])
 		{ "help", no_argument, 0, 257 },
 		{ "prepare", no_argument, 0, 258 },
 		{ "metapixel", no_argument, 0, 259 },
-		{ "out", required_argument, 0, 260 },
-		{ "in", required_argument, 0, 261 },
+		{ "batch", no_argument, 0, 260 },
+		{ "out", required_argument, 0, 261 },
+		{ "in", required_argument, 0, 262 },
 		{ "width", required_argument, 0, 'w' },
 		{ "height", required_argument, 0, 'h' },
 		{ "y-weight", required_argument, 0, 'y' },
@@ -1602,6 +1666,10 @@ main (int argc, char *argv[])
 		break;
 
 	    case 260 :
+		mode = MODE_BATCH;
+		break;
+
+	    case 261 :
 		if (out_filename != 0)
 		{
 		    fprintf(stderr, "the --out option can be used at most once\n");
@@ -1611,7 +1679,7 @@ main (int argc, char *argv[])
 		assert(out_filename != 0);
 		break;
 
-	    case 261 :
+	    case 262 :
 		if (in_filename != 0)
 		{
 		    fprintf(stderr, "the --in option can be used at most once\n");
@@ -1823,9 +1891,11 @@ main (int argc, char *argv[])
 
 	fclose(tables_file);
     }
-    else if (mode == MODE_METAPIXEL)
+    else if (mode == MODE_METAPIXEL
+	     || mode == MODE_BATCH)
     {
-	if (argc - optind != 2)
+	if ((mode == MODE_METAPIXEL && argc - optind != 2)
+	    || (mode == MODE_BATCH && argc - optind != 1))
 	{
 	    usage();
 	    return 1;
@@ -1879,72 +1949,138 @@ main (int argc, char *argv[])
 	    forbid_reconstruction_radius = 0;
 	}
 
-	if (!collage)
+	if (mode == MODE_METAPIXEL)
 	{
-	    mosaic_t *mosaic;
-	    int x, y;
-
-	    if (in_filename != 0)
-	    {
-		FILE *protocol_in = fopen(in_filename, "r");
-
-		if (protocol_in == 0)
-		{
-		    fprintf(stderr, "cannot open file `%s': %s\n", in_filename, strerror(errno));
-		    return 1;
-		}
-
-		mosaic = read_protocol(protocol_in);
-
-		fclose(protocol_in);
-	    }
+	    if (collage)
+		generate_collage(argv[optind], argv[optind + 1], scale, method, cheat);
 	    else
+		make_classic_mosaic(argv[optind], argv[optind + 1],
+				    method, scale, search, min_distance, cheat,
+				    in_filename, out_filename);
+	}
+	else if (mode == MODE_BATCH)
+	{
+	    FILE *in = fopen(argv[optind], "r");
+	    lisp_stream_t stream;
+
+	    if (in == 0)
 	    {
-		classic_reader_t *reader = init_classic_reader(argv[optind], scale);
-
-		if (search == SEARCH_LOCAL)
-		    mosaic = generate_local_classic(reader, min_distance, method);
-		else if (search == SEARCH_GLOBAL)
-		    mosaic = generate_global_classic(reader, method);
-		else
-		    assert(0);
-
-		free_classic_reader(reader);
+		fprintf(stderr, "cannot open batch file `%s': %s\n", argv[optind], strerror(errno));
+		return 1;
 	    }
 
-	    if (out_filename != 0)
-	    {
-		FILE *protocol_out = fopen(out_filename, "w");
+	    lisp_stream_init_file(&stream, in);
 
-		if (protocol_out == 0)
-		    fprintf(stderr, "cannot open file `%s': %s\n", out_filename, strerror(errno));
-		else
+	    for (;;)
+	    {
+		lisp_object_t *obj = lisp_read(&stream);
+		int type = lisp_type(obj);
+
+		if (type != LISP_TYPE_EOF && type != LISP_TYPE_PARSE_ERROR)
 		{
-		    fprintf(protocol_out, "(mosaic (size %d %d)\n(metapixels\n", mosaic->metawidth, mosaic->metaheight);
-		    for (y = 0; y < mosaic->metaheight; ++y)
+		    lisp_object_t *vars[4];
+
+		    if (lisp_match_string("(classic (#?(or image protocol) #?(string)) #?(string) . #?(list))",
+					  obj, vars))
 		    {
-			for (x = 0; x < mosaic->metawidth; ++x)
+			float this_scale = scale;
+			int this_search = search;
+			int this_min_distance = min_distance;
+			int this_cheat = cheat;
+			int this_method = method;
+			char *this_prot_in_filename = in_filename;
+			char *this_prot_out_filename = out_filename;
+			char *this_image_out_filename = lisp_string(vars[2]);
+			char *this_image_in_filename = 0;
+			lisp_object_t *lst;
+			lisp_object_t *var;
+
+			if (strcmp(lisp_symbol(vars[0]), "image") == 0)
+			    this_image_in_filename = lisp_string(vars[1]);
+			else
+			    this_prot_in_filename = lisp_string(vars[1]);
+
+			for (lst = vars[3]; lisp_type(lst) != LISP_TYPE_NIL; lst = lisp_cdr(lst))
 			{
-			    match_t *match = &mosaic->matches[y * mosaic->metawidth + x];
-			    lisp_object_t *obj = lisp_make_string(match->pixel->filename);
+			    if (lisp_match_string("(scale #?(real))",
+						  lisp_car(lst), &var))
+			    {
+				float val = lisp_real(var);
 
-			    fprintf(protocol_out, "(%d %d 1 1 ", x, y);
-			    lisp_dump(obj, protocol_out);
-			    fprintf(protocol_out, ") ; %f\n", match->score);
+				if (val <= 0.0)
+				    fprintf(stderr, "scale must be larger than 0\n");
+				else
+				    this_scale = val;
+			    }
+			    else if (lisp_match_string("(search #?(or local global))",
+						       lisp_car(lst), &var))
+			    {
+				if (strcmp(lisp_symbol(var), "local") == 0)
+				    this_search = SEARCH_LOCAL;
+				else
+				    this_search = SEARCH_GLOBAL;
+			    }
+			    else if (lisp_match_string("(min-distance #?(integer))",
+						       lisp_car(lst), &var))
+			    {
+				int val = lisp_integer(var);
 
-			    lisp_free(obj);
+				if (val < 0)
+				    fprintf(stderr, "min-distance cannot be negative\n");
+				else
+				    this_min_distance = val;
+			    }
+			    else if (lisp_match_string("(cheat #?(integer))",
+						       lisp_car(lst), &var))
+			    {
+				int val = lisp_integer(var);
+
+				if (val < 0 || val > 100)
+				    fprintf(stderr, "cheat must be between 0 and 100, inclusively\n");
+				else
+				    this_cheat = val;
+				    
+			    }
+			    else if (lisp_match_string("(method #?(or subpixel wavelet))",
+						       lisp_car(lst), &var))
+			    {
+				if (strcmp(lisp_symbol(var), "subpixel") == 0)
+				    this_method = METHOD_SUBPIXEL;
+				else
+				    this_method = METHOD_WAVELET;
+			    }
+			    else if (lisp_match_string("(protocol #?(string))",
+						       lisp_car(lst), &var))
+				this_prot_out_filename = lisp_string(var);
+			    else
+			    {
+				fprintf(stderr, "unknown expression ");
+				lisp_dump(lisp_car(lst), stderr);
+				fprintf(stderr, "\n");
+			    }
 			}
+
+			make_classic_mosaic(this_image_in_filename, this_image_out_filename,
+					    this_method, this_scale, this_search, this_min_distance, this_cheat,
+					    this_prot_in_filename, this_prot_out_filename);
 		    }
-		    fprintf(protocol_out, "))\n");
+		    else
+		    {
+			fprintf(stderr, "unknown expression ");
+			lisp_dump(obj, stderr);
+			fprintf(stderr, "\n");
+		    }
 		}
+		else if (type == LISP_TYPE_PARSE_ERROR)
+		    fprintf(stderr, "parse error in batch file\n");
+		lisp_free(obj);
 
-		fclose(protocol_out);
+		if (type == LISP_TYPE_EOF)
+		    break;
 	    }
-
-	    paste_classic(mosaic, argv[optind], argv[optind + 1], cheat);
 	}
 	else
-	    generate_collage(argv[optind], argv[optind + 1], scale, method, cheat);
+	    assert(0);
     }
     else
     {

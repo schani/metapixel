@@ -1,4 +1,4 @@
-Metapixel 0.8
+Metapixel 0.9
 =============
 
 Metapixel is a program for generating photomosaics.  It can generate
@@ -212,8 +212,8 @@ mosaics.  To create a collage photomosaics of size 2048x2048 your
 machine should at least have 64MBytes RAM.
 
 
-The matching algorithm
-----------------------
+The matching algorithms
+-----------------------
 
 The algorithm that does the image matching via wavelets is described
 in the paper 'Fast Multiresolution Image Querying' by Charles
@@ -224,14 +224,31 @@ source if you are interested in it.  The matching function is
 subpixel_compare().
 
 
+Sorting Images by Size or Aspect Ratio
+--------------------------------------
+
+Metapixel comes with a tool called `sizesort' which sorts images by
+size or aspect ratio by moving them to directories containing only
+files with similar size or aspect ratio.
+
+An example: Let's say you have thousands of images in /my/images, and
+you want them sorted by aspect ratio and placed in /my/sorted/images.
+You can do this with this command:
+
+  sizesort --ratio=2 /my/images /my/sorted/images
+
+The option `2' to ratio tells sizesort to put all those images
+together whose aspect ratios are the same with an accuracy of two
+places behind the comma.  You might now have (among others) a
+directory called /my/sorted/images/ratio_0.79 which contains all
+images whose ratio between width and height is about 0.79.
+
+
 Licence and Availability
 ------------------------
 
 Metapixel is free software distributed under the terms of the GPL.
-Due to the inclusion of Paul Heckbert's image scaling code, the
-additional restriction is that it may only be used for peaceful and
-and nonprofit purposes.  I have already emailed him regarding the
-removal of this restriction.
+The file `COPYING' contains the text of the license.
 
 The source of Metapixel is available at the Metapixel homepage at
 

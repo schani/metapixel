@@ -1,3 +1,12 @@
+Changes since version 0.8:
+
+  * fixed a bug that prevented global search from working on
+    non-square images
+
+  * got rid of libzoom, so now Metapixel is standard GPL
+
+  * added the sizesort utility for sorting images by size
+
 Changes since version 0.7:
 
   * global search mode

@@ -33,20 +33,26 @@ static int
 error_kind (int error_code)
 {
     static struct { int error_code; int kind; } kinds[] =
-	{ { ERROR_WRONG_NUM_SUBPIXELS, ERROR_INFO_FILENAME },
-	  { ERROR_TABLES_PARSE_ERROR, ERROR_INFO_FILENAME },
-	  { ERROR_TABLES_SYNTAX_ERROR, ERROR_INFO_FILENAME },
-	  { ERROR_TABLES_FILE_EXISTS, ERROR_INFO_FILENAME },
-	  { ERROR_TABLES_FILE_CANNOT_CREATE, ERROR_INFO_FILENAME },
-	  { ERROR_TABLES_FILE_CANNOT_OPEN, ERROR_INFO_FILENAME },
-	  { ERROR_CANNOT_FIND_METAPIXEL_IMAGE_NAME, ERROR_INFO_FILENAME },
-	  { ERROR_CANNOT_READ_METAPIXEL_IMAGE, ERROR_INFO_FILENAME },
-	  { ERROR_CANNOT_READ_INPUT_IMAGE, ERROR_INFO_FILENAME },
-	  { ERROR_CANNOT_WRITE_OUTPUT_IMAGE, ERROR_INFO_FILENAME },
+	{ { ERROR_WRONG_NUM_SUBPIXELS, ERROR_INFO_STRING },
+	  { ERROR_TABLES_PARSE_ERROR, ERROR_INFO_STRING },
+	  { ERROR_TABLES_SYNTAX_ERROR, ERROR_INFO_STRING },
+	  { ERROR_TABLES_FILE_EXISTS, ERROR_INFO_STRING },
+	  { ERROR_TABLES_FILE_CANNOT_CREATE, ERROR_INFO_STRING },
+	  { ERROR_TABLES_FILE_CANNOT_OPEN, ERROR_INFO_STRING },
+	  { ERROR_CANNOT_FIND_METAPIXEL_IMAGE_NAME, ERROR_INFO_STRING },
+	  { ERROR_CANNOT_READ_METAPIXEL_IMAGE, ERROR_INFO_STRING },
+	  { ERROR_CANNOT_READ_INPUT_IMAGE, ERROR_INFO_STRING },
+	  { ERROR_CANNOT_WRITE_OUTPUT_IMAGE, ERROR_INFO_STRING },
 	  { ERROR_CANNOT_FIND_LOCAL_MATCH, ERROR_INFO_NULL },
 	  { ERROR_NOT_ENOUGH_GLOBAL_METAPIXELS, ERROR_INFO_NULL },
 	  { ERROR_CANNOT_FIND_COLLAGE_MATCH, ERROR_INFO_NULL },
 	  { ERROR_IMAGE_TOO_SMALL, ERROR_INFO_NULL },
+	  { ERROR_METAPIXEL_NOT_IN_SAVED_LIBRARY, ERROR_INFO_STRING },
+	  { ERROR_PROTOCOL_FILE_CANNOT_OPEN, ERROR_INFO_STRING },
+	  { ERROR_PROTOCOL_PARSE_ERROR, ERROR_INFO_STRING },
+	  { ERROR_PROTOCOL_SYNTAX_ERROR, ERROR_INFO_STRING },
+	  { ERROR_PROTOCOL_INCONSISTENCY, ERROR_INFO_STRING },
+	  { ERROR_METAPIXEL_NOT_FOUND, ERROR_INFO_STRING },
 	  { -1, -1 } };
 
     int i;
@@ -78,6 +84,12 @@ error_format_error (int error_code, error_info_t info)
 	  { ERROR_NOT_ENOUGH_GLOBAL_METAPIXELS, "Not enough metapixels to create a global mosaic of the specified size" },
 	  { ERROR_CANNOT_FIND_COLLAGE_MATCH, "Cannot find a matching metapixel - try adding metapixels or using a shorter minimum distance" },
 	  { ERROR_IMAGE_TOO_SMALL, "Source image or scaling factor too small" },
+	  { ERROR_METAPIXEL_NOT_IN_SAVED_LIBRARY, "Metapixel `%s' is not in a saved library - cannot write mosaic" },
+	  { ERROR_PROTOCOL_FILE_CANNOT_OPEN, "Cannot open protocol file `%s'" },
+	  { ERROR_PROTOCOL_PARSE_ERROR, "Parse error in protocol file `%s'" },
+	  { ERROR_PROTOCOL_SYNTAX_ERROR, "Syntax error in protocol file `%s'" },
+	  { ERROR_PROTOCOL_INCONSISTENCY, "Protocol `%s' is inconsistent" },
+	  { ERROR_METAPIXEL_NOT_FOUND, "Metapixel with filename `%s' not found" },
 	  { -1, 0 } };
 
     int kind = error_kind(error_code);
@@ -96,13 +108,13 @@ error_format_error (int error_code, error_info_t info)
 			return copy;
 		    }
 
-		case ERROR_INFO_FILENAME :
+		case ERROR_INFO_STRING :
 		    {
-			char *str = (char*)malloc(strlen(formats[i].format) + strlen(info.filename) + 1);
+			char *str = (char*)malloc(strlen(formats[i].format) + strlen(info.string) + 1);
 
 			assert(str != 0);
 
-			sprintf(str, formats[i].format, info.filename);
+			sprintf(str, formats[i].format, info.string);
 
 			return str;
 		    }
@@ -153,12 +165,12 @@ error_make_null_info (void)
 }
 
 error_info_t
-error_make_filename_info (const char *filename)
+error_make_string_info (const char *string)
 {
     error_info_t info;
 
-    info.filename = strdup(filename);
-    assert(info.filename != 0);
+    info.string = strdup(string);
+    assert(info.string != 0);
 
     return info;
 }
@@ -171,8 +183,8 @@ error_free_info (int error_code, error_info_t info)
 	case ERROR_INFO_NULL :
 	    break;
 
-	case ERROR_INFO_FILENAME :
-	    free(info.filename);
+	case ERROR_INFO_STRING :
+	    free(info.string);
 	    break;
 
 	default:

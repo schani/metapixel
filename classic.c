@@ -25,6 +25,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "lispreader.h"
+
 #include "api.h"
 
 static classic_reader_t*
@@ -55,7 +57,7 @@ classic_reader_new_from_file (const char *image_filename, tiling_t *tiling)
     image_reader = open_image_reading(image_filename);
     if (image_reader == 0)
     {
-	error_report(ERROR_CANNOT_READ_INPUT_IMAGE, error_make_filename_info(image_filename));
+	error_report(ERROR_CANNOT_READ_INPUT_IMAGE, error_make_string_info(image_filename));
 	return 0;
     }
 
@@ -158,7 +160,7 @@ classic_writer_new_for_file (const char *filename, unsigned int width, unsigned 
     image_writer = open_image_writing(filename, width, height, width * 3, IMAGE_FORMAT_PNG);
     if (image_writer == 0)
     {
-	error_report(ERROR_CANNOT_WRITE_OUTPUT_IMAGE, error_make_filename_info(filename));
+	error_report(ERROR_CANNOT_WRITE_OUTPUT_IMAGE, error_make_string_info(filename));
 	return 0;
     }
 
@@ -626,4 +628,221 @@ classic_paste_to_bitmap (classic_mosaic_t *mosaic, unsigned int width, unsigned 
 	classic_reader_free(reader);
 
     return out_bitmap;
+}
+
+static library_t*
+find_library (int num_libraries, library_t **libraries,
+	      const char *library_path,
+	      int *num_new_libraries, library_t ***new_libraries)
+{
+    int i;
+    library_t *library;
+
+    /* FIXME: we should do better path comparison */
+
+    for (i = 0; i < num_libraries; ++i)
+	if (strcmp(libraries[i]->path, library_path) == 0)
+	    return libraries[i];
+
+    for (i = 0; i < *num_new_libraries; ++i)
+	if (strcmp((*new_libraries)[i]->path, library_path) == 0)
+	    return (*new_libraries)[i];
+
+    library = library_open(library_path);
+
+    if (library == 0)
+	return 0;
+
+    if ((*num_new_libraries)++ == 0)
+	*new_libraries = (library_t**)malloc(sizeof(library_t*));
+    else
+	*new_libraries = (library_t**)realloc(*new_libraries, *num_new_libraries * sizeof(library_t*));
+    assert(*new_libraries != 0);
+
+    (*new_libraries)[*num_new_libraries - 1] = library;
+
+    return library;
+}
+
+static metapixel_t*
+find_metapixel (int num_libraries, library_t **libraries,
+		const char *library_path, const char *filename,
+		int *num_new_libraries, library_t ***new_libraries)
+{
+    library_t *library = find_library(num_libraries, libraries,
+				      library_path,
+				      num_new_libraries, new_libraries);
+    metapixel_t *pixel;
+
+    if (library == 0)
+	return 0;
+
+    for (pixel = library->metapixels; pixel != 0; pixel = pixel->next)
+	if (strcmp(pixel->filename, filename) == 0)
+	    return pixel;
+
+    error_report(ERROR_METAPIXEL_NOT_FOUND, error_make_string_info(filename));
+
+    return 0;
+}
+
+classic_mosaic_t*
+classic_read (int num_libraries, library_t **libraries, const char *filename,
+	      int *num_new_libraries, library_t ***new_libraries)
+{
+    lisp_object_t *obj;
+    lisp_stream_t stream;
+    classic_mosaic_t *mosaic = (classic_mosaic_t*)malloc(sizeof(classic_mosaic_t));
+    int type;
+
+    *num_new_libraries = 0;
+
+    if (lisp_stream_init_path(&stream, filename) == 0)
+    {
+	error_report(ERROR_PROTOCOL_FILE_CANNOT_OPEN, error_make_string_info(filename));
+	return 0;
+    }
+
+    obj = lisp_read(&stream);
+    type = lisp_type(obj);
+    if (type != LISP_TYPE_EOF && type != LISP_TYPE_PARSE_ERROR)
+    {
+	lisp_object_t *vars[3];
+
+	if (lisp_match_string("(mosaic (size #?(integer) #?(integer)) (metapixels . #?(list)))",
+			      obj, vars))
+	{
+	    int i;
+	    int num_pixels;
+	    lisp_object_t *lst;
+
+	    tiling_init_rectangular(&mosaic->tiling, lisp_integer(vars[0]), lisp_integer(vars[1]));
+	    num_pixels = mosaic->tiling.metawidth * mosaic->tiling.metaheight;
+	    mosaic->matches = (metapixel_match_t*)malloc(sizeof(metapixel_match_t) * num_pixels);
+
+	    for (i = 0; i < num_pixels; ++i)
+		mosaic->matches[i].pixel = 0;
+
+	    if (lisp_list_length(vars[2]) != num_pixels)
+	    {
+		fprintf(stderr, "mosaic should have %d metapixels, not %d\n", num_pixels, lisp_list_length(vars[2]));
+		exit(1);
+	    }
+
+	    lst = vars[2];
+	    for (i = 0; i < num_pixels; ++i)
+	    {
+		lisp_object_t *vars[6];
+
+		if (lisp_match_string("(#?(integer) #?(integer) #?(integer) #?(integer) #?(string) #?(string))",
+				      lisp_car(lst), vars))
+		{
+		    int x = lisp_integer(vars[0]);
+		    int y = lisp_integer(vars[1]);
+		    int width = lisp_integer(vars[2]);
+		    int height = lisp_integer(vars[3]);
+		    metapixel_t *pixel;
+
+		    if (width != 1 || height != 1)
+		    {
+			/* FIXME: free stuff */
+
+			error_report(ERROR_PROTOCOL_INCONSISTENCY, error_make_string_info(filename));
+			return 0;
+		    }
+
+		    if (mosaic->matches[y * mosaic->tiling.metawidth + x].pixel != 0)
+		    {
+			/* FIXME: free stuff */
+
+			error_report(ERROR_PROTOCOL_INCONSISTENCY, error_make_string_info(filename));
+			return 0;
+		    }
+
+		    pixel = find_metapixel(num_libraries, libraries,
+					   lisp_string(vars[4]), lisp_string(vars[5]),
+					   num_new_libraries, new_libraries);
+
+		    if (pixel == 0)
+		    {
+			/* FIXME: free stuff */
+			return 0;
+		    }
+
+		    mosaic->matches[y * mosaic->tiling.metawidth + x].pixel = pixel;
+		}
+		else
+		{
+		    /* FIXME: free stuff */
+
+		    error_report(ERROR_PROTOCOL_SYNTAX_ERROR, error_make_string_info(filename));
+		    return 0;
+		}
+
+		lst = lisp_cdr(lst);
+	    }
+	}
+	else
+	{
+	    /* FIXME: free stuff */
+
+	    error_report(ERROR_PROTOCOL_SYNTAX_ERROR, error_make_string_info(filename));
+	    return 0;
+	}
+    }
+    else
+    {
+	/* FIXME: free stuff */
+
+	error_report(ERROR_PROTOCOL_PARSE_ERROR, error_make_string_info(filename));
+
+	return 0;
+    }
+    lisp_free(obj);
+
+    lisp_stream_free_path(&stream);
+
+    return mosaic;
+}
+
+int
+classic_write (classic_mosaic_t *mosaic, FILE *out)
+{
+    int i, x, y;
+
+    assert(mosaic->tiling.kind == TILING_RECTANGULAR);
+
+    for (i = 0; i < mosaic->tiling.metawidth * mosaic->tiling.metaheight; ++i)
+	if (mosaic->matches[i].pixel->library == 0
+	    || mosaic->matches[i].pixel->library->path == 0)
+	{
+	    error_report(ERROR_METAPIXEL_NOT_IN_SAVED_LIBRARY,
+			 error_make_string_info(mosaic->matches[i].pixel->name));
+	    return 0;
+	}
+
+    /* FIXME: handle write errors */
+    fprintf(out, "(mosaic (size %d %d)\n(metapixels\n",
+	    mosaic->tiling.metawidth, mosaic->tiling.metaheight);
+    for (y = 0; y < mosaic->tiling.metaheight; ++y)
+    {
+	for (x = 0; x < mosaic->tiling.metawidth; ++x)
+	{
+	    metapixel_match_t *match = &mosaic->matches[y * mosaic->tiling.metawidth + x];
+	    lisp_object_t *library_obj = lisp_make_string(match->pixel->library->path);
+	    lisp_object_t *filename_obj = lisp_make_string(match->pixel->filename);
+
+	    fprintf(out, "(%d %d 1 1 ", x, y);
+	    lisp_dump(library_obj, out);
+	    fprintf(out, " ");
+	    lisp_dump(filename_obj, out);
+	    fprintf(out, ") ; %f\n", match->score);
+
+	    lisp_free(library_obj);
+	    lisp_free(filename_obj);
+	}
+    }
+    fprintf(out, "))\n");
+
+    return 1;
 }

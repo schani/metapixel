@@ -66,8 +66,8 @@ static int forbid_reconstruction_radius;
 
 static int benchmark_rendering = 0;
 
-static char*
-strip_path (char *name)
+static const char*
+strip_path (const char *name)
 {
     char *p = strrchr(name, '/');
 
@@ -99,6 +99,23 @@ string_list_length (string_list_t *lst)
     }
 
     return l;
+}
+
+static void
+add_library (library_t *library)
+{
+    ++num_libraries;
+
+    if (num_libraries == 1)
+	libraries = (library_t**)malloc(sizeof(library_t*));
+    else
+	libraries = (library_t**)realloc(libraries, num_libraries * sizeof(library_t*));
+
+    assert(libraries != 0);
+
+    libraries[num_libraries - 1] = library;
+
+    num_metapixels += library->num_metapixels;
 }
 
 static void
@@ -149,116 +166,6 @@ generate_collage (char *input_name, char *output_name, float scale, int min_dist
     bitmap_write(out_bitmap, output_name);
 
     bitmap_free(out_bitmap);
-}
-
-static metapixel_t*
-find_metapixel (char *filename)
-{
-    FOR_EACH_METAPIXEL(pixel, pixel_index)
-	if (strcmp(pixel->filename, filename) == 0)
-	    return pixel;
-    END_FOR_EACH_METAPIXEL
-
-    return 0;
-}
-
-static classic_mosaic_t*
-read_protocol (FILE *in)
-{
-    lisp_object_t *obj;
-    lisp_stream_t stream;
-    classic_mosaic_t *mosaic = (classic_mosaic_t*)malloc(sizeof(classic_mosaic_t));
-    int type;
-
-    lisp_stream_init_file(&stream, in);
-
-    obj = lisp_read(&stream);
-    type = lisp_type(obj);
-    if (type != LISP_TYPE_EOF && type != LISP_TYPE_PARSE_ERROR)
-    {
-	lisp_object_t *vars[3];
-
-	if (lisp_match_string("(mosaic (size #?(integer) #?(integer)) (metapixels . #?(list)))",
-			      obj, vars))
-	{
-	    int i;
-	    int num_pixels;
-	    lisp_object_t *lst;
-
-	    tiling_init_rectangular(&mosaic->tiling, lisp_integer(vars[0]), lisp_integer(vars[1]));
-	    num_pixels = mosaic->tiling.metawidth * mosaic->tiling.metaheight;
-	    mosaic->matches = (metapixel_match_t*)malloc(sizeof(metapixel_match_t) * num_pixels);
-
-	    for (i = 0; i < num_pixels; ++i)
-		mosaic->matches[i].pixel = 0;
-
-	    if (lisp_list_length(vars[2]) != num_pixels)
-	    {
-		fprintf(stderr, "mosaic should have %d metapixels, not %d\n", num_pixels, lisp_list_length(vars[2]));
-		exit(1);
-	    }
-
-	    lst = vars[2];
-	    for (i = 0; i < num_pixels; ++i)
-	    {
-		lisp_object_t *vars[5];
-
-		if (lisp_match_string("(#?(integer) #?(integer) #?(integer) #?(integer) #?(string))",
-				      lisp_car(lst), vars))
-		{
-		    int x = lisp_integer(vars[0]);
-		    int y = lisp_integer(vars[1]);
-		    int width = lisp_integer(vars[2]);
-		    int height = lisp_integer(vars[3]);
-		    metapixel_t *pixel;
-
-		    if (width != 1 || height != 1)
-		    {
-			fprintf(stderr, "width and height in metapixel must both be 1\n");
-			exit(1);
-		    }
-
-		    if (mosaic->matches[y * mosaic->tiling.metawidth + x].pixel != 0)
-		    {
-			fprintf(stderr, "location (%d,%d) is assigned to twice\n", x, y);
-			exit(1);
-		    }
-
-		    pixel = find_metapixel(lisp_string(vars[4]));
-
-		    if (pixel == 0)
-		    {
-			fprintf(stderr, "could not find metapixel `%s'\n", lisp_string(vars[4]));
-			exit(1);
-		    }
-
-		    mosaic->matches[y * mosaic->tiling.metawidth + x].pixel = pixel;
-		}
-		else
-		{
-		    fprintf(stderr, "metapixel ");
-		    lisp_dump(lisp_car(lst), stderr);
-		    fprintf(stderr, " has wrong format\n");
-		    exit(1);
-		}
-
-		lst = lisp_cdr(lst);
-	    }
-	}
-	else
-	{
-	    fprintf(stderr, "malformed expression in protocol file\n");
-	    exit(1);
-	}
-    }
-    else
-    {
-	fprintf(stderr, "error in protocol file\n");
-	exit(1);
-    }
-    lisp_free(obj);
-
-    return mosaic;
 }
 
 static int
@@ -318,22 +225,26 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
 		     char *in_protocol_name, char *out_protocol_name)
 {
     classic_mosaic_t *mosaic;
-    int x, y;
 
     if (in_protocol_name != 0)
     {
-	FILE *protocol_in = fopen(in_protocol_name, "r");
+	int num_new_libraries;
+	library_t **new_libraries;
 
-	if (protocol_in == 0)
+	mosaic = classic_read(num_libraries, libraries, in_protocol_name, &num_new_libraries, &new_libraries);
+
+	if (num_new_libraries > 0)
 	{
-	    fprintf(stderr, "Error: cannot open protocol file for reading `%s': %s.\n",
-		    in_protocol_name, strerror(errno));
-	    return 0;
+	    int i;
+
+	    for (i = 0; i < num_new_libraries; ++i)
+		add_library(new_libraries[i]);
+
+	    free(new_libraries);
 	}
 
-	mosaic = read_protocol(protocol_in);
-
-	fclose(protocol_in);
+	if (mosaic == 0)
+	    return 0;
     }
     else
     {
@@ -387,30 +298,12 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
 
 	if (protocol_out == 0)
 	{
-	    fprintf(stderr, "cannot open protocol file `%s' for writing: %s\n", out_protocol_name, strerror(errno));
+	    fprintf(stderr, "Error: Cannot open protocol file `%s' for writing: %s.\n", out_protocol_name, strerror(errno));
 	    /* FIXME: free stuff */
 	    return 0;
 	}
 	else
-	{
-	    fprintf(protocol_out, "(mosaic (size %d %d)\n(metapixels\n",
-		    mosaic->tiling.metawidth, mosaic->tiling.metaheight);
-	    for (y = 0; y < mosaic->tiling.metaheight; ++y)
-	    {
-		for (x = 0; x < mosaic->tiling.metawidth; ++x)
-		{
-		    metapixel_match_t *match = &mosaic->matches[y * mosaic->tiling.metawidth + x];
-		    lisp_object_t *obj = lisp_make_string(match->pixel->filename);
-
-		    fprintf(protocol_out, "(%d %d 1 1 ", x, y);
-		    lisp_dump(obj, protocol_out);
-		    fprintf(protocol_out, ") ; %f\n", match->score);
-
-		    lisp_free(obj);
-		}
-	    }
-	    fprintf(protocol_out, "))\n");
-	}
+	    classic_write(mosaic, protocol_out);
 
 	fclose(protocol_out);
     }
@@ -1002,22 +895,15 @@ main (int argc, char *argv[])
 	else if (library_directories != 0)
 	{
 	    string_list_t *lst;
-	    unsigned int i;
 
-	    num_libraries = string_list_length(library_directories);
-	    libraries = (library_t**)malloc(num_libraries * sizeof(library_t*));
-
-	    for (i = 0, lst = library_directories; lst != 0; ++i, lst = lst->next)
+	    for (lst = library_directories; lst != 0; lst = lst->next)
 	    {
-		libraries[i] = library_open(lst->str);
+		library_t *library = library_open(lst->str);
 
-		if (libraries[i] == 0)
-		{
-		    fprintf(stderr, "Error: cannot open library `%s'.\n", lst->str);
+		if (library == 0)
 		    return 1;
-		}
 
-		num_metapixels += libraries[i]->num_metapixels;
+		add_library(library);
 	    }
 
 	    forbid_reconstruction_radius = 0;

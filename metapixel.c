@@ -195,7 +195,7 @@ metapixel_get_bitmap (metapixel_t *metapixel)
 
 	if (bitmap == 0)
 	{
-	    error_info_t info = error_make_filename_info(filename);
+	    error_info_t info = error_make_string_info(filename);
 
 	    free(filename);
 

@@ -37,13 +37,19 @@
 #define ERROR_NOT_ENOUGH_GLOBAL_METAPIXELS       12
 #define ERROR_CANNOT_FIND_COLLAGE_MATCH          13
 #define ERROR_IMAGE_TOO_SMALL                    14
+#define ERROR_METAPIXEL_NOT_IN_SAVED_LIBRARY     15
+#define ERROR_PROTOCOL_FILE_CANNOT_OPEN          16
+#define ERROR_PROTOCOL_PARSE_ERROR               17
+#define ERROR_PROTOCOL_SYNTAX_ERROR              18
+#define ERROR_PROTOCOL_INCONSISTENCY             19
+#define ERROR_METAPIXEL_NOT_FOUND                20
 
 #define ERROR_INFO_NULL             0
-#define ERROR_INFO_FILENAME         1
+#define ERROR_INFO_STRING           1
 
 typedef union
 {
-    char *filename;
+    char *string;
 } error_info_t;
 
 typedef void (*error_handler_func_t) (int error_code, error_info_t info);
@@ -60,7 +66,7 @@ char* error_format_error (int error_code, error_info_t info);
 
 /* Only used by the API: */
 error_info_t error_make_null_info (void);
-error_info_t error_make_filename_info (const char *filename);
+error_info_t error_make_string_info (const char *string);
 
 void error_report (int code, error_info_t info);
 

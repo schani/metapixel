@@ -23,6 +23,8 @@
 #ifndef __METAPIXEL_API_H__
 #define __METAPIXEL_API_H__
 
+#include <stdio.h>
+
 #include "error.h"
 
 #include "zoom.h"
@@ -216,6 +218,19 @@ classic_mosaic_t* classic_generate (int num_libraries, library_t **libraries,
 classic_mosaic_t* classic_generate_from_bitmap (int num_libraries, library_t **libraries,
 						bitmap_t *in_image, tiling_t *tiling, matcher_t *matcher,
 						unsigned int forbid_reconstruction_radius);
+/* If some metapixel in the mosaic isn't in one of the supplied
+   libraries, classic_read tries to open the library.  If
+   *num_new_libraries is >0 after classic_read returns, then each
+   library in *new_libraries and the *new_libraries array itself
+   belongs to the caller (libraries must be freed with library_free,
+   the array with free. */
+classic_mosaic_t* classic_read (int num_libraries, library_t **libraries, const char *filename,
+				int *num_new_libraries, library_t ***new_libraries);
+
+/* Each metapixel in the mosaic must be in a (saved) library.  Returns
+   0 on failure. */
+int classic_write (classic_mosaic_t *mosaic, FILE *out);
+
 void classic_free (classic_mosaic_t *mosaic);
 
 /* cheat must be in the range from 0 (full transparency, i.e., no

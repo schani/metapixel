@@ -152,7 +152,7 @@ read_tables (const char *library_dir, library_t *library)
     tables_name = tables_filename(library_dir);
     if (lisp_stream_init_path(&stream, tables_name) == 0)
     {
-	error_info_t info = error_make_filename_info(tables_name);
+	error_info_t info = error_make_string_info(tables_name);
 
 	free(tables_name);
 
@@ -242,7 +242,7 @@ read_tables (const char *library_dir, library_t *library)
 
 		    if (lisp_list_length(lst) != NUM_SUBPIXELS)
 		    {
-			error_info_t info = error_make_filename_info(pixel->filename);
+			error_info_t info = error_make_string_info(pixel->filename);
 
 			lisp_stream_free_path(&stream);
 			free_pools(&pools);
@@ -269,7 +269,7 @@ read_tables (const char *library_dir, library_t *library)
 		lisp_stream_free_path(&stream);
 		free_pools(&pools);
 
-		error_report(ERROR_TABLES_SYNTAX_ERROR, error_make_filename_info(library_dir));
+		error_report(ERROR_TABLES_SYNTAX_ERROR, error_make_string_info(library_dir));
 
 		return 0;
 	    }
@@ -279,7 +279,7 @@ read_tables (const char *library_dir, library_t *library)
 	    lisp_stream_free_path(&stream);
 	    free_pools(&pools);
 
-	    error_report(ERROR_TABLES_PARSE_ERROR, error_make_filename_info(library_dir));
+	    error_report(ERROR_TABLES_PARSE_ERROR, error_make_string_info(library_dir));
 
 	    return 0;
 	}
@@ -304,7 +304,7 @@ library_new (const char *path)
 
     if (access(filename, F_OK) == 0)
     {
-	error_info_t info = error_make_filename_info(filename);
+	error_info_t info = error_make_string_info(filename);
 
 	free(filename);
 
@@ -317,7 +317,7 @@ library_new (const char *path)
 
     if (fd == -1)
     {
-	error_info_t info = error_make_filename_info(filename);
+	error_info_t info = error_make_string_info(filename);
 
 	free(filename);
 
@@ -347,7 +347,7 @@ library_open_without_reading (const char *path)
     }
     else
     {
-	error_info_t info = error_make_filename_info(filename);
+	error_info_t info = error_make_string_info(filename);
 
 	free(filename);
 
@@ -407,7 +407,7 @@ library_add_metapixel (library_t *library, metapixel_t *metapixel)
 
     if (access(bitmap_filename, F_OK) == 0)
     {
-	error_report(ERROR_CANNOT_FIND_METAPIXEL_IMAGE_NAME, error_make_filename_info(bitmap_filename));
+	error_report(ERROR_CANNOT_FIND_METAPIXEL_IMAGE_NAME, error_make_string_info(bitmap_filename));
 
 	return 0;
     }
@@ -435,7 +435,7 @@ library_add_metapixel (library_t *library, metapixel_t *metapixel)
     {
 	metapixel_free(metapixel);
 
-	error_report(ERROR_TABLES_FILE_CANNOT_OPEN, error_make_filename_info(tables_filename));
+	error_report(ERROR_TABLES_FILE_CANNOT_OPEN, error_make_string_info(tables_filename));
 
 	return 0;
     }

@@ -362,9 +362,9 @@ collage_read (int num_libraries, library_t **libraries, const char *filename,
 	    lst = vars[2];
 	    for (i = 0; i < mosaic->num_matches; ++i)
 	    {
-		lisp_object_t *vars[6];
+		lisp_object_t *vars[7];
 
-		if (lisp_match_string("(#?(integer) #?(integer) #?(integer) #?(integer) #?(string) #?(string))",
+		if (lisp_match_string("(#?(integer) #?(integer) #?(integer) #?(integer) #?(string) #?(string) #?(real))",
 				      lisp_car(lst), vars))
 		{
 		    mosaic->matches[i].x = lisp_integer(vars[0]);
@@ -375,6 +375,7 @@ collage_read (int num_libraries, library_t **libraries, const char *filename,
 		    mosaic->matches[i].match.pixel = metapixel_find_in_libraries(num_libraries, libraries,
 										 lisp_string(vars[4]), lisp_string(vars[5]),
 										 num_new_libraries, new_libraries);
+		    mosaic->matches[i].match.score = lisp_real(vars[6]);
 
 		    if (mosaic->matches[i].match.pixel == 0)
 		    {
@@ -443,7 +444,7 @@ collage_write (collage_mosaic_t *mosaic, FILE *out)
 	lisp_dump(library_obj, out);
 	fprintf(out, " ");
 	lisp_dump(filename_obj, out);
-	fprintf(out, ") ; %f\n", match->match.score);
+	fprintf(out, " %.3f)\n", match->match.score);
 
 	lisp_free(library_obj);
 	lisp_free(filename_obj);

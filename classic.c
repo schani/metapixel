@@ -719,15 +719,16 @@ classic_read (int num_libraries, library_t **libraries, const char *filename,
 	    lst = vars[2];
 	    for (i = 0; i < num_pixels; ++i)
 	    {
-		lisp_object_t *vars[6];
+		lisp_object_t *vars[7];
 
-		if (lisp_match_string("(#?(integer) #?(integer) #?(integer) #?(integer) #?(string) #?(string))",
+		if (lisp_match_string("(#?(integer) #?(integer) #?(integer) #?(integer) #?(string) #?(string) #?(real))",
 				      lisp_car(lst), vars))
 		{
 		    int x = lisp_integer(vars[0]);
 		    int y = lisp_integer(vars[1]);
 		    int width = lisp_integer(vars[2]);
 		    int height = lisp_integer(vars[3]);
+		    float score = lisp_real(vars[6]);
 		    metapixel_t *pixel;
 
 		    if (width != 1 || height != 1)
@@ -757,6 +758,7 @@ classic_read (int num_libraries, library_t **libraries, const char *filename,
 		    }
 
 		    mosaic->matches[y * mosaic->tiling.metawidth + x].pixel = pixel;
+		    mosaic->matches[y * mosaic->tiling.metawidth + x].score = score;
 		}
 		else
 		{
@@ -822,7 +824,7 @@ classic_write (classic_mosaic_t *mosaic, FILE *out)
 	    lisp_dump(library_obj, out);
 	    fprintf(out, " ");
 	    lisp_dump(filename_obj, out);
-	    fprintf(out, ") ; %f\n", match->score);
+	    fprintf(out, " %.3f)\n", match->score);
 
 	    lisp_free(library_obj);
 	    lisp_free(filename_obj);

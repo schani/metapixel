@@ -258,8 +258,8 @@ zoom_unidirectional (unsigned char *dest, unsigned char *src, int num_channels, 
 void
 zoom_image (unsigned char *dest, unsigned char *src,
 	    filter_t *filter, int num_channels,
-	    int dest_width, int dest_height, int dest_row_stride,
-	    int src_width, int src_height, int src_row_stride)
+	    int dest_width, int dest_height, int dest_pixel_stride, int dest_row_stride,
+	    int src_width, int src_height, int src_pixel_stride, int src_row_stride)
 {
     float x_scale, y_scale;
     float filter_x_scale, filter_y_scale;
@@ -286,15 +286,16 @@ zoom_image (unsigned char *dest, unsigned char *src,
 					   dest_height, src_height, y_scale);
 
     temp_image = (unsigned char*)malloc(num_channels * dest_width * src_height);
+    assert(temp_image != 0);
 
     zoom_unidirectional(temp_image, src, num_channels, x_sample_windows,
 			dest_width, src_height,
-			num_channels, num_channels,
+			num_channels, src_pixel_stride,
 			dest_row_stride, src_row_stride);
     zoom_unidirectional(dest, temp_image, num_channels, y_sample_windows,
 			dest_height, dest_width,
 			dest_row_stride, dest_row_stride,
-			num_channels, num_channels);
+			dest_pixel_stride, num_channels);
 
     free(temp_image);
 
@@ -331,8 +332,8 @@ main (int argc, char *argv[])
     dst = (unsigned char*)malloc(3 * dst_width * dst_height);
 
     zoom_image(dst, src, get_filter(FILTER_MITCHELL), 3,
-	       dst_width, dst_height, dst_width * 3,
-	       src_width, src_height, src_width * 3);
+	       dst_width, dst_height, 3, dst_width * 3,
+	       src_width, src_height, 3, src_width * 3);
 
     write_image(argv[4], dst_width, dst_height, dst, dst_width * 3, IMAGE_FORMAT_PNG);
 

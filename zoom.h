@@ -41,7 +41,7 @@ filter_t* get_filter (int index);
 
 void zoom_image (unsigned char *dest, unsigned char *src,
 		 filter_t *filter, int num_channels,
-		 int dest_width, int dest_height, int dest_row_stride,
-		 int src_width, int src_height, int src_row_stride);
+		 int dest_width, int dest_height, int dest_pixel_stride, int dest_row_stride,
+		 int src_width, int src_height, int src_pixel_stride, int src_row_stride);
 
 #endif

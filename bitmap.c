@@ -57,7 +57,7 @@ bitmap_new (int color, unsigned int width, unsigned int height,
 
     assert(color == COLOR_RGB_8);
     assert(width > 0 && height > 0);
-    assert(pixel_stride == color_channels(color));
+    assert(pixel_stride >= color_channels(color));
     assert(row_stride >= pixel_stride * width);
     assert(data != 0);
 
@@ -188,14 +188,12 @@ bitmap_scale (bitmap_t *src, unsigned int scaled_width, unsigned int scaled_heig
     if (filter == 0)
 	return 0;
 
-    assert(src->pixel_stride == num_channels);
-
     bitmap = bitmap_new_empty(src->color, scaled_width, scaled_height);
     assert(bitmap != 0);
 
     zoom_image(bitmap->data, src->data, filter, num_channels,
-	       scaled_width, scaled_height, bitmap->row_stride,
-	       src->width, src->height, src->row_stride);
+	       scaled_width, scaled_height, bitmap->pixel_stride, bitmap->row_stride,
+	       src->width, src->height, src->pixel_stride, src->row_stride);
 
     return bitmap;
 }
@@ -233,7 +231,8 @@ bitmap_write (bitmap_t *bitmap, const char *filename)
     assert(bitmap->pixel_stride == 3);
 
     /* FIXME: implement error reporting in write_image */
-    write_image(filename, bitmap->width, bitmap->height, bitmap->data, bitmap->row_stride, IMAGE_FORMAT_PNG);
+    write_image(filename, bitmap->width, bitmap->height, bitmap->data,
+		bitmap->pixel_stride, bitmap->row_stride, IMAGE_FORMAT_PNG);
 
     return 1;
 }

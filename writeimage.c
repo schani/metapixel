@@ -32,7 +32,7 @@
 #include "writeimage.h"
 
 image_writer_t*
-open_image_writing (const char *filename, int width, int height, int row_stride, int format)
+open_image_writing (const char *filename, int width, int height, int pixel_stride, int row_stride, int format)
 {
     image_writer_t *writer;
     void *data = 0;
@@ -44,7 +44,7 @@ open_image_writing (const char *filename, int width, int height, int row_stride,
 #ifdef RWIMG_PNG
     else if (format == IMAGE_FORMAT_PNG)
     {
-	data = open_png_file_writing(filename, width, height, row_stride);
+	data = open_png_file_writing(filename, width, height, pixel_stride, row_stride);
 	write_func = png_write_lines;
 	free_func = png_free_writer_data;
     }
@@ -82,9 +82,10 @@ free_image_writer (image_writer_t *writer)
 }
 
 void
-write_image (const char *filename, int width, int height, unsigned char *lines, int row_stride, int format)
+write_image (const char *filename, int width, int height, unsigned char *lines,
+	     int pixel_stride, int row_stride, int format)
 {
-    image_writer_t *writer = open_image_writing(filename, width, height, row_stride, format);
+    image_writer_t *writer = open_image_writing(filename, width, height, pixel_stride, row_stride, format);
 
     assert(writer != 0);
 

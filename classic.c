@@ -157,7 +157,7 @@ classic_writer_new_for_file (const char *filename, unsigned int width, unsigned 
     image_writer_t *image_writer;
     classic_writer_t *writer;
 
-    image_writer = open_image_writing(filename, width, height, width * 3, IMAGE_FORMAT_PNG);
+    image_writer = open_image_writing(filename, width, height, 3, width * 3, IMAGE_FORMAT_PNG);
     if (image_writer == 0)
     {
 	error_report(ERROR_CANNOT_WRITE_OUTPUT_IMAGE, error_make_string_info(filename));
@@ -176,6 +176,8 @@ classic_writer_t*
 classic_writer_new_for_bitmap (bitmap_t *bitmap)
 {
     classic_writer_t *writer;
+
+    assert(bitmap->pixel_stride == 3 && bitmap->row_stride == bitmap->width * bitmap->pixel_stride);
 
     writer = make_classic_writer(CLASSIC_WRITER_BITMAP, bitmap->width, bitmap->height);
     assert(writer != 0);

@@ -111,6 +111,10 @@ generate_coefficients (metapixel_t *pixel)
 
     assert(NUM_SUBPIXELS <= WAVELET_IMAGE_PIXELS);
 
+    assert(scaled_bitmap->color == COLOR_RGB_8);
+    assert(scaled_bitmap->pixel_stride == NUM_CHANNELS);
+    assert(scaled_bitmap->row_stride == NUM_SUBPIXEL_ROWS_COLS * NUM_CHANNELS);
+
     for (i = 0; i < NUM_SUBPIXELS * NUM_CHANNELS; ++i)
 	float_image[i] = scaled_bitmap->data[i];
 

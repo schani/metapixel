@@ -131,11 +131,13 @@ png_free_reader_data (void *_data)
 }
 
 void*
-open_png_file_writing (const char *filename, int width, int height, int row_stride)
+open_png_file_writing (const char *filename, int width, int height, int pixel_stride, int row_stride)
 {
     png_data_t *data = (png_data_t*)malloc(sizeof(png_data_t));
 
     assert(data != 0);
+
+    assert(pixel_stride == 3 || pixel_stride == 4);
 
     data->file = fopen(filename, "w");
     assert(data->file != 0);
@@ -149,6 +151,9 @@ open_png_file_writing (const char *filename, int width, int height, int row_stri
     if (setjmp(data->png_ptr->jmpbuf))
 	assert(0);
 
+    if (pixel_stride == 4)
+	png_set_filler(data->png_ptr, 0, PNG_FILLER_AFTER);
+
     png_init_io(data->png_ptr, data->file);
 
     data->info_ptr->width = width;
@@ -160,8 +165,8 @@ open_png_file_writing (const char *filename, int width, int height, int row_stri
     data->info_ptr->num_trans = 0;
     data->info_ptr->bit_depth = 8;
     data->info_ptr->color_type = PNG_COLOR_TYPE_RGB;
-    data->info_ptr->compression_type = PNG_COMPRESSION_TYPE_BASE;
-    data->info_ptr->filter_type = PNG_FILTER_TYPE_BASE;
+    data->info_ptr->compression_type = PNG_COMPRESSION_TYPE_DEFAULT;
+    data->info_ptr->filter_type = PNG_FILTER_TYPE_DEFAULT;
     data->info_ptr->interlace_type = PNG_INTERLACE_NONE;
 
     png_write_info(data->png_ptr, data->info_ptr);

@@ -48,10 +48,9 @@ pixel_valid_for_collage_position (void *_data, metapixel_t *pixel, unsigned int 
     if (data->min_distance <= 0)
 	return 1;
 
-    if (pixel->client_data != 0)
-	for (position = data->collage_positions[pixel_index]; position != 0; position = position->next)
-	    if (utils_manhattan_distance(x, y, position->x, position->y) < data->min_distance)
-		return 0;
+    for (position = data->collage_positions[pixel_index]; position != 0; position = position->next)
+	if (utils_manhattan_distance(x, y, position->x, position->y) < data->min_distance)
+	    return 0;
 
     return 1;
 }

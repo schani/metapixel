@@ -23,9 +23,17 @@
 #ifndef __METAPIXEL_API_H__
 #define __METAPIXEL_API_H__
 
+#include "zoom.h"
+
+typedef struct _library_t library_t;
+typedef struct _metapixel_t metapixel_t;
+typedef struct _bitmap_t bitmap_t;
+
+#include "internals.h"
+
 #define COLOR_RGB_8             1
 
-typedef struct
+struct _bitmap_t
 {
     int color;
 
@@ -36,40 +44,81 @@ typedef struct
     unsigned int row_stride;	/* in bytes */
 
     unsigned char *data;
-} bitmap_t;
 
-/* bitmap_init does not allocate memory.  It simply initializes the
-   data structure *bitmap with the values given. */
-bitmap_t* bitmap_init (bitmap_t *bitmap, int color, unsigned int width, unsigned int height,
-		       unsigned int pixel_stride, unsigned int row_stride, unsigned char *data);
+    int refcount;
+    bitmap_t *super;
+};
 
-/* For bitmaps which were allocated by the API and must be freed by
-   the user. */
+/* bitmap_new takes possession of data.  It is freed when the bitmap
+   is freed. */
+bitmap_t* bitmap_new (int color, unsigned int width, unsigned int height,
+		      unsigned int pixel_stride, unsigned int row_stride, unsigned char *data);
+/* This is the same as bitmap_new, only that pixel_stride and
+   row_stride are assumed to take on their minimal values. */
+bitmap_t* bitmap_new_packed (int color, unsigned int width, unsigned int height,
+			     unsigned char *data);
+/* This allocated the bitmap data itself, which will be
+   uninitialized. */
+bitmap_t* bitmap_new_empty (int color, unsigned int width, unsigned int height);
+
+
+/* Only supports whatever read_image supports (i.e., JPEG and PNG). */
+bitmap_t* bitmap_read (const char *filename);
+
+bitmap_t* bitmap_copy (bitmap_t *bitmap);
+bitmap_t* bitmap_sub (bitmap_t *super, unsigned int x, unsigned int y,
+		      unsigned int width, unsigned int height);
+bitmap_t* bitmap_scale (bitmap_t *orig, unsigned int scaled_width, unsigned int scaled_height,
+			int filter);
+
 void bitmap_free (bitmap_t *bitmap);
 
-typedef struct _library_t library_t;
-typedef struct _metapixel_t metapixel_t;
+int bitmap_write (bitmap_t *bitmap, const char *filename);
+
+void bitmap_paste (bitmap_t *dst, bitmap_t *src, unsigned int x, unsigned int y);
+/* Opacity is 0 for full transparency and 0x10000 (65536) for full opacity. */
+void bitmap_alpha_compose (bitmap_t *dst, bitmap_t *src, unsigned int opacity);
 
 struct _metapixel_t
 {
     library_t *library;
 
     char *name;
+    char *filename;		/* only used internally */
 
     unsigned int width;
     unsigned int height;
 
+    float aspect_ratio;		/* aspect ratio of the original
+				   (unscaled) image, given by
+				   width/height */
+
     int enabled;		/* always true in this release */
 
+    /* these three are very internal */
+    /*
+    wavelet_coefficients_t coeffs;
+    float means[NUM_CHANNELS];
+    */
+    unsigned char subpixels[NUM_SUBPIXELS * NUM_CHANNELS];
+
+    bitmap_t *bitmap;		/* this is != 0 iff library == 0 */
+
     metapixel_t *next;		/* next in library */
-}
+
+    /* the following is only used by the command line metapixel and
+       will be removed when it has been rewritten. */
+#ifdef ADDITIONAL_METAPIXEL_T_MEMBERS
+    ADDITIONAL_METAPIXEL_T_MEMBERS
+#endif
+};
 
 struct _library_t
 {
     char *path;
 
-    metpixel_t *pixels;
-}
+    metapixel_t *pixels;
+};
 
 typedef struct
 {
@@ -89,16 +138,21 @@ typedef struct
 
 /* library_new and library_open return 0 on failure. */
 /* library_new will not create the directory! */
+/* library_open_without_reading opens a library but doesn't read
+   the tables file. */
 library_t* library_new (const char *path);
 library_t* library_open (const char *path);
+library_t* library_open_without_reading (const char *path);
 
 void library_close (library_t *library);
 
-/* Returns 0 on failure. */
+/* Copies the metapixel data structure and adds the copy to the
+   library.  Returns 0 on failure. */
 int library_add_metapixel (library_t *library, metapixel_t *metapixel);
 
-metapixel_t* metapixel_new (bitmap_t *bitmap, const char *name,
-			    unsigned int scaled_width, unsigned int scaled_height);
+metapixel_t* metapixel_new_from_bitmap (bitmap_t *bitmap, const char *name,
+					unsigned int scaled_width, unsigned int scaled_height);
+void metapixel_free (metapixel_t *metapixel);
 
 /* The returned bitmap must be freed with bitmap_free.  Returns 0 on
    failure. */

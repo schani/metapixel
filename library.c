@@ -44,8 +44,28 @@ tables_filename (const char *path)
     return name;
 }
 
+static int
+compare_checksums (void *_pixel1, void *_pixel2, void *params)
+{
+    metapixel_t *pixel1 = (metapixel_t*)_pixel1;
+    metapixel_t *pixel2 = (metapixel_t*)_pixel2;
+
+    if (pixel1->file_len < pixel2->file_len)
+	return -1;
+    else if (pixel1->file_len > pixel2->file_len)
+	return 1;
+    else
+    {
+	if (pixel1->file_checksum < pixel2->file_checksum)
+	    return -1;
+	else if (pixel1->file_checksum > pixel2->file_checksum)
+	    return 1;
+	return 0;
+    }
+}
+
 static library_t*
-make_library (const char *path)
+make_library (const char *path, int alloc_checksum_tree)
 {
     library_t *library = (library_t*)malloc(sizeof(library_t));
 
@@ -56,6 +76,11 @@ make_library (const char *path)
 
     library->metapixels = 0;
     library->num_metapixels = 0;
+
+    if (alloc_checksum_tree)
+	library->checksum_tree = avlt_create_sorted(&compare_checksums);
+    else
+	library->checksum_tree = 0;
 
     return library;
 }
@@ -109,7 +134,8 @@ write_metapixel_metadata (metapixel_t *metapixel, FILE *tables_file)
     lisp_dump(obj, tables_file);
     lisp_free(obj);
 
-    fprintf(tables_file, " (size %d %d %f) (wavelet (means %f %f %f) (coeffs",
+    fprintf(tables_file, " (checksum %lu %lu) (size %d %d %f) (wavelet (means %f %f %f) (coeffs",
+	    metapixel->file_len, metapixel->file_checksum,
 	    metapixel->width, metapixel->height, metapixel->aspect_ratio,
 	    // pixel.means[0], pixel.means[1], pixel.means[2]
 	    0.0, 0.0, 0.0
@@ -162,7 +188,8 @@ read_tables (const char *library_dir, library_t *library)
     }
     free(tables_name);
 
-    pattern = lisp_read_from_string("(small-image #?(string) #?(string) (size #?(integer) #?(integer) #?(real))"
+    pattern = lisp_read_from_string("(small-image #?(string) #?(string) (checksum #?(integer) #?(integer))"
+				    "  (size #?(integer) #?(integer) #?(real))"
 				    "  (wavelet (means #?(real) #?(real) #?(real)) (coeffs . #?(list)))"
 				    "  (subpixel (r . #?(list)) (g . #?(list)) (b . #?(list)))"
 				    "  (anti #?(integer) #?(integer)))");
@@ -170,7 +197,7 @@ read_tables (const char *library_dir, library_t *library)
 	   && lisp_type(pattern) != LISP_TYPE_EOF
 	   && lisp_type(pattern) != LISP_TYPE_PARSE_ERROR);
     assert(lisp_compile_pattern(&pattern, &num_subs));
-    assert(num_subs == 14);
+    assert(num_subs == 16);
 
     init_pools(&pools);
     init_pools_allocator(&allocator, &pools);
@@ -184,7 +211,7 @@ read_tables (const char *library_dir, library_t *library)
         type = lisp_type(obj);
         if (type != LISP_TYPE_EOF && type != LISP_TYPE_PARSE_ERROR)
         {
-            lisp_object_t *vars[14];
+            lisp_object_t *vars[16];
 
             if (lisp_match_pattern(pattern, obj, vars, num_subs))
 	    {
@@ -193,20 +220,26 @@ read_tables (const char *library_dir, library_t *library)
 		lisp_object_t *lst;
 		int channel, i;
 
-		pixel = metapixel_new(lisp_string(vars[0]), lisp_integer(vars[2]), lisp_integer(vars[3]),
-				      lisp_real(vars[4]));
+		pixel = metapixel_new(lisp_string(vars[0]), lisp_integer(vars[4]), lisp_integer(vars[5]),
+				      lisp_real(vars[6]));
 		assert(pixel != 0);
 
 		pixel->filename = strdup(lisp_string(vars[1]));
 		assert(pixel->filename != 0);
 
-		pixel->anti_x = lisp_integer(vars[12]);
-		pixel->anti_y = lisp_integer(vars[13]);
+		pixel->file_len = lisp_integer(vars[2]);
+		pixel->file_checksum = lisp_integer(vars[3]);
+
+		pixel->anti_x = lisp_integer(vars[14]);
+		pixel->anti_y = lisp_integer(vars[15]);
 
 		pixel->library = library;
 
 		pixel->next = library->metapixels;
 		library->metapixels = pixel;
+
+		if (pixel->file_len > 0)
+		    avlt_put(library->checksum_tree, pixel, 0);
 
 		++library->num_metapixels;
 
@@ -238,7 +271,7 @@ read_tables (const char *library_dir, library_t *library)
 
 		for (channel = 0; channel < NUM_CHANNELS; ++channel)
 		{
-		    lst = vars[9 + channel];
+		    lst = vars[11 + channel];
 
 		    if (lisp_list_length(lst) != NUM_SUBPIXELS)
 		    {
@@ -330,7 +363,7 @@ library_new (const char *path)
 
     free(filename);
 
-    return make_library(path);
+    return make_library(path, 1);
 }
 
 library_t*
@@ -345,7 +378,7 @@ library_open_without_reading (const char *path)
     {
 	free(filename);
 
-	return make_library(path);
+	return make_library(path, 0);
     }
     else
     {
@@ -362,7 +395,7 @@ library_open_without_reading (const char *path)
 library_t*
 library_open (const char *path)
 {
-    library_t *library = make_library(path);
+    library_t *library = make_library(path, 1);
 
     assert(library != 0);
 
@@ -392,6 +425,13 @@ library_add_metapixel (library_t *library, metapixel_t *metapixel)
     char tables_filename[strlen(library->path) + 1 + strlen(TABLES_FILENAME) + 1];
     bitmap_t *bitmap;
     FILE *file;
+
+    /* check if we already have a metapixel with the same checksum */
+    if (library->checksum_tree != 0 && metapixel->file_len > 0)
+    {
+	if (avlt_lookup(library->checksum_tree, metapixel, 0) != 0)
+	    return 0;
+    }
 
     /* get a filename for the bitmap */
     sprintf(bitmap_filename, "%s/%s", library->path, metapixel->name);
@@ -447,6 +487,9 @@ library_add_metapixel (library_t *library, metapixel_t *metapixel)
     /* add the metapixel to the library */
     metapixel->next = library->metapixels;
     library->metapixels = metapixel;
+
+    if (library->checksum_tree != 0 && metapixel->file_len > 0)
+	avlt_put(library->checksum_tree, metapixel, 0);
 
     ++library->num_metapixels;
 

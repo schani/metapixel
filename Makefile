@@ -31,6 +31,6 @@ clean :
 dist :
 	rm -rf metapixel-$(VERSION)
 	mkdir metapixel-$(VERSION)
-	cp Makefile README COPYING *.[ch] metapixel-prepare metapixel-$(VERSION)/
+	cp Makefile README NEWS COPYING *.[ch] metapixel-prepare metapixel-$(VERSION)/
 	tar -zcvf metapixel-$(VERSION).tar.gz metapixel-$(VERSION)
 	rm -rf metapixel-$(VERSION)

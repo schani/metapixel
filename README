@@ -1,4 +1,4 @@
-Metapixel 0.1
+Metapixel 0.2
 =============
 
 Metapixel is a program for generating photomosaics. It can generate
@@ -12,10 +12,10 @@ aligned to a matrix) are substituted by matching images.
 Installation
 ------------
 
-In order to compile Metapixel, you need ImageMagick and libpng
-installed at your system. To run the script for preparing constituent
-images, you will additionally need Perl. Most Linux distributions
-contain these software packages.
+In order to compile Metapixel, you need ImageMagick (tested with
+versions 4.1.0 and 4.2.7) and libpng installed at your system. To run
+the script for preparing constituent images, you will additionally
+need Perl. Most Linux distributions contain these software packages.
 
 Edit the first line of Makefile if you want to install Metapixel
 somewhere else than /usr/local. Then, type

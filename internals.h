@@ -43,8 +43,6 @@
 
 #define NUM_CHANNELS        3
 
-#define PROGRESS_REPORT_GRANULARITY   0.01
-
 #define MATCHER_LOCAL    1
 #define MATCHER_GLOBAL   2
 
@@ -212,5 +210,14 @@ void color_convert_rgb_pixels (unsigned char *dst, unsigned char *rgb, unsigned 
                                       metapixel_t *p; \
                                       for (p = libraries[library_index]->metapixels; p != 0; ++i, p = p->next)
 #define END_FOR_EACH_METAPIXEL  } }
+
+#define PROGRESS_REPORT_GRANULARITY   0.01
+#define PROGRESS_DECLS          float last_report = 0.0
+#define START_PROGRESS          if (report_func != 0) report_func(0.0)
+#define REPORT_PROGRESS(p)      if (report_func != 0) { \
+                                    float progress = (p); \
+                                    if (progress - last_report >= PROGRESS_REPORT_GRANULARITY) { \
+                                        report_func(progress); \
+                                        last_report = progress; } }
 
 #endif

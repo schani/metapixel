@@ -82,55 +82,40 @@ free_positions (position_t *positions)
     }
 }
 
-bitmap_t*
-collage_make (int num_libraries, library_t **libraries, bitmap_t *in_bitmap, float in_image_scale,
-	      unsigned int small_width, unsigned int small_height,
-	      int min_distance, metric_t *metric, unsigned int cheat)
+collage_mosaic_t*
+collage_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_t *in_bitmap,
+			      unsigned int small_width, unsigned int small_height,
+			      unsigned int min_distance, metric_t *metric,
+			      progress_report_func_t report_func)
 {
-    bitmap_t *out_bitmap;
     char *bitmap;
-    int num_pixels_done = 0;
+    unsigned int num_pixels_done = 0;
     position_t **collage_positions;
     unsigned int num_metapixels = library_count_metapixels(num_libraries, libraries);
     unsigned int i;
+    unsigned int num_out_metapixels = 0;
+    unsigned int num_matches_alloced;
+    collage_match_t *matches;
+    collage_mosaic_t *mosaic;
+    PROGRESS_DECLS;
+
+    if (small_width == 0 || small_height == 0)
+    {
+	error_report(ERROR_ZERO_SMALL_IMAGE_SIZE, error_make_null_info());
+	return 0;
+    }
+
+    if (in_bitmap->width < small_width || in_bitmap->height < small_height)
+    {
+	error_report(ERROR_IMAGE_TOO_SMALL, error_make_null_info());
+	return 0;
+    }
 
     if (num_metapixels == 0)
     {
 	error_report(ERROR_CANNOT_FIND_COLLAGE_MATCH, error_make_null_info());
 	return 0;
     }
-    
-    if (in_image_scale != 1.0)
-    {
-	int new_width = (float)in_bitmap->width * in_image_scale;
-	int new_height = (float)in_bitmap->height * in_image_scale;
-	bitmap_t *scaled_bitmap;
-
-	if (new_width < small_width || new_height < small_height)
-	{
-	    error_report(ERROR_IMAGE_TOO_SMALL, error_make_null_info());
-	    return 0;
-	}
-
-#ifdef CONSOLE_OUTPUT
-	printf("Scaling source image to %dx%d\n", new_width, new_height);
-#endif
-
-	scaled_bitmap = bitmap_scale(in_bitmap, new_width, new_height, FILTER_MITCHELL);
-	assert(scaled_bitmap != 0);
-
-	bitmap_free(in_bitmap);
-	in_bitmap = scaled_bitmap;
-    }
-    else
-	if (in_bitmap->width < small_width || in_bitmap->height < small_height)
-	{
-	    error_report(ERROR_IMAGE_TOO_SMALL, error_make_null_info());
-	    return 0;
-	}
-
-    out_bitmap = bitmap_new_empty(COLOR_RGB_8, in_bitmap->width, in_bitmap->height);
-    assert(out_bitmap != 0);
 
     bitmap = (char*)malloc(in_bitmap->width * in_bitmap->height);
     assert(bitmap != 0);
@@ -139,6 +124,13 @@ collage_make (int num_libraries, library_t **libraries, bitmap_t *in_bitmap, flo
     collage_positions = (position_t**)malloc(num_metapixels * sizeof(position_t*));
     assert(collage_positions != 0);
     memset(collage_positions, 0, num_metapixels * sizeof(position_t*));
+
+    num_matches_alloced = (in_bitmap->width / small_width) * (in_bitmap->height / small_height) * 2;
+    assert(num_matches_alloced >= 2);
+    matches = (collage_match_t*)malloc(sizeof(collage_match_t) * num_matches_alloced);
+    assert(matches != 0);
+
+    START_PROGRESS;
 
     while (num_pixels_done < in_bitmap->width * in_bitmap->height)
     {
@@ -183,12 +175,20 @@ collage_make (int num_libraries, library_t **libraries, bitmap_t *in_bitmap, flo
 
 	    return 0;
 	}
-	if (!metapixel_paste(match.pixel, out_bitmap, x, y, small_width, small_height))
-	{
-	    /* FIXME: free stuff */
 
-	    return 0;
+	assert(num_out_metapixels <= num_matches_alloced);
+	if (num_out_metapixels == num_matches_alloced)
+	{
+	    num_matches_alloced += (in_bitmap->width / small_width) * (in_bitmap->height / small_height);
+	    matches = (collage_match_t*)realloc(matches, sizeof(collage_match_t) * num_matches_alloced);
+	    assert(matches != 0);
 	}
+
+	assert(num_out_metapixels < num_matches_alloced);
+	matches[num_out_metapixels].x = x;
+	matches[num_out_metapixels].y = y;
+	matches[num_out_metapixels].match = match;
+	++num_out_metapixels;
 
 	if (min_distance > 0)
 	    add_collage_position(&collage_positions[match.pixel_index], x, y);
@@ -205,6 +205,8 @@ collage_make (int num_libraries, library_t **libraries, bitmap_t *in_bitmap, flo
 	printf(".");
 	fflush(stdout);
 #endif
+
+	REPORT_PROGRESS((float)num_pixels_done / (float)(in_bitmap->width * in_bitmap->height));
     }
 
     free(bitmap);
@@ -213,6 +215,91 @@ collage_make (int num_libraries, library_t **libraries, bitmap_t *in_bitmap, flo
 	if (collage_positions[i] != 0)
 	    free_positions(collage_positions[i]);
     free(collage_positions);
+
+    mosaic = (collage_mosaic_t*)malloc(sizeof(collage_mosaic_t));
+    assert(mosaic != 0);
+
+    mosaic->in_image_width = in_bitmap->width;
+    mosaic->in_image_height = in_bitmap->height;
+    mosaic->small_image_width = small_width;
+    mosaic->small_image_height = small_height;
+    mosaic->num_matches = num_out_metapixels;
+    mosaic->matches = matches;
+
+    return mosaic;
+}
+
+void
+collage_free (collage_mosaic_t *mosaic)
+{
+    free(mosaic->matches);
+    free(mosaic);
+}
+
+static unsigned int
+scale_coord (unsigned int x, unsigned int old_limit, unsigned int new_limit)
+{
+    if (new_limit == 0)
+	return 0;
+    /* FIXME: could overflow */
+    return x * new_limit / old_limit;
+}
+
+bitmap_t*
+collage_paste_to_bitmap (collage_mosaic_t *mosaic, unsigned int out_width, unsigned int out_height,
+			 bitmap_t *in_image, unsigned int cheat, progress_report_func_t report_func)
+{
+    bitmap_t *out_bitmap;
+    unsigned int i;
+    PROGRESS_DECLS;
+
+    /* FIXME: these should not be asserts */
+    assert(out_width > 0 && out_height > 0);
+
+    out_bitmap = bitmap_new_empty(COLOR_RGB_8, out_width, out_height);
+    assert(out_bitmap != 0);
+
+    START_PROGRESS;
+
+    for (i = 0; i < mosaic->num_matches; ++i)
+    {
+	collage_match_t *match = &mosaic->matches[i];
+	unsigned int x, y, width, height;
+
+	x = scale_coord(match->x, mosaic->in_image_width - 1, out_width - 1);
+	y = scale_coord(match->y, mosaic->in_image_height - 1, out_height - 1);
+	width = scale_coord(match->x + mosaic->small_image_width, mosaic->in_image_width, out_width) - x;
+	height = scale_coord(match->y + mosaic->small_image_height, mosaic->in_image_height, out_height) - y;
+
+	assert(x < out_width && y < out_width);
+	assert(width > 0 && height > 0);
+
+	if (!metapixel_paste(match->match.pixel, out_bitmap, x, y, width, height))
+	{
+	    /* FIXME: free stuff */
+
+	    return 0;
+	}
+
+	REPORT_PROGRESS((float)(i + 1) / (float)mosaic->num_matches);
+    }
+
+    if (cheat > 0)
+    {
+	bitmap_t *scaled_bitmap;
+
+	assert(in_image != 0);
+
+	if (out_width != in_image->width || out_height != in_image->height)
+	    scaled_bitmap = bitmap_scale(in_image, out_width, out_height, FILTER_MITCHELL);
+	else
+	    scaled_bitmap = bitmap_copy(in_image);
+	assert(scaled_bitmap != 0);
+
+	bitmap_alpha_compose(out_bitmap, scaled_bitmap, cheat);
+
+	bitmap_free(scaled_bitmap);
+    }
 
     return out_bitmap;
 }

@@ -163,6 +163,26 @@ typedef struct
     metapixel_match_t *matches;
 } classic_mosaic_t;
 
+typedef struct
+{
+    unsigned int x;
+    unsigned int y;
+    metapixel_match_t match;
+} collage_match_t;
+
+typedef struct
+{
+    unsigned int in_image_width;
+
+    unsigned int in_image_height;
+
+    unsigned int small_image_width;
+    unsigned int small_image_height;
+
+    unsigned int num_matches;
+    collage_match_t *matches;
+} collage_mosaic_t;
+
 /* value will be in the range 0.0 to 1.0 */
 typedef void (*progress_report_func_t) (float value);
 
@@ -242,6 +262,11 @@ classic_mosaic_t* classic_generate_from_bitmap (int num_libraries, library_t **l
 						bitmap_t *in_image, tiling_t *tiling, matcher_t *matcher,
 						unsigned int forbid_reconstruction_radius,
 						progress_report_func_t report_func);
+collage_mosaic_t* collage_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_t *in_image,
+						unsigned int small_width, unsigned int small_height,
+						unsigned int min_distance, metric_t *metric,
+						progress_report_func_t report_func);
+
 /* If some metapixel in the mosaic isn't in one of the supplied
    libraries, classic_read tries to open the library.  If
    *num_new_libraries is >0 after classic_read returns, then each
@@ -250,12 +275,16 @@ classic_mosaic_t* classic_generate_from_bitmap (int num_libraries, library_t **l
    the array with free. */
 classic_mosaic_t* classic_read (int num_libraries, library_t **libraries, const char *filename,
 				int *num_new_libraries, library_t ***new_libraries);
+collage_mosaic_t* collage_read (int num_libraries, library_t **libraries, const char *filename,
+				int *num_new_libraries, library_t ***new_libraries);
 
 /* Each metapixel in the mosaic must be in a (saved) library.  Returns
    0 on failure. */
 int classic_write (classic_mosaic_t *mosaic, FILE *out);
+int collage_write (collage_mosaic_t *mosaic, FILE *out);
 
 void classic_free (classic_mosaic_t *mosaic);
+void collage_free (collage_mosaic_t *mosaic);
 
 /* cheat must be in the range from 0 (full transparency, i.e., no
    cheating) to 0x10000 (full opacity).  If cheat == 0, then
@@ -265,9 +294,7 @@ int classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned 
 /* width and height are the width and height of the resulting bitmap. */
 bitmap_t* classic_paste_to_bitmap (classic_mosaic_t *mosaic, unsigned int width, unsigned int height,
 				   bitmap_t *in_image, unsigned int cheat, progress_report_func_t report_func);
-
-bitmap_t* collage_make (int num_libraries, library_t **libraries, bitmap_t *in_image, float in_image_scale,
-			unsigned int small_width, unsigned int small_height,
-			int min_distance, metric_t *metric, unsigned int cheat);
+bitmap_t* collage_paste_to_bitmap (collage_mosaic_t *mosaic, unsigned int width, unsigned int height,
+				   bitmap_t *in_image, unsigned int cheat, progress_report_func_t report_func);
 
 #endif

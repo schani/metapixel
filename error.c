@@ -53,6 +53,7 @@ error_kind (int error_code)
 	  { ERROR_PROTOCOL_SYNTAX_ERROR, ERROR_INFO_STRING },
 	  { ERROR_PROTOCOL_INCONSISTENCY, ERROR_INFO_STRING },
 	  { ERROR_METAPIXEL_NOT_FOUND, ERROR_INFO_STRING },
+	  { ERROR_ZERO_SMALL_IMAGE_SIZE, ERROR_INFO_NULL },
 	  { -1, -1 } };
 
     int i;
@@ -90,6 +91,7 @@ error_format_error (int error_code, error_info_t info)
 	  { ERROR_PROTOCOL_SYNTAX_ERROR, "Syntax error in protocol file `%s'" },
 	  { ERROR_PROTOCOL_INCONSISTENCY, "Protocol `%s' is inconsistent" },
 	  { ERROR_METAPIXEL_NOT_FOUND, "Metapixel with filename `%s' not found" },
+	  { ERROR_ZERO_SMALL_IMAGE_SIZE, "Small image size cannot be zero" },
 	  { -1, 0 } };
 
     int kind = error_kind(error_code);

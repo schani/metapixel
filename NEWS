@@ -1,3 +1,18 @@
+Changes since version 0.3:
+
+  * bugfixes
+
+  * minimum distance between two instances of the same constituent
+    image can be specified
+
+Changes since version 0.2:
+
+  * bugfixes
+
+  * speed improvements
+
+  * got rid of ImageMagick
+
 Changes since version 0.1:
 
   * bugfixes

@@ -610,12 +610,6 @@ generate_search_coeffs_for_subimage (search_coefficients_t *search_coeffs, float
     {
 	int j, channel;
 
-	if (small_width != IMAGE_SIZE || small_height != IMAGE_SIZE)
-	{
-	    x = x / small_width * IMAGE_SIZE;
-	    y = y / small_height * IMAGE_SIZE;
-	}
-
 	for (j = 0; j < IMAGE_SIZE; ++j)
 	    for (i = 0; i < IMAGE_SIZE; ++i)
 		for (channel = 0; channel < NUM_CHANNELS; ++channel)
@@ -633,8 +627,19 @@ generate_search_coeffs_for_subimage (search_coefficients_t *search_coeffs, float
 	means[i] = float_image[i];
 }
 
-metapixel_t*
-metapixel_nearest_to (search_coefficients_t *search_coeffs, float sums[NUM_COEFFS], float *query_means)
+static int
+metapixel_in_array (metapixel_t *pixel, metapixel_t **array, int size)
+{
+    int i;
+
+    for (i = 0; i < size; ++i)
+	if (array[i] == pixel)
+	    return 1;
+    return 0;
+}
+
+static metapixel_t*
+metapixel_nearest_to (search_coefficients_t *search_coeffs, float sums[NUM_COEFFS], float *query_means, metapixel_t **forbidden, int num_forbidden)
 {
     float best_score = 1e99;
     metapixel_t *best_fit = 0, *pixel;
@@ -643,7 +648,7 @@ metapixel_nearest_to (search_coefficients_t *search_coeffs, float sums[NUM_COEFF
     {
 	float score = compare_images(search_coeffs, query_means, &pixel->coeffs, pixel->means, sums, best_score);
 
-	if (best_fit == 0 || score < best_score)
+	if (score < best_score && !metapixel_in_array(pixel, forbidden, num_forbidden))
 	{
 	    best_score = score;
 	    best_fit = pixel;
@@ -653,12 +658,22 @@ metapixel_nearest_to (search_coefficients_t *search_coeffs, float sums[NUM_COEFF
     return best_fit;
 }
 
-void
+static void
 paste_metapixel (metapixel_t *pixel, unsigned char *data, int width, int height, int x, int y)
 {
     int i;
     int pixel_width, pixel_height;
     unsigned char *pixel_data = read_png_file(pixel->filename, &pixel_width, &pixel_height);
+
+    if (pixel_width != small_width || pixel_height != small_height)
+    {
+	unsigned char *scaled_data = scale_image(pixel_data, pixel_width, pixel_height,
+						 0, 0, pixel_width, pixel_height,
+						 small_width, small_height);
+
+	free(pixel_data);
+	pixel_data = scaled_data;
+    }
 
     for (i = 0; i < small_height; ++i)
 	memcpy(data + NUM_CHANNELS * (x + (y + i) * width),
@@ -686,6 +701,8 @@ usage (void)
 	   "  -i, --i-weight=WEIGHT       assign relative weight for the I-channel\n"
 	   "  -q, --q-weight=WEIGHT       assign relative weight for the Q-channel\n"
 	   "  -c, --collage               collage mode\n"
+	   "  -d, --distance=DIST         minimum distance between two instances of\n"
+	   "                              the same constituent image\n"
 	   "\n"
 	   "Report bugs to schani@complang.tuwien.ac.at\n");
 }
@@ -699,6 +716,7 @@ main (int argc, char *argv[])
 {
     int mode = MODE_NONE;
     int collage = 0;
+    int min_distance = 0;
 
     while (1)
     {
@@ -714,13 +732,14 @@ main (int argc, char *argv[])
 		{ "i-weight", required_argument, 0, 'i' },
 		{ "q-weight", required_argument, 0, 'q' },
 		{ "collage", no_argument, 0, 'c' },
+		{ "distance", required_argument, 0, 'd' },
 		{ 0, 0, 0, 0 }
 	    };
 
 	int option,
 	    option_index;
 
-	option = getopt_long(argc, argv, "pmw:h:y:i:q:c", long_options, &option_index);
+	option = getopt_long(argc, argv, "pmw:h:y:i:q:cd:", long_options, &option_index);
 
 	if (option == -1)
 	    break;
@@ -757,6 +776,11 @@ main (int argc, char *argv[])
 
 	    case 'c' :
 		collage = 1;
+		break;
+
+	    case 'd' :
+		min_distance = atoi(optarg);
+		assert(min_distance >= 0);
 		break;
 
 	    case 256 :
@@ -899,42 +923,72 @@ main (int argc, char *argv[])
 	    return 1;
 	}
 
-	if (!collage && (small_width != IMAGE_SIZE || small_height != IMAGE_SIZE))
+	if (small_width == IMAGE_SIZE && small_height == IMAGE_SIZE)
+	    use_crop = 0;
+
+	if (!collage && (in_image_width % small_width != 0 || in_image_height % small_height != 0))
 	{
+	    int new_width = ((in_image_width - 1) / small_width + 1) * small_width;
+	    int new_height = ((in_image_height - 1) / small_height + 1) * small_height;
 	    unsigned char *scaled_data;
 
-	    scaled_data = scale_image(in_image_data, in_image_width, in_image_height, 0, 0, in_image_width, in_image_height,
-				      in_image_width / small_width * IMAGE_SIZE, in_image_height / small_height * IMAGE_SIZE);
-	    assert(scaled_data != 0);
+	    scaled_data = scale_image(in_image_data, in_image_width, in_image_height, 0, 0,
+				      in_image_width, in_image_height, new_width, new_height);
+
+	    in_image_width = new_width;
+	    in_image_height = new_height;
+
 	    free(in_image_data);
 	    in_image_data = scaled_data;
 	}
-
-	if (!collage || (small_width == IMAGE_SIZE || small_height == IMAGE_SIZE))
-	    use_crop = 0;
 
 	out_image_data = (unsigned char*)malloc(in_image_width * in_image_height * NUM_CHANNELS);
 
 	if (!collage)
 	{
+	    metapixel_t **metapixels, **neighborhood = 0;
 	    int x, y;
+	    int metawidth, metaheight;
+	    int neighborhood_diameter = min_distance * 2 + 1;
+	    int neighborhood_size = (neighborhood_diameter * neighborhood_diameter - 1) / 2;
 
 	    assert(in_image_width % small_width == 0);
 	    assert(in_image_height % small_height == 0);
 
-	    for (y = 0; y < in_image_height / small_height; ++y)
-		for (x = 0; x < in_image_width / small_width; ++x)
+	    metawidth = in_image_width / small_width;
+	    metaheight = in_image_height / small_height;
+
+	    metapixels = (metapixel_t**)malloc(sizeof(metapixel_t*) * metawidth * metaheight);
+	    if (min_distance > 0)
+		neighborhood = (metapixel_t**)malloc(sizeof(metapixel_t*) * neighborhood_size);
+
+	    for (y = 0; y < metaheight; ++y)
+		for (x = 0; x < metawidth; ++x)
 		{
 		    search_coefficients_t search_coeffs;
 		    metapixel_t *pixel;
 		    float means[3];
 		    float sums[NUM_COEFFS];
+		    int i;
+
+		    for (i = 0; i < neighborhood_size; ++i)
+		    {
+			int nx = x + i % neighborhood_diameter - min_distance;
+			int ny = y + i / neighborhood_diameter - min_distance;
+
+			if (nx < 0 || nx >= metawidth || ny < 0 || ny >= metaheight)
+			    neighborhood[i] = 0;
+			else
+			    neighborhood[i] = metapixels[ny * metawidth + nx];
+		    }
 
 		    generate_search_coeffs_for_subimage(&search_coeffs, sums, means, in_image_data, in_image_width, in_image_height,
 							x * small_width, y * small_height, use_crop);
 
-		    pixel = metapixel_nearest_to(&search_coeffs, sums, means);
+		    pixel = metapixel_nearest_to(&search_coeffs, sums, means, neighborhood, neighborhood_size);
 		    paste_metapixel(pixel, out_image_data, in_image_width, in_image_height, x * small_width, y * small_height);
+
+		    metapixels[y * metawidth + x] = pixel;
 
 		    printf(".");
 		    fflush(stdout);
@@ -981,7 +1035,7 @@ main (int argc, char *argv[])
 	    out:
 		generate_search_coeffs_for_subimage(&search_coeffs, sums, means, in_image_data, in_image_width, in_image_height, x, y, use_crop);
 
-		pixel = metapixel_nearest_to(&search_coeffs, sums, means);
+		pixel = metapixel_nearest_to(&search_coeffs, sums, means, 0, 0);
 		paste_metapixel(pixel, out_image_data, in_image_width, in_image_height, x, y);
 
 		for (j = 0; j < small_height; ++j)

@@ -3,7 +3,7 @@ INSTALL = install
 
 BINDIR = $(PREFIX)/bin
 
-VERSION = 0.3
+VERSION = 0.4
 
 #PROFILE = -pg
 

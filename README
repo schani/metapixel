@@ -1,4 +1,4 @@
-Metapixel 0.3
+Metapixel 0.4
 =============
 
 Metapixel is a program for generating photomosaics. It can generate
@@ -32,10 +32,12 @@ Preparing images
 Before mosaics can be created the constituent images need to be
 preprocessed. Preparing an image does two things. Firstly, it computes
 various coefficients by which the image can be matched against a part
-of a source image. Secondly, the image is scaled to size it will have
-in the target image. Note that this size must be equal for all
-constituent images and must be known in advance. The default size is
-64x64 pixels.
+of a source image. Secondly, the image is scaled to a smaller
+size. Usually this will be the size you intend to use for it in the
+target image, but it can be any arbitrary size. It makes sense to
+scale your images to the maximum size that you will use for
+constituent images. That way, no information gets lost. The default
+size is 64x64 pixels.
 
 To simplify the task of preparing images, the Perl script
 'metapixel-prepare' is included in the distribution. It must be called
@@ -51,9 +53,11 @@ Creating photomosaics
 
 In order to create a photomosaic for an image, it should be scaled to
 an appropriate size. For classic photomosaics, the width and height of
-the source image must be multiples of the widths and heights of the
-small constituent images, respectively. This restriction does not
-apply to collages, however.
+the source image should be multiples of the widths and heights of the
+small constituent images, respectively. If they are not, the image is
+scaled to the smallest multiple larger than the image you specify.
+This does not apply to collages, however. The sizes of their source
+images are always left untouched.
 
 Metapixel produces output images in the PNG format. In order to create
 a classic photomosaic for the image input.jpg and write the output to
@@ -66,7 +70,7 @@ To create a collage use
 
   metapixel --collage --metapixel input.jpg output.png <images/tables
 
-Using the -y, -i and -q parameters you can change the weights for each
+Using the -y, -i and -q options you can change the weights for each
 of the color channels. For example, to match only luminance,
 completely disregarding chrominance, use
 
@@ -74,9 +78,24 @@ completely disregarding chrominance, use
 
 The default weight for each of the channels is 1.
 
+The -d option lets you specify the minimal distance between two
+occurences of the same constituent image in the target image for
+classical photomosaics. The default distance is 0, which means that it
+is allowed for one image to be placed in two adjacent elements in the
+matrix. Distance 1 means that there must be at least one other image
+between two occurences of the same image.
+
 Note that Metapixel uses ridiculous amounts of main memory. To create
 photomosaics of size 2048x2048 your machine should at least have
 64MBytes RAM.
+
+
+The matching algorithm
+----------------------
+
+The algorithm that does the image matching is described in the paper
+'Fast Multiresolution Image Querying' by Charles E. Jacobs, Adam
+Finkelstein and David H. Salesin.
 
 
 Licence and Availability

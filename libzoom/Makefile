@@ -1,5 +1,6 @@
-# $Header: /mnt/homes/cvsroot/metapixel/metapixel/libzoom/Makefile,v 1.1 2000/01/04 03:35:21 schani Exp $
+# $Header: /mnt/homes/cvsroot/metapixel/metapixel/libzoom/Makefile,v 1.2 2000/01/07 00:11:37 schani Exp $
 
+CC = gcc
 L = $(DEST)/lib
 COPTS = -O9 $(FLOATOPT)
 IPATH = -I.

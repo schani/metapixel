@@ -43,12 +43,17 @@ To simplify the task of preparing images, the Perl script
 'metapixel-prepare' is included in the distribution.  It must be
 called with two parameters: the name of directory which the original
 images are stored in and the name of the directory which the scaled
-down images and the table file should be stored in.  It also accepts
-parameters specifying the size of the scaled down images.  Just call
-it - it prints out usage information.
+down images and the table file should be stored in.  If called with
+the option "--recurse", it searches the directory with the original
+image recursively, i.e., it searches all its direct and indirect
+subdirectories as well.  It also accepts parameters specifying the
+size of the scaled down images.  Just call it - it prints out usage
+information.
 
-If the script complains that an error occurred when running
+If the script constantly complains that an error occurred when running
 'metapixel', that probably means that metapixel is not in your path.
+The other possibility is that all your images are in a format that
+Metapixel doesn't like (it only supports JPEG and PNG).
 
 
 Upgrading from versions 0.6/0.7

@@ -4,7 +4,10 @@ Changes since version 0.9:
     collages.
 
   * the default minimum distance for classical mosaics is
-    now 5 instead of 0
+    now 5 instead of 0.
+
+  * metapixel-prepare can now traverse the image directory
+    recursively.
 
 Changes since version 0.8:
 

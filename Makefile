@@ -3,7 +3,7 @@ INSTALL = install
 
 BINDIR = $(PREFIX)/bin
 
-VERSION = 0.9
+VERSION = 0.10
 
 #DEBUG = -g
 OPTIMIZE = -O2
@@ -42,8 +42,8 @@ install : metapixel
 	$(INSTALL) -d $(BINDIR)
 	$(INSTALL) metapixel $(BINDIR)
 	$(INSTALL) metapixel-prepare $(BINDIR)
-	$(INSTALL) imagesize $(BINDIR)
-	$(INSTALL) sizesort $(BINDIR)
+#	$(INSTALL) imagesize $(BINDIR)
+#	$(INSTALL) sizesort $(BINDIR)
 
 clean :
 	rm -f *.o metapixel convert imagesize *~

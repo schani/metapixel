@@ -165,7 +165,7 @@ cut_last_coefficients (float *image, int channel, int howmany)
 void
 transform_rgb_to_yiq (float *image, int num_pixels)
 {
-    static Matrix3D conversion_matrix =
+    const static Matrix3D conversion_matrix =
     {
 	{ 0.299, 0.587, 0.114 },
 	{ 0.596, -0.275, -0.321 },
@@ -183,7 +183,7 @@ transform_rgb_to_yiq (float *image, int num_pixels)
 		     image[NUM_CHANNELS * i + 0],
 		     image[NUM_CHANNELS * i + 1],
 		     image[NUM_CHANNELS * i + 2]);
-	MultMatrixVector3D(&yiq_vec, (const Matrix3D*)&conversion_matrix, &rgb_vec);
+	MultMatrixVector3D(&yiq_vec, &conversion_matrix, &rgb_vec);
 	image[NUM_CHANNELS * i + 0] = yiq_vec.x;
 	image[NUM_CHANNELS * i + 1] = yiq_vec.y / 1.192 + 127.5;
 	image[NUM_CHANNELS * i + 2] = yiq_vec.z / 1.051 + 128.106565176;
@@ -193,7 +193,7 @@ transform_rgb_to_yiq (float *image, int num_pixels)
 void
 transform_yiq_to_rgb (float *image)
 {
-    static Matrix3D conversion_matrix =
+    const static Matrix3D conversion_matrix =
     {
 	{ 1.00308929854,  0.954849063112,   0.61785970812 },
 	{ 0.996776058337, -0.270706233074, -0.644788332692 },
@@ -211,7 +211,7 @@ transform_yiq_to_rgb (float *image)
 		     image[NUM_CHANNELS * i + 0],
 		     image[NUM_CHANNELS * i + 1] - 127.5,
 		     image[NUM_CHANNELS * i + 2] - 127.5);
-	MultMatrixVector3D(&rgb_vec, (const Matrix3D*)&conversion_matrix, &yiq_vec);
+	MultMatrixVector3D(&rgb_vec, &conversion_matrix, &yiq_vec);
 	image[NUM_CHANNELS * i + 0] = rgb_vec.x;
 	image[NUM_CHANNELS * i + 1] = rgb_vec.y;
 	image[NUM_CHANNELS * i + 2] = rgb_vec.z;

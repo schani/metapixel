@@ -1,3 +1,11 @@
+for 0.10:
+
+debian package: http://packages.debian.org/cgi-bin/search_packages.pl?searchon=names&version=all&release=all&keywords=metapixel
+
+man page from chris vanden berghe (with make install!!!)
+
+***
+
 implement classic mosaics with nonstandard tiling, i.e., triangles and
 hexagons.
 

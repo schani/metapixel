@@ -2,11 +2,12 @@
 
 # metapixel-prepare --- prepare images for metapixeling.
 
-# Copyright (C) 1999 Mark Probst
+# Copyright (C) 1999-2004 Mark Probst
+# Copyright (C) 2004 Jake Di Toro
 
-# Author: Mark Probst <schani@complang.tuwien.ac.at>
+# Authors: Mark Probst <schani@complang.tuwien.ac.at>
+#          Jake Di Toro <karrde@viluppo.net>
 # Maintainer: Mark Probst <schani@complang.tuwien.ac.at>
-# Version: 0.1
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -29,6 +30,21 @@ use Getopt::Long;
 use File::Basename;
 use IO::Handle;
 
+sub disambiguate_filename {
+    my $filename = shift;
+    my $suffix = shift;
+
+    return "$filename$suffix" if !-e "$filename$suffix";
+
+    my $ctr = 1;
+
+    while (-e "$filename.$ctr$suffix") {
+	++$ctr;
+    }
+
+    return "$filename.$ctr$suffix";
+}
+
 sub usage {
     print STDERR "Usage: $0 [OPTION]... <srcdir> <destdir>
 
@@ -39,16 +55,23 @@ stored in <destdir>.
   --help             display this help and exit
   --width=WIDTH      specify width of small images
   --height=HEIGHT    specify height of small images
+  -r, --recurse      recurse through directories
+  --debug            print out debugging info
 ";
     exit(1);
 }
 
 my $width;
 my $height;
+my $do_recurse;
+my $DEBUG;
+
 
 if (!GetOptions("help", \&usage,
 		"width=i", \$width,
-		"height=i", \$height)) {
+		"height=i", \$height,
+		"recurse|r", \$do_recurse,
+		"debug", \$DEBUG)) {
     usage();
 }
 
@@ -79,11 +102,31 @@ if (! -d $destdir ) {
 
 STDOUT->autoflush(1);
 
-foreach my $filename (glob("$srcdir/*")) {
-    if (-f $filename && -r $filename) {
-	my ($name, $path, $suffix) = fileparse($filename);
-	`metapixel $opts --prepare "$filename" "$destdir/$name$suffix.png" "$destdir/tables.mxt"`;
-	die "error running metapixel" if ($? != 0);
-	print ".";
+sub process_dir {
+    my $pdir = shift;
+    my $do_recurse = shift;
+
+    foreach my $filename (glob("$pdir/*")) {
+	if (-f $filename && -r $filename) {
+	    my ($name, $path, $suffix) = fileparse($filename);
+
+	    print "Processing: $filename\n" if $DEBUG;
+
+	    my $thumbname = disambiguate_filename("$destdir/$name$suffix", ".png");
+	    
+	    `metapixel $opts --prepare "$filename" "$thumbname" "$destdir/tables.mxt"`;
+	    if ($? != 0) {
+		print "Error running metapixel - skipping file $filename\n"
+	    }
+	    else
+	    {
+		print "." if !$DEBUG;
+	    }
+	}
+	elsif (-d $filename && -r $filename && $do_recurse) {
+	    process_dir($filename, $do_recurse);
+	}
     }
 }
+
+process_dir($srcdir, $do_recurse);

@@ -5,7 +5,7 @@
  *
  * metapixel
  *
- * Copyright (C) 1997-1999 Mark Probst
+ * Copyright (C) 1997-2000 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -47,39 +47,36 @@
 #define DEFAULT_WIDTH       64
 #define DEFAULT_HEIGHT      64
 
+#define NUM_CHANNELS        3
+
 #define IMAGE_SIZE          64
-#define ROW_LENGTH          (IMAGE_SIZE * 3)
+#define ROW_LENGTH          (IMAGE_SIZE * NUM_CHANNELS)
 #define SIGNIFICANT_COEFFS  40
+
+#define NUM_COEFFS          (NUM_CHANNELS * SIGNIFICANT_COEFFS)
+
+#define NUM_INDEXES         (IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS * 2)
 
 typedef struct
 {
     int index;
     float coeff;
-    int sign;
 } coefficient_with_index_t;
 
-typedef struct
-{
-    int index;
-    float weight;
-} index_with_weight_t;
+typedef unsigned short index_t;
 
 typedef struct
 {
-    int num_positives;
-    index_with_weight_t positives[SIGNIFICANT_COEFFS];
-
-    int num_negatives;
-    index_with_weight_t negatives[SIGNIFICANT_COEFFS];
+    index_t coeffs[NUM_COEFFS];
 } search_coefficients_t;
 
 int index_order[IMAGE_SIZE * IMAGE_SIZE];
 
 typedef struct _metapixel_t
 {
-    char filename[1024];
-    search_coefficients_t coeffs[3];
-    float means[3];
+    char filename[1024];	/* FIXME: should be done dynamically */
+    search_coefficients_t coeffs;
+    float means[NUM_CHANNELS];
     struct _metapixel_t *next;
 } metapixel_t;
 
@@ -87,7 +84,11 @@ static metapixel_t *first_pixel = 0;
 
 float sqrt_of_two, sqrt_of_image_size;
 
-float weight_factors[3] = { 1.0, 1.0, 1.0 };
+float weight_factors[NUM_CHANNELS] = { 1.0, 1.0, 1.0 };
+
+float index_weights[NUM_INDEXES];
+index_t weight_ordered_index_to_index[NUM_INDEXES];
+index_t index_to_weight_ordered_index[NUM_INDEXES];
 
 int small_width = DEFAULT_WIDTH, small_height = DEFAULT_HEIGHT;
 
@@ -102,7 +103,7 @@ generate_index_order (void)
 
     do
     {
-	index_order[index++] = 3 * (col + IMAGE_SIZE * row);
+	index_order[index++] = col + IMAGE_SIZE * row;
 
 	if (first_half)
 	{
@@ -144,13 +145,27 @@ generate_index_order (void)
     } while (index < IMAGE_SIZE * IMAGE_SIZE);
 }
 
+static int
+compute_index (int real_index, int channel, int sign)
+{
+    return real_index + (channel + (sign > 0 ? 1 : 0) * NUM_CHANNELS) * IMAGE_SIZE * IMAGE_SIZE;
+}
+
+static void
+uncompute_index (int index, int *real_index, int *channel, int *sign)
+{
+    *real_index = index % (IMAGE_SIZE * IMAGE_SIZE);
+    *channel = (index / (IMAGE_SIZE * IMAGE_SIZE)) % NUM_CHANNELS;
+    *sign = (index / (NUM_CHANNELS * IMAGE_SIZE * IMAGE_SIZE)) ? 1 : -1;
+}
+
 void
 cut_last_coefficients (float *image, int channel, int howmany)
 {
     int i;
 
     for (i = IMAGE_SIZE * IMAGE_SIZE - howmany; i < IMAGE_SIZE * IMAGE_SIZE; ++i)
-	image[channel + index_order[i]] = 0.0;
+	image[index_order[i] * NUM_CHANNELS + channel] = 0.0;
 }
 
 void
@@ -170,11 +185,14 @@ transform_rgb_to_yiq (float *image)
 	Vector3D rgb_vec,
 	    yiq_vec;
 
-	InitVector3D(&rgb_vec, image[3 * i + 0], image[3 * i + 1], image[3 * i + 2]);
+	InitVector3D(&rgb_vec,
+		     image[NUM_CHANNELS * i + 0],
+		     image[NUM_CHANNELS * i + 1],
+		     image[NUM_CHANNELS * i + 2]);
 	MultMatrixVector3D(&yiq_vec, (const Matrix3D*)&conversion_matrix, &rgb_vec);
-	image[3 * i + 0] = yiq_vec.x;
-	image[3 * i + 1] = yiq_vec.y + 127.5;
-	image[3 * i + 2] = yiq_vec.z + 127.5;
+	image[NUM_CHANNELS * i + 0] = yiq_vec.x;
+	image[NUM_CHANNELS * i + 1] = yiq_vec.y + 127.5;
+	image[NUM_CHANNELS * i + 2] = yiq_vec.z + 127.5;
     }
 }
 
@@ -195,11 +213,14 @@ transform_yiq_to_rgb (float *image)
 	Vector3D rgb_vec,
 	    yiq_vec;
 
-	InitVector3D(&yiq_vec, image[3 * i + 0], image[3 * i + 1] - 127.5, image[3 * i + 2] - 127.5);
+	InitVector3D(&yiq_vec,
+		     image[NUM_CHANNELS * i + 0],
+		     image[NUM_CHANNELS * i + 1] - 127.5,
+		     image[NUM_CHANNELS * i + 2] - 127.5);
 	MultMatrixVector3D(&rgb_vec, (const Matrix3D*)&conversion_matrix, &yiq_vec);
-	image[3 * i + 0] = rgb_vec.x;
-	image[3 * i + 1] = rgb_vec.y;
-	image[3 * i + 2] = rgb_vec.z;
+	image[NUM_CHANNELS * i + 0] = rgb_vec.x;
+	image[NUM_CHANNELS * i + 1] = rgb_vec.y;
+	image[NUM_CHANNELS * i + 2] = rgb_vec.z;
     }
 }
 
@@ -208,33 +229,13 @@ transpose_image (float *old_image, float *new_image)
 {
     int i,
 	j,
-	color;
+	channel;
 
     for (i = 0; i < IMAGE_SIZE; ++i)
 	for (j = 0; j < IMAGE_SIZE; ++j)
-	    for (color = 0; color < 3; ++color)
-		new_image[color + i * 3 + j * 3 * IMAGE_SIZE] =
-		    old_image[color + j * 3 + i * 3 * IMAGE_SIZE];
-}
-
-void
-output_row (float *row)
-{
-    int i;
-
-    for (i = 0; i < IMAGE_SIZE; ++i)
-	printf("%d ", (int)row[i * 3 + 2]);
-    printf("\n");
-}
-
-void
-output_image (float *image)
-{
-    int i;
-
-    for (i = 0; i < IMAGE_SIZE; ++i)
-	output_row(image + 3 * IMAGE_SIZE * i);
-    printf("\n");
+	    for (channel = 0; channel < NUM_CHANNELS; ++channel)
+		new_image[channel + (i + j * IMAGE_SIZE) * NUM_CHANNELS] =
+		    old_image[channel + (j + i * IMAGE_SIZE) * NUM_CHANNELS];
 }
 
 void
@@ -242,9 +243,9 @@ decompose_row (float *row)
 {
     int h = IMAGE_SIZE,
 	i;
-    float new_row[3 * IMAGE_SIZE];
+    float new_row[NUM_CHANNELS * IMAGE_SIZE];
 
-    for (i = 0; i < 3 * IMAGE_SIZE; ++i)
+    for (i = 0; i < NUM_CHANNELS * IMAGE_SIZE; ++i)
 	row[i] = row[i] / sqrt_of_image_size;
 
     while (h > 1)
@@ -252,18 +253,18 @@ decompose_row (float *row)
 	h = h / 2;
 	for (i = 0; i < h; ++i)
 	{
-	    int color;
+	    int channel;
 
-	    for (color = 0; color < 3; ++color)
+	    for (channel = 0; channel < NUM_CHANNELS; ++channel)
 	    {
-		float val1 = row[color + 2 * i * 3],
-		    val2 = row[color + (2 * i + 1) * 3];
+		float val1 = row[channel + 2 * i * NUM_CHANNELS],
+		    val2 = row[channel + (2 * i + 1) * NUM_CHANNELS];
 
-		new_row[color + i * 3] = (val1 + val2) / sqrt_of_two;
-		new_row[color + (h + i) * 3] = (val1 - val2) / sqrt_of_two;
+		new_row[channel + i * NUM_CHANNELS] = (val1 + val2) / sqrt_of_two;
+		new_row[channel + (h + i) * NUM_CHANNELS] = (val1 - val2) / sqrt_of_two;
 	    }
 	}
-	memcpy(row, new_row, sizeof(float) * 3 * h * 2);
+	memcpy(row, new_row, sizeof(float) * NUM_CHANNELS * h * 2);
     }
 }
 
@@ -276,7 +277,7 @@ decompose_column (float *column)
     float new_column[ROW_LENGTH];
 
     for (i = 0; i < IMAGE_SIZE; ++i)
-	for (channel = 0; channel < 3; ++channel)
+	for (channel = 0; channel < NUM_CHANNELS; ++channel)
 	    column[channel + i * ROW_LENGTH] =
 		column[channel + i * ROW_LENGTH] / sqrt_of_image_size;
 
@@ -285,19 +286,19 @@ decompose_column (float *column)
 	h = h / 2;
 	for (i = 0; i < h; ++i)
 	{
-	    for (channel = 0; channel < 3; ++channel)
+	    for (channel = 0; channel < NUM_CHANNELS; ++channel)
 	    {
 		float val1 = column[channel + (2 * i) * ROW_LENGTH],
 		    val2 = column[channel + (2 * i + 1) * ROW_LENGTH];
 
-		new_column[channel + i * 3] = (val1 + val2) / sqrt_of_two;
-		new_column[channel + (h + i) * 3] = (val1 - val2) / sqrt_of_two;
+		new_column[channel + i * NUM_CHANNELS] = (val1 + val2) / sqrt_of_two;
+		new_column[channel + (h + i) * NUM_CHANNELS] = (val1 - val2) / sqrt_of_two;
 	    }
 	}
 
 	for (i = 0; i < h * 2; ++i)
-	    for (channel = 0; channel < 3; ++channel)
-		column[channel + i * ROW_LENGTH] = new_column[channel + i * 3];
+	    for (channel = 0; channel < NUM_CHANNELS; ++channel)
+		column[channel + i * ROW_LENGTH] = new_column[channel + i * NUM_CHANNELS];
     }
 }
 
@@ -307,9 +308,9 @@ decompose_image (float *image)
     int row;
 
     for (row = 0; row < IMAGE_SIZE; ++row)
-	decompose_row(image + 3 * IMAGE_SIZE * row);
+	decompose_row(image + NUM_CHANNELS * IMAGE_SIZE * row);
     for (row = 0; row < IMAGE_SIZE; ++row)
-	decompose_column(image + 3 * row);
+	decompose_column(image + NUM_CHANNELS * row);
 }
 
 void
@@ -317,29 +318,29 @@ compose_row (float *row)
 {
     int h = 1,
 	i;
-    float new_row[3 * IMAGE_SIZE];
+    float new_row[NUM_CHANNELS * IMAGE_SIZE];
 
-    memcpy(new_row, row, sizeof(float) * 3 * IMAGE_SIZE);
+    memcpy(new_row, row, sizeof(float) * NUM_CHANNELS * IMAGE_SIZE);
     while (h < IMAGE_SIZE)
     {
 	for (i = 0; i < h; ++i)
 	{
-	    int color;
+	    int channel;
 
-	    for (color = 0; color < 3; ++color)
+	    for (channel = 0; channel < NUM_CHANNELS; ++channel)
 	    {
-		float val1 = row[color + i * 3],
-		    val2 = row[color + (h + i) * 3];
+		float val1 = row[channel + i * NUM_CHANNELS],
+		    val2 = row[channel + (h + i) * NUM_CHANNELS];
 
-		new_row[color + 2 * i * 3] = (val1 + val2) / sqrt_of_two;
-		new_row[color + (2 * i + 1) * 3] = (val1 - val2) / sqrt_of_two;
+		new_row[channel + 2 * i * NUM_CHANNELS] = (val1 + val2) / sqrt_of_two;
+		new_row[channel + (2 * i + 1) * NUM_CHANNELS] = (val1 - val2) / sqrt_of_two;
 	    }
 	}
-	memcpy(row, new_row, sizeof(float) * 3 * IMAGE_SIZE);
+	memcpy(row, new_row, sizeof(float) * NUM_CHANNELS * IMAGE_SIZE);
 	h = h * 2;
     }
 
-    for (i = 0; i < 3 * IMAGE_SIZE; ++i)
+    for (i = 0; i < NUM_CHANNELS * IMAGE_SIZE; ++i)
 	row[i] = row[i] * sqrt_of_image_size;
 }
 
@@ -351,10 +352,10 @@ compose_image (float *image)
 
     transpose_image(image, transposed_image);
     for (row = 0; row < IMAGE_SIZE; ++row)
-	compose_row(transposed_image + 3 * IMAGE_SIZE * row);
+	compose_row(transposed_image + NUM_CHANNELS * IMAGE_SIZE * row);
     transpose_image(transposed_image, image);
     for (row = 0; row < IMAGE_SIZE; ++row)
-	compose_row(image + 3 * IMAGE_SIZE * row);
+	compose_row(image + NUM_CHANNELS * IMAGE_SIZE * row);
 
     free(transposed_image);
 }
@@ -362,8 +363,8 @@ compose_image (float *image)
 int
 compare_coeffs_with_index (const void *p1, const void *p2)
 {
-    const coefficient_with_index_t *coeff1 = (const coefficient_with_index_t*)p1,
-	*coeff2 = (const coefficient_with_index_t*)p2;
+    const coefficient_with_index_t *coeff1 = (const coefficient_with_index_t*)p1;
+    const coefficient_with_index_t *coeff2 = (const coefficient_with_index_t*)p2;
 
     if (fabs(coeff1->coeff) < fabs(coeff2->coeff))
 	return 1;
@@ -373,116 +374,131 @@ compare_coeffs_with_index (const void *p1, const void *p2)
 }
 
 void
-find_highest_coefficients (float *image, coefficient_with_index_t highest_coeffs[3][SIGNIFICANT_COEFFS])
+find_highest_coefficients (float *image, coefficient_with_index_t highest_coeffs[NUM_COEFFS])
 {
-    int index,
-	channel;
+    int index, channel;
 
-    for (index = 1; index < SIGNIFICANT_COEFFS + 1; ++index)
-	for (channel = 0; channel < 3; ++channel)
+    for (channel = 0; channel < NUM_CHANNELS; ++channel)
+    {
+	for (index = 1; index < SIGNIFICANT_COEFFS + 1; ++index)
 	{
-	    highest_coeffs[channel][index - 1].index = index;
-	    highest_coeffs[channel][index - 1].coeff = image[channel + 3 * index];
+	    float coeff = image[channel + NUM_CHANNELS * index];
+	    int sign = coeff > 0.0 ? 1 : -1;
+
+	    highest_coeffs[index - 1 + channel * SIGNIFICANT_COEFFS].index = compute_index(index, channel, sign);
+	    highest_coeffs[index - 1 + channel * SIGNIFICANT_COEFFS].coeff = coeff;
 	}
 
-    for (channel = 0; channel < 3; ++channel)
-	qsort(highest_coeffs[channel], SIGNIFICANT_COEFFS, sizeof(coefficient_with_index_t),
-	      compare_coeffs_with_index);
+	qsort(highest_coeffs + channel * SIGNIFICANT_COEFFS, SIGNIFICANT_COEFFS,
+	      sizeof(coefficient_with_index_t), compare_coeffs_with_index);
+    }
 
-    for (; index < IMAGE_SIZE * IMAGE_SIZE; ++index)
+    for (index = SIGNIFICANT_COEFFS + 1; index < IMAGE_SIZE * IMAGE_SIZE; ++index)
     {
-	for (channel = 0; channel < 3; ++channel)
+	for (channel = 0; channel < NUM_CHANNELS; ++channel)
 	{
-	    if (fabs(image[channel + 3 * index])
-		> fabs(highest_coeffs[channel][SIGNIFICANT_COEFFS - 1].coeff))
+	    float coeff = image[channel + NUM_CHANNELS * index];
+
+	    if (fabs(coeff) > fabs(highest_coeffs[(channel + 1) * SIGNIFICANT_COEFFS - 1].coeff))
 	    {
 		int significance;
+		int sign = coeff > 0.0 ? 1 : -1;
 
-		for (significance = SIGNIFICANT_COEFFS - 2; significance >= 0; --significance)
-		    if (fabs(image[channel + 3 * index])
-			<= fabs(highest_coeffs[channel][significance].coeff))
+		for (significance = (channel + 1) * SIGNIFICANT_COEFFS - 2;
+		     significance >= channel * SIGNIFICANT_COEFFS;
+		     --significance)
+		    if (fabs(coeff) <= fabs(highest_coeffs[significance].coeff))
 			break;
 		++significance;
-		memmove(highest_coeffs[channel] + significance + 1,
-			highest_coeffs[channel] + significance,
-			sizeof(coefficient_with_index_t) * (SIGNIFICANT_COEFFS - 1 - significance));
-		highest_coeffs[channel][significance].index = index;
-		highest_coeffs[channel][significance].coeff = image[channel + 3 * index];
+		memmove(highest_coeffs + significance + 1,
+			highest_coeffs + significance,
+			sizeof(coefficient_with_index_t) * ((channel + 1) * SIGNIFICANT_COEFFS - 1 - significance));
+		highest_coeffs[significance].index = compute_index(index, channel, sign);
+		highest_coeffs[significance].coeff = coeff;
 	    }
 	}
     }
-
-    for (index = 0; index < SIGNIFICANT_COEFFS; ++index)
-	for (channel = 0; channel < 3; ++channel)
-	    if (highest_coeffs[channel][index].coeff > 0.0)
-		highest_coeffs[channel][index].sign = 1;
-	    else
-		highest_coeffs[channel][index].sign = -1;
 }
 
-float
-weight_function (int channel, int index)
+static float
+weight_function (int index)
 {
-    static float weight_table[3][6] =
+    static float weight_table[NUM_CHANNELS][6] =
     {
 	{ 5.00, 0.83, 1.01, 0.52, 0.47, 0.30 },
 	{ 19.21, 1.26, 0.44, 0.53, 0.28, 0.14 },
 	{ 34, 0.36, 0.45, 0.14, 0.18, 0.27 }
     };
 
-    int i = index % IMAGE_SIZE,
-	j = index / IMAGE_SIZE,
-	bin = MIN(MAX(i, j), 5);
+    int real_index, channel, sign;
+    int i, j, bin;
+
+    uncompute_index(index, &real_index, &channel, &sign);
+
+    i = real_index % IMAGE_SIZE;
+    j = real_index / IMAGE_SIZE;
+    bin = MIN(MAX(i, j), 5);
 
     return weight_table[channel][bin] * weight_factors[channel];
 }
 
-float
-compare_images (search_coefficients_t query[3], float *query_means,
-		search_coefficients_t target[3], float *target_means)
+static int
+compare_indexes_by_weight_descending (const void *p1, const void *p2)
+{
+    const index_t *i1 = (const index_t*)p1, *i2 = (const index_t*)p2;
+
+    if (index_weights[*i1] < index_weights[*i2])
+	return 1;
+    else if (index_weights[*i1] == index_weights[*i2])
+	return 0;
+    return -1;
+}
+
+static void
+compute_index_weights (void)
+{
+    int i;
+
+    for (i = 0; i < NUM_INDEXES; ++i)
+	index_weights[i] = weight_function(i);
+
+    for (i = 0; i < NUM_INDEXES; ++i)
+	weight_ordered_index_to_index[i] = i;
+    qsort(weight_ordered_index_to_index, NUM_INDEXES, sizeof(index_t), compare_indexes_by_weight_descending);
+    for (i = 0; i < NUM_INDEXES; ++i)
+	index_to_weight_ordered_index[weight_ordered_index_to_index[i]] = i;
+}
+
+static float
+compare_images (search_coefficients_t *query, float *query_means,
+		search_coefficients_t *target, float *target_means,
+		float sums[NUM_COEFFS], float best_score)
 {
     float score = 0.0;
+    int i;
+    int j;
     int channel;
 
-    for (channel = 0; channel < 3; ++channel)
-    {
-	int i;
-	int j;
-
-	score += weight_function(channel, 0)
+    for (channel = 0; channel < NUM_CHANNELS; ++channel)
+	score += index_weights[compute_index(0, channel, 0)]
 	    * fabs(query_means[channel] - target_means[channel]) * 0.05;
 
-	j = 0;
-	for (i = 0; i < query[channel].num_positives; ++i)
-	{
-	    while (target[channel].positives[j].index < query[channel].positives[i].index
-		   && j < target[channel].num_positives)
-		++j;
+    j = 0;
+    for (i = 0; i < NUM_COEFFS; ++i)
+    {
+	if (score - sums[i] > best_score)
+	    return 1e99;
 
-	    if (j >= target[channel].num_positives)
-		break;
+	while (target->coeffs[j] < query->coeffs[i] && j < NUM_COEFFS)
+	    ++j;
 
-	    if (target[channel].positives[j].index > query[channel].positives[i].index)
-		continue;
+	if (j >= NUM_COEFFS)
+	    break;
 
-	    score -= target[channel].positives[j].weight;
-	}
+	if (target->coeffs[j] > query->coeffs[i])
+	    continue;
 
-	j = 0;
-	for (i = 0; i < query[channel].num_negatives; ++i)
-	{
-	    while (target[channel].negatives[j].index < query[channel].negatives[i].index
-		   && j < target[channel].num_negatives)
-		++j;
-
-	    if (j >= target[channel].num_negatives)
-		break;
-
-	    if (target[channel].negatives[j].index > query[channel].negatives[i].index)
-		continue;
-
-	    score -= target[channel].negatives[j].weight;
-	}
+	score -= index_weights[weight_ordered_index_to_index[target->coeffs[j]]];
     }
 
     return score;
@@ -495,65 +511,47 @@ add_metapixel (metapixel_t *pixel)
     first_pixel = pixel;
 }
 
-int
-compare_indexes_with_weight (const void *p1, const void *p2)
+static int
+compare_indexes (const void *p1, const void *p2)
 {
-    index_with_weight_t *i1 = (index_with_weight_t*)p1;
-    index_with_weight_t *i2 = (index_with_weight_t*)p2;
+    index_t *i1 = (index_t*)p1;
+    index_t *i2 = (index_t*)p2;
 
-    return i1->index - i2->index;
+    return *i1 - *i2;
 }
 
 void
-generate_search_coeffs (search_coefficients_t search_coeffs[3], coefficient_with_index_t raw_coeffs[3][SIGNIFICANT_COEFFS])
+generate_search_coeffs (search_coefficients_t *search_coeffs, float sums[NUM_COEFFS], coefficient_with_index_t raw_coeffs[NUM_COEFFS])
 {
-    int channel;
+    int i;
+    float sum;
 
-    for (channel = 0; channel < 3; ++channel)
+    for (i = 0; i < NUM_COEFFS; ++i)
+	search_coeffs->coeffs[i] = index_to_weight_ordered_index[raw_coeffs[i].index];
+
+    qsort(search_coeffs->coeffs, NUM_COEFFS, sizeof(index_t), compare_indexes);
+
+    sum = 0.0;
+    for (i = NUM_COEFFS - 1; i >= 0; --i)
     {
-	int i;
-
-	search_coeffs[channel].num_positives = search_coeffs[channel].num_negatives = 0;
-
-	for (i = 0; i < SIGNIFICANT_COEFFS; ++i)
-	{
-	    if (raw_coeffs[channel][i].sign > 0)
-	    {
-		int j = search_coeffs[channel].num_positives++;
-
-		search_coeffs[channel].positives[j].index = raw_coeffs[channel][i].index;
-		search_coeffs[channel].positives[j].weight = weight_function(channel, raw_coeffs[channel][i].index);
-	    }
-	    else
-	    {
-		int j = search_coeffs[channel].num_negatives++;
-
-		search_coeffs[channel].negatives[j].index = raw_coeffs[channel][i].index;
-		search_coeffs[channel].negatives[j].weight = weight_function(channel, raw_coeffs[channel][i].index);
-	    }
-	}
-
-	assert(search_coeffs[channel].num_positives + search_coeffs[channel].num_negatives == SIGNIFICANT_COEFFS);
-
-	qsort(search_coeffs[channel].positives, search_coeffs[channel].num_positives,
-	      sizeof(index_with_weight_t), compare_indexes_with_weight);
-	qsort(search_coeffs[channel].negatives, search_coeffs[channel].num_negatives,
-	      sizeof(index_with_weight_t), compare_indexes_with_weight);
+	sum += index_weights[weight_ordered_index_to_index[search_coeffs->coeffs[i]]];
+	sums[i] = sum;
     }
 }
 
 void
-generate_search_coeffs_for_subimage (search_coefficients_t search_coeffs[3], float means[3], Image *image, int x, int y, int use_crop)
+generate_search_coeffs_for_subimage (search_coefficients_t *search_coeffs, float sums[NUM_COEFFS], float means[NUM_CHANNELS],
+				     Image *image, int x, int y, int use_crop)
 {
     static float *float_image = 0;
 
     RectangleInfo rect;
     Image *subimage, *scaled_image;
     int i;
-    coefficient_with_index_t raw_coeffs[3][SIGNIFICANT_COEFFS];
+    coefficient_with_index_t raw_coeffs[NUM_COEFFS];
 
     if (float_image == 0)
-	float_image = (float*)malloc(sizeof(float) * IMAGE_SIZE * IMAGE_SIZE * 3);
+	float_image = (float*)malloc(sizeof(float) * IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS);
 
     if (use_crop)
     {
@@ -578,9 +576,9 @@ generate_search_coeffs_for_subimage (search_coefficients_t search_coeffs[3], flo
 
 	for (i = 0; i < IMAGE_SIZE * IMAGE_SIZE; ++i)
 	{
-	    float_image[i * 3 + 0] = DownScale(scaled_image->pixels[i].red);
-	    float_image[i * 3 + 1] = DownScale(scaled_image->pixels[i].green);
-	    float_image[i * 3 + 2] = DownScale(scaled_image->pixels[i].blue);
+	    float_image[i * NUM_CHANNELS + 0] = DownScale(scaled_image->pixels[i].red);
+	    float_image[i * NUM_CHANNELS + 1] = DownScale(scaled_image->pixels[i].green);
+	    float_image[i * NUM_CHANNELS + 2] = DownScale(scaled_image->pixels[i].blue);
 	}
     }
     else
@@ -596,9 +594,9 @@ generate_search_coeffs_for_subimage (search_coefficients_t search_coeffs[3], flo
 	for (j = 0; j < IMAGE_SIZE; ++j)
 	    for (i = 0; i < IMAGE_SIZE; ++i)
 	    {
-		float_image[(j * IMAGE_SIZE + i) * 3 + 0] = DownScale(image->pixels[(y + j) * image->columns + x + i].red);
-		float_image[(j * IMAGE_SIZE + i) * 3 + 1] = DownScale(image->pixels[(y + j) * image->columns + x + i].green);
-		float_image[(j * IMAGE_SIZE + i) * 3 + 2] = DownScale(image->pixels[(y + j) * image->columns + x + i].blue);
+		float_image[(j * IMAGE_SIZE + i) * NUM_CHANNELS + 0] = DownScale(image->pixels[(y + j) * image->columns + x + i].red);
+		float_image[(j * IMAGE_SIZE + i) * NUM_CHANNELS + 1] = DownScale(image->pixels[(y + j) * image->columns + x + i].green);
+		float_image[(j * IMAGE_SIZE + i) * NUM_CHANNELS + 2] = DownScale(image->pixels[(y + j) * image->columns + x + i].blue);
 	    }
     }
 
@@ -606,21 +604,21 @@ generate_search_coeffs_for_subimage (search_coefficients_t search_coeffs[3], flo
     decompose_image(float_image);
     find_highest_coefficients(float_image, raw_coeffs);
 
-    generate_search_coeffs(search_coeffs, raw_coeffs);
+    generate_search_coeffs(search_coeffs, sums, raw_coeffs);
 
-    for (i = 0; i < 3; ++i)
+    for (i = 0; i < NUM_CHANNELS; ++i)
 	means[i] = float_image[i];
 }
 
 metapixel_t*
-metapixel_nearest_to (search_coefficients_t search_coeffs[3], float *query_means)
+metapixel_nearest_to (search_coefficients_t *search_coeffs, float sums[NUM_COEFFS], float *query_means)
 {
     float best_score = 1e99;
     metapixel_t *best_fit = 0, *pixel;
 
     for (pixel = first_pixel; pixel != 0; pixel = pixel->next)
     {
-	float score = compare_images(search_coeffs, query_means, pixel->coeffs, pixel->means);
+	float score = compare_images(search_coeffs, query_means, &pixel->coeffs, pixel->means, sums, best_score);
 
 	if (best_fit == 0 || score < best_score)
 	{
@@ -640,7 +638,8 @@ paste_metapixel (metapixel_t *pixel, unsigned char *data, int width, int height,
     unsigned char *pixel_data = read_png_file(pixel->filename, &pixel_width, &pixel_height);
 
     for (i = 0; i < small_height; ++i)
-	memcpy(data + 3 * (x + (y + i) * width), pixel_data + 3 * i * small_width, 3 * small_width);
+	memcpy(data + NUM_CHANNELS * (x + (y + i) * width),
+	       pixel_data + NUM_CHANNELS * i * small_width, NUM_CHANNELS * small_width);
 
     free(pixel_data);
 }
@@ -766,11 +765,13 @@ main (int argc, char *argv[])
     sqrt_of_two = sqrt(2);
     sqrt_of_image_size = sqrt(IMAGE_SIZE);
 
+    compute_index_weights();
+
     if (mode == MODE_PREPARE)
     {
-	float *float_image = (float*)malloc(sizeof(float) * 3 * IMAGE_SIZE * IMAGE_SIZE);
+	float *float_image = (float*)malloc(sizeof(float) * NUM_CHANNELS * IMAGE_SIZE * IMAGE_SIZE);
 	int i, channel;
-	coefficient_with_index_t highest_coeffs[3][SIGNIFICANT_COEFFS];
+	coefficient_with_index_t highest_coeffs[NUM_COEFFS];
 	unsigned char *image_data;
 	char *inimage_name, *outimage_name, *tables_name;
 	Image *image, *scaled;
@@ -811,12 +812,12 @@ main (int argc, char *argv[])
 	TransformRGBImage(scaled, RGBColorspace);
 	UncondenseImage(scaled);
 
-	image_data = (unsigned char*)malloc(3 * small_width * small_height);
+	image_data = (unsigned char*)malloc(NUM_CHANNELS * small_width * small_height);
 	for (i = 0; i < small_width * small_height; ++i)
 	{
-	    image_data[i * 3 + 0] = DownScale(scaled->pixels[i].red);
-	    image_data[i * 3 + 1] = DownScale(scaled->pixels[i].green);
-	    image_data[i * 3 + 2] = DownScale(scaled->pixels[i].blue);
+	    image_data[i * NUM_CHANNELS + 0] = DownScale(scaled->pixels[i].red);
+	    image_data[i * NUM_CHANNELS + 1] = DownScale(scaled->pixels[i].green);
+	    image_data[i * NUM_CHANNELS + 2] = DownScale(scaled->pixels[i].blue);
 	}
 
 	write_png_file(outimage_name, small_width, small_height, image_data);
@@ -836,9 +837,9 @@ main (int argc, char *argv[])
 
 	for (i = 0; i < IMAGE_SIZE * IMAGE_SIZE; ++i)
 	{
-	    float_image[i * 3 + 0] = DownScale(scaled->pixels[i].red);
-	    float_image[i * 3 + 1] = DownScale(scaled->pixels[i].green);
-	    float_image[i * 3 + 2] = DownScale(scaled->pixels[i].blue);
+	    float_image[i * NUM_CHANNELS + 0] = DownScale(scaled->pixels[i].red);
+	    float_image[i * NUM_CHANNELS + 1] = DownScale(scaled->pixels[i].green);
+	    float_image[i * NUM_CHANNELS + 2] = DownScale(scaled->pixels[i].blue);
 	}
 
 	transform_rgb_to_yiq(float_image);
@@ -847,17 +848,11 @@ main (int argc, char *argv[])
 	find_highest_coefficients(float_image, highest_coeffs);
 
 	fprintf(tables_file, "%s\n", outimage_name);
-	for (channel = 0; channel < 3; ++channel)
+	for (channel = 0; channel < NUM_CHANNELS; ++channel)
 	    fprintf(tables_file, "%f ", float_image[channel]);
 	fprintf(tables_file, "\n");
-	for (channel = 0; channel < 3; ++channel)
-	{
-	    for (i = 0; i < SIGNIFICANT_COEFFS; ++i)
-		fprintf(tables_file, "%d %d ",
-			highest_coeffs[channel][i].index,
-			highest_coeffs[channel][i].sign);
-	    fprintf(tables_file, "\n");
-	}
+	for (i = 0; i < NUM_COEFFS; ++i)
+	    fprintf(tables_file, "%d ", highest_coeffs[i].index);
 	fprintf(tables_file, "\n");
 
 	fclose(tables_file);
@@ -878,25 +873,21 @@ main (int argc, char *argv[])
 
 	do
 	{
-	    coefficient_with_index_t coeffs[3][SIGNIFICANT_COEFFS];
+	    coefficient_with_index_t coeffs[NUM_COEFFS];
 	    metapixel_t *pixel = (metapixel_t*)malloc(sizeof(metapixel_t));
 	    int channel;
 	    int i;
+	    float sums[NUM_COEFFS];
 
 	    scanf("%s", pixel->filename);
 	    if (feof(stdin))
 		break;
 	    for (channel = 0; channel < 3; ++channel)
 		scanf("%f", &pixel->means[channel]);
-	    for (channel = 0; channel < 3; ++channel)
-	    {
-		for (i = 0; i < SIGNIFICANT_COEFFS; ++i)
-		    scanf("%d %d",
-			  &coeffs[channel][i].index,
-			  &coeffs[channel][i].sign);
-	    }
+	    for (i = 0; i < NUM_COEFFS; ++i)
+		scanf("%d", &coeffs[i].index);
 
-	    generate_search_coeffs(pixel->coeffs, coeffs);
+	    generate_search_coeffs(&pixel->coeffs, sums, coeffs);
 
 	    add_metapixel(pixel);
 	} while (!feof(stdin));
@@ -930,7 +921,7 @@ main (int argc, char *argv[])
 	    use_crop = 0;
 	}
 
-	out_image_data = (unsigned char*)malloc(in_image_width * in_image_height * 3);
+	out_image_data = (unsigned char*)malloc(in_image_width * in_image_height * NUM_CHANNELS);
 
 	if (!collage)
 	{
@@ -942,14 +933,15 @@ main (int argc, char *argv[])
 	    for (y = 0; y < in_image_height / small_height; ++y)
 		for (x = 0; x < in_image_width / small_width; ++x)
 		{
-		    search_coefficients_t search_coeffs[3];
+		    search_coefficients_t search_coeffs;
 		    metapixel_t *pixel;
 		    float means[3];
+		    float sums[NUM_COEFFS];
 
-		    generate_search_coeffs_for_subimage(search_coeffs, means, image,
+		    generate_search_coeffs_for_subimage(&search_coeffs, sums, means, image,
 							x * small_width, y * small_height, use_crop);
 
-		    pixel = metapixel_nearest_to(search_coeffs, means);
+		    pixel = metapixel_nearest_to(&search_coeffs, sums, means);
 		    paste_metapixel(pixel, out_image_data, in_image_width, in_image_height, x * small_width, y * small_height);
 
 		    printf(".");
@@ -968,9 +960,10 @@ main (int argc, char *argv[])
 	    {
 		int i, j;
 		int x, y;
-		search_coefficients_t search_coeffs[3];
+		search_coefficients_t search_coeffs;
+		float sums[NUM_COEFFS];
 		metapixel_t *pixel;
-		float means[3];
+		float means[NUM_CHANNELS];
 
 		while (1)
 		{
@@ -994,9 +987,9 @@ main (int argc, char *argv[])
 		}
 
 	    out:
-		generate_search_coeffs_for_subimage(search_coeffs, means, image, x, y, use_crop);
+		generate_search_coeffs_for_subimage(&search_coeffs, sums, means, image, x, y, use_crop);
 
-		pixel = metapixel_nearest_to(search_coeffs, means);
+		pixel = metapixel_nearest_to(&search_coeffs, sums, means);
 		paste_metapixel(pixel, out_image_data, in_image_width, in_image_height, x, y);
 
 		for (j = 0; j < small_height; ++j)

@@ -21,3 +21,17 @@ schani.png (816 pixels, 5924 images) new -O9
   sys     0m0.920s
 
   0.199 s/pixel
+
+
+
+
+
+
+semiharmless / christy2 -O9
+181.03user 2.64system 6:34.00elapsed 46%CPU (0avgtext+0avgdata 0maxresident)k
+
+semiharmless / christy2 -O9 + weighted_index indirection
+192.66user 2.90system 6:55.71elapsed 47%CPU (0avgtext+0avgdata 0maxresident)k
+
+semiharmless / christy2 -O9 + sums optimization
+78.50user 1.70system 1:38.83elapsed 81%CPU (0avgtext+0avgdata 0maxresident)k

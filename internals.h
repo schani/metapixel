@@ -125,6 +125,7 @@ compare_func_t metric_compare_func_for_metric (metric_t *metric);
 match_t search_metapixel_nearest_to (int num_libraries, library_t **libraries,
 				     coeffs_t *coeffs, metric_t *metric, int x, int y,
 				     metapixel_t **forbidden, int num_forbidden,
+				     unsigned int forbid_reconstruction_radius,
 				     int (*validity_func) (void*, metapixel_t*, unsigned int, int, int),
 				     void *validity_func_data);
 void search_n_metapixel_nearest_to (int num_libraries, library_t **libraries,

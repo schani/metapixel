@@ -94,11 +94,16 @@ struct _metapixel_t
     unsigned int width;
     unsigned int height;
 
-    float aspect_ratio;		/* aspect ratio of the original
-				   (unscaled) image, given by
-				   width/height */
+    /* Aspect ratio of the original (unscaled) image, given by
+       width/height */
+    float aspect_ratio;		
 
-    int enabled;		/* always true in this release */
+    /* These are the positions (in metapixel-coordinates) of the
+       metapixel in the original image if the metapixel is from an
+       antimosaic.  Otherwise, both are negative. */
+    int anti_x, anti_y;		
+
+    int enabled;		/* Always true in this release */
 
     /* these three are very internal */
     /*
@@ -111,7 +116,7 @@ struct _metapixel_t
 
     metapixel_t *next;		/* next in library */
 
-    /* the following is only used by the command line metapixel and
+    /* The following is only used by the command line metapixel and
        will be removed when that has been rewritten. */
     CLIENT_METAPIXEL_DATA_T *client_data;
 };

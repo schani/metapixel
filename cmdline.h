@@ -40,7 +40,6 @@
 typedef struct
 {
     int flag;
-    int anti_x, anti_y;	       /* only used if from an antimosaic */
 } client_metapixel_data_t;
 
 #define CLIENT_METAPIXEL_DATA_T client_metapixel_data_t

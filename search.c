@@ -40,6 +40,7 @@ match_t
 search_metapixel_nearest_to (int num_libraries, library_t **libraries,
 			     coeffs_t *coeffs, metric_t *metric, int x, int y,
 			     metapixel_t **forbidden, int num_forbidden,
+			     unsigned int forbid_reconstruction_radius,
 			     int (*validity_func) (void*, metapixel_t*, unsigned int, int, int),
 			     void *validity_func_data)
 {
@@ -53,13 +54,10 @@ search_metapixel_nearest_to (int num_libraries, library_t **libraries,
     {
 	float score;
 
-	/* FIXME: implement this somehow! */
-	/*
-	if (pixel->client_data != 0
-	    && (utils_manhattan_distance(x, y, pixel->client_data->anti_x, pixel->client_data->anti_y)
+	if (pixel->anti_x >= 0 && pixel->anti_y >= 0
+	    && (utils_manhattan_distance(x, y, pixel->anti_x, pixel->anti_y)
 		< forbid_reconstruction_radius))
 	    continue;
-	*/
 
 	score = compare_func(coeffs, pixel, best_score, metric->weights);
 

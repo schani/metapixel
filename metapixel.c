@@ -138,6 +138,7 @@ metapixel_new (const char *name, unsigned int scaled_width, unsigned int scaled_
     metapixel->height = scaled_height;
     metapixel->aspect_ratio = aspect_ratio;
     metapixel->enabled = 1;
+    metapixel->anti_x = metapixel->anti_y = -1;
 
     return metapixel;
 }

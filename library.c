@@ -135,7 +135,7 @@ write_metapixel_metadata (metapixel_t *metapixel, FILE *tables_file)
 	    fprintf(tables_file, " %d", (int)metapixel->subpixels[channel * NUM_SUBPIXELS + i]);
 	fprintf(tables_file, ")");
     }
-    fprintf(tables_file, "))\n");
+    fprintf(tables_file, ") (anti %d %d))\n", metapixel->anti_x, metapixel->anti_y);
 }
 
 static int
@@ -163,12 +163,13 @@ read_tables (const char *library_dir, library_t *library)
 
     pattern = lisp_read_from_string("(small-image #?(string) #?(string) (size #?(integer) #?(integer) #?(real))"
 				    "  (wavelet (means #?(real) #?(real) #?(real)) (coeffs . #?(list)))"
-				    "  (subpixel (y . #?(list)) (i . #?(list)) (q . #?(list))))");
+				    "  (subpixel (y . #?(list)) (i . #?(list)) (q . #?(list)))"
+				    "  (anti #?(integer) #?(integer)))");
     assert(pattern != 0
 	   && lisp_type(pattern) != LISP_TYPE_EOF
 	   && lisp_type(pattern) != LISP_TYPE_PARSE_ERROR);
     assert(lisp_compile_pattern(&pattern, &num_subs));
-    assert(num_subs == 12);
+    assert(num_subs == 14);
 
     init_pools(&pools);
     init_pools_allocator(&allocator, &pools);
@@ -182,7 +183,7 @@ read_tables (const char *library_dir, library_t *library)
         type = lisp_type(obj);
         if (type != LISP_TYPE_EOF && type != LISP_TYPE_PARSE_ERROR)
         {
-            lisp_object_t *vars[12];
+            lisp_object_t *vars[14];
 
             if (lisp_match_pattern(pattern, obj, vars, num_subs))
 	    {
@@ -197,6 +198,9 @@ read_tables (const char *library_dir, library_t *library)
 
 		pixel->filename = strdup(lisp_string(vars[1]));
 		assert(pixel->filename != 0);
+
+		pixel->anti_x = lisp_integer(vars[12]);
+		pixel->anti_y = lisp_integer(vars[13]);
 
 		pixel->library = library;
 

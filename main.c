@@ -269,7 +269,8 @@ generate_local_classic (classic_reader_t *reader, int min_distance, metric_t *me
 	    generate_search_coeffs_for_classic_subimage(reader, x, &coeffs, metric);
 
 	    match = search_metapixel_nearest_to(num_libraries, libraries,
-						&coeffs, metric, x, y, neighborhood, neighborhood_size, 0, 0);
+						&coeffs, metric, x, y, neighborhood, neighborhood_size,
+						forbid_reconstruction_radius, 0, 0);
 
 	    if (match.pixel == 0)
 	    {
@@ -371,10 +372,11 @@ generate_global_classic (classic_reader_t *reader, metric_t *metric)
 	{
 	    int index = matches[i].y * metawidth + matches[i].x;
 
-	    if (!ignore_forbidden && matches[i].pixel->client_data != 0
+	    if (!ignore_forbidden
+		&& matches[i].pixel->anti_x >= 0 && matches[i].pixel->anti_y >= 0
 		&& (utils_manhattan_distance(matches[i].x, matches[i].y,
-					     matches[i].pixel->client_data->anti_x,
-					     matches[i].pixel->client_data->anti_y)
+					     matches[i].pixel->anti_x,
+					     matches[i].pixel->anti_y)
 		    < forbid_reconstruction_radius))
 		continue;
 

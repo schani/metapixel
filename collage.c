@@ -159,8 +159,9 @@ make_collage_mosaic (int num_libraries, library_t **libraries, bitmap_t *in_bitm
     out:
 	metric_generate_coeffs_for_subimage(&coeffs, in_bitmap, x, y, small_width, small_height, metric);
 
-	match = search_metapixel_nearest_to(num_libraries, libraries,
-					    &coeffs, metric, x, y, 0, 0, pixel_valid_for_collage_position, &valid_data);
+	match = search_metapixel_nearest_to(num_libraries, libraries, &coeffs, metric, x, y,
+					    0, 0, 0,
+					    pixel_valid_for_collage_position, &valid_data);
 	/* FIXME: match.pixel can be zero! */
 	assert(match.pixel != 0);
 	if (!metapixel_paste(match.pixel, out_bitmap, x, y, small_width, small_height))

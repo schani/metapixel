@@ -5,7 +5,7 @@
  *
  * metapixel
  *
- * Copyright (C) 2000 Mark Probst
+ * Copyright (C) 2000-2004 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -25,7 +25,7 @@
 #ifndef __RWJPEG_H__
 #define __RWJPEG_H__
 
-void* open_jpeg_file (char *filename, int *width, int *height);
+void* open_jpeg_file (const char *filename, int *width, int *height);
 void jpeg_read_lines (void *data, unsigned char *lines, int num_lines);
 void jpeg_free_data (void *data);
 

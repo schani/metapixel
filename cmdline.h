@@ -34,39 +34,11 @@
 #define DEFAULT_CLASSIC_MIN_DISTANCE     5
 #define DEFAULT_COLLAGE_MIN_DISTANCE   256
 
-#define NUM_CHANNELS        3
-
-#define IMAGE_SIZE          64
-#define ROW_LENGTH          (IMAGE_SIZE * NUM_CHANNELS)
-#define SIGNIFICANT_COEFFS  40
-
-#define NUM_COEFFS          (NUM_CHANNELS * SIGNIFICANT_COEFFS)
-
-#define NUM_INDEXES         (IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS * 2)
-
-#define NUM_SUBPIXEL_ROWS_COLS       5
-#define NUM_SUBPIXELS                (NUM_SUBPIXEL_ROWS_COLS * NUM_SUBPIXEL_ROWS_COLS)
-
 #define METRIC_WAVELET  1
 #define METRIC_SUBPIXEL 2
 
 #define SEARCH_LOCAL    1
 #define SEARCH_GLOBAL   2
-
-#define TABLES_FILENAME "tables.mxt"
-
-typedef struct
-{
-    int index;
-    float coeff;
-} coefficient_with_index_t;
-
-typedef unsigned short index_t;
-
-typedef struct
-{
-    index_t coeffs[NUM_COEFFS];
-} search_coefficients_t;
 
 typedef struct _position_t
 {
@@ -74,19 +46,16 @@ typedef struct _position_t
     struct _position_t *next;
 } position_t;
 
-typedef struct _metapixel_t
+typedef struct
 {
-    char *filename;
-    search_coefficients_t coeffs;
-    float means[NUM_CHANNELS];
-    unsigned char subpixels[NUM_SUBPIXELS * NUM_CHANNELS];
     int flag;
-    unsigned char *data;	/* only used if from an antimosaic or if benchmarking rendering */
-    int width, height;		/* only valid if data != 0 */
-    int anti_x, anti_y;		/* only used if from an antimosaic */
+    int anti_x, anti_y;	       /* only used if from an antimosaic */
     position_t *collage_positions; /* only used in collages */
-    struct _metapixel_t *next;
-} metapixel_t;
+} client_metapixel_data_t;
+
+#define CLIENT_METAPIXEL_DATA_T client_metapixel_data_t
+
+#include "api.h"
 
 typedef struct
 {
@@ -112,16 +81,18 @@ typedef struct
     int metaheight;
     int y;
     int num_lines;
-    unsigned char *in_image_data;
+    bitmap_t *in_image;
 } classic_reader_t;
 
 typedef union
 {
     struct
     {
-	search_coefficients_t coeffs;
+	/*
+	wavelet_coefficients_t coeffs;
 	float means[NUM_CHANNELS];
 	float sums[NUM_COEFFS];
+	*/
     } wavelet;
     struct
     {
@@ -143,6 +114,6 @@ typedef struct _string_list_t
     struct _string_list_t *next;
 } string_list_t;
 
-typedef float(*compare_func_t)(coeffs_t*, metapixel_t*, float);
+typedef float (*compare_func_t) (coeffs_t*, metapixel_t*, float);
 
 #endif

@@ -1,5 +1,5 @@
 /*
- * metapixel.c
+ * main.c
  *
  * metapixel
  *
@@ -37,25 +37,19 @@
 #include "writeimage.h"
 #include "lispreader.h"
 
-#include "metapixel.h"
+#include "cmdline.h"
 
-#ifndef MIN
-#define MIN(a,b)           ((a)<(b)?(a):(b))
-#endif
-#ifndef MAX
-#define MAX(a,b)           ((a)>(b)?(a):(b))
-#endif
+#define FOR_EACH_METAPIXEL(p)   { unsigned int library_index; \
+                                  for (library_index = 0; library_index < num_libraries; ++library_index) { \
+                                      metapixel_t *p; \
+                                      for (p = libraries[library_index]->metapixels; p != 0; p = p->next)
+#define END_FOR_EACH_METAPIXEL  } }
 
-static int index_order[IMAGE_SIZE * IMAGE_SIZE];
 
-static metapixel_t *first_pixel = 0;
-static int num_metapixels = 0;
+static unsigned int num_metapixels = 0;
 
-static float sqrt_of_two, sqrt_of_image_size;
-
-static float index_weights[NUM_INDEXES];
-static index_t weight_ordered_index_to_index[NUM_INDEXES];
-static index_t index_to_weight_ordered_index[NUM_INDEXES];
+static library_t **libraries = 0;
+static unsigned int num_libraries = 0;
 
 /* default settings */
 
@@ -79,6 +73,16 @@ static int forbid_reconstruction_radius;
 
 static int benchmark_rendering = 0;
 
+static char*
+strip_path (char *name)
+{
+    char *p = strrchr(name, '/');
+
+    if (p == 0)
+        return name;
+    return p + 1;
+}
+
 static string_list_t*
 string_list_prepend_copy (string_list_t *lst, const char *str)
 {
@@ -90,428 +94,32 @@ string_list_prepend_copy (string_list_t *lst, const char *str)
     return new;
 }
 
-static char*
-strip_path (char *name)
+static unsigned int
+string_list_length (string_list_t *lst)
 {
-    char *p = strrchr(name, '/');
+    unsigned int l = 0;
 
-    if (p == 0)
-	return name;
-    return p + 1;
-}
-
-static metapixel_t*
-new_metapixel (void)
-{
-    metapixel_t *pixel = (metapixel_t*)malloc(sizeof(metapixel_t));
-
-    assert(pixel != 0);
-
-    memset(pixel, 0, sizeof(metapixel_t));
-
-    return pixel;
-}
-
-static unsigned char*
-scale_image (unsigned char *image, int image_width, int image_height, int x, int y,
-	     int width, int height, int new_width, int new_height)
-{
-    unsigned char *new_image = (unsigned char*)malloc(new_width * new_height * NUM_CHANNELS);
-    unsigned char *image_start = image + (x + y * image_width) * NUM_CHANNELS;
-
-    zoom_image(new_image, image_start, get_filter(FILTER_MITCHELL), NUM_CHANNELS,
-	       new_width, new_height, new_width * NUM_CHANNELS,
-	       width, height, image_width * NUM_CHANNELS);
-
-    return new_image;
-}
-
-void
-alpha_compose (unsigned char *dst, int width, int height, unsigned char *src, int perc)
-{
-    int i;
-
-    for (i = 0; i < width * height * NUM_CHANNELS; ++i)
-	dst[i] = dst[i] * (100 - perc) / 100 + src[i] * perc / 100;
-}
-
-void
-generate_index_order (void)
-{
-    int index = 0,
-	begin = 0,
-	row = 0,
-	col = 0,
-	first_half = 1;
-
-    do
+    while (lst != 0)
     {
-	index_order[index++] = col + IMAGE_SIZE * row;
+	++l;
+	lst = lst->next;
+    }
 
-	if (first_half)
-	{
-	    if (row == 0)
-	    {
-		if (begin == IMAGE_SIZE - 1)
-		{
-		    first_half = 0;
-		    col = begin = 1;
-		    row = IMAGE_SIZE - 1;
-		}
-		else
-		{
-		    ++begin;
-		    row = begin;
-		    col = 0;
-		}
-	    }
-	    else
-	    {
-		++col;
-		--row;
-	    }
-	}
-	else
-	{
-	    if (col == IMAGE_SIZE - 1)
-	    {
-		++begin;
-		col = begin;
-		row = IMAGE_SIZE - 1;
-	    }
-	    else
-	    {
-		++col;
-		--row;
-	    }
-	}
-    } while (index < IMAGE_SIZE * IMAGE_SIZE);
-}
-
-static int
-compute_index (int real_index, int channel, int sign)
-{
-    return real_index + (channel + (sign > 0 ? 1 : 0) * NUM_CHANNELS) * IMAGE_SIZE * IMAGE_SIZE;
+    return l;
 }
 
 static void
-uncompute_index (int index, int *real_index, int *channel, int *sign)
+assert_client_data (metapixel_t *pixel)
 {
-    *real_index = index % (IMAGE_SIZE * IMAGE_SIZE);
-    *channel = (index / (IMAGE_SIZE * IMAGE_SIZE)) % NUM_CHANNELS;
-    *sign = (index / (NUM_CHANNELS * IMAGE_SIZE * IMAGE_SIZE)) ? 1 : -1;
-}
-
-void
-cut_last_coefficients (float *image, int channel, int howmany)
-{
-    int i;
-
-    for (i = IMAGE_SIZE * IMAGE_SIZE - howmany; i < IMAGE_SIZE * IMAGE_SIZE; ++i)
-	image[index_order[i] * NUM_CHANNELS + channel] = 0.0;
-}
-
-void
-transform_rgb_to_yiq (float *image, int num_pixels)
-{
-    const static Matrix3D conversion_matrix =
+    if (pixel->client_data == 0)
     {
-	{ 0.299, 0.587, 0.114 },
-	{ 0.596, -0.275, -0.321 },
-	{ 0.212, -0.528, 0.311 }
-    };
-
-    int i;
-
-    for (i = 0; i < num_pixels; ++i)
-    {
-	Vector3D rgb_vec,
-	    yiq_vec;
-
-	InitVector3D(&rgb_vec,
-		     image[NUM_CHANNELS * i + 0],
-		     image[NUM_CHANNELS * i + 1],
-		     image[NUM_CHANNELS * i + 2]);
-	MultMatrixVector3D(&yiq_vec, &conversion_matrix, &rgb_vec);
-	image[NUM_CHANNELS * i + 0] = yiq_vec.x;
-	image[NUM_CHANNELS * i + 1] = yiq_vec.y / 1.192 + 127.5;
-	image[NUM_CHANNELS * i + 2] = yiq_vec.z / 1.051 + 128.106565176;
+	pixel->client_data = (client_metapixel_data_t*)malloc(sizeof(client_metapixel_data_t));
+	assert(pixel->client_data != 0);
+	memset(pixel->client_data, 0, sizeof(client_metapixel_data_t));
     }
 }
 
-void
-transform_yiq_to_rgb (float *image)
-{
-    const static Matrix3D conversion_matrix =
-    {
-	{ 1.00308929854,  0.954849063112,   0.61785970812 },
-	{ 0.996776058337, -0.270706233074, -0.644788332692 },
-	{ 1.00849783766,   -1.1104851847,   1.69956753125 }
-    };
-
-    int i;
-
-    for (i = 0; i < IMAGE_SIZE * IMAGE_SIZE; ++i)
-    {
-	Vector3D rgb_vec,
-	    yiq_vec;
-
-	InitVector3D(&yiq_vec,
-		     image[NUM_CHANNELS * i + 0],
-		     image[NUM_CHANNELS * i + 1] - 127.5,
-		     image[NUM_CHANNELS * i + 2] - 127.5);
-	MultMatrixVector3D(&rgb_vec, &conversion_matrix, &yiq_vec);
-	image[NUM_CHANNELS * i + 0] = rgb_vec.x;
-	image[NUM_CHANNELS * i + 1] = rgb_vec.y;
-	image[NUM_CHANNELS * i + 2] = rgb_vec.z;
-    }
-}
-
-void
-transpose_image (float *old_image, float *new_image)
-{
-    int i,
-	j,
-	channel;
-
-    for (i = 0; i < IMAGE_SIZE; ++i)
-	for (j = 0; j < IMAGE_SIZE; ++j)
-	    for (channel = 0; channel < NUM_CHANNELS; ++channel)
-		new_image[channel + (i + j * IMAGE_SIZE) * NUM_CHANNELS] =
-		    old_image[channel + (j + i * IMAGE_SIZE) * NUM_CHANNELS];
-}
-
-void
-decompose_row (float *row)
-{
-    int h = IMAGE_SIZE,
-	i;
-    float new_row[NUM_CHANNELS * IMAGE_SIZE];
-
-    for (i = 0; i < NUM_CHANNELS * IMAGE_SIZE; ++i)
-	row[i] = row[i] / sqrt_of_image_size;
-
-    while (h > 1)
-    {
-	h = h / 2;
-	for (i = 0; i < h; ++i)
-	{
-	    int channel;
-
-	    for (channel = 0; channel < NUM_CHANNELS; ++channel)
-	    {
-		float val1 = row[channel + 2 * i * NUM_CHANNELS],
-		    val2 = row[channel + (2 * i + 1) * NUM_CHANNELS];
-
-		new_row[channel + i * NUM_CHANNELS] = (val1 + val2) / sqrt_of_two;
-		new_row[channel + (h + i) * NUM_CHANNELS] = (val1 - val2) / sqrt_of_two;
-	    }
-	}
-	memcpy(row, new_row, sizeof(float) * NUM_CHANNELS * h * 2);
-    }
-}
-
-void
-decompose_column (float *column)
-{
-    int h = IMAGE_SIZE,
-	i,
-	channel;
-    float new_column[ROW_LENGTH];
-
-    for (i = 0; i < IMAGE_SIZE; ++i)
-	for (channel = 0; channel < NUM_CHANNELS; ++channel)
-	    column[channel + i * ROW_LENGTH] =
-		column[channel + i * ROW_LENGTH] / sqrt_of_image_size;
-
-    while (h > 1)
-    {
-	h = h / 2;
-	for (i = 0; i < h; ++i)
-	{
-	    for (channel = 0; channel < NUM_CHANNELS; ++channel)
-	    {
-		float val1 = column[channel + (2 * i) * ROW_LENGTH],
-		    val2 = column[channel + (2 * i + 1) * ROW_LENGTH];
-
-		new_column[channel + i * NUM_CHANNELS] = (val1 + val2) / sqrt_of_two;
-		new_column[channel + (h + i) * NUM_CHANNELS] = (val1 - val2) / sqrt_of_two;
-	    }
-	}
-
-	for (i = 0; i < h * 2; ++i)
-	    for (channel = 0; channel < NUM_CHANNELS; ++channel)
-		column[channel + i * ROW_LENGTH] = new_column[channel + i * NUM_CHANNELS];
-    }
-}
-
-void
-decompose_image (float *image)
-{
-    int row;
-
-    for (row = 0; row < IMAGE_SIZE; ++row)
-	decompose_row(image + NUM_CHANNELS * IMAGE_SIZE * row);
-    for (row = 0; row < IMAGE_SIZE; ++row)
-	decompose_column(image + NUM_CHANNELS * row);
-}
-
-void
-compose_row (float *row)
-{
-    int h = 1,
-	i;
-    float new_row[NUM_CHANNELS * IMAGE_SIZE];
-
-    memcpy(new_row, row, sizeof(float) * NUM_CHANNELS * IMAGE_SIZE);
-    while (h < IMAGE_SIZE)
-    {
-	for (i = 0; i < h; ++i)
-	{
-	    int channel;
-
-	    for (channel = 0; channel < NUM_CHANNELS; ++channel)
-	    {
-		float val1 = row[channel + i * NUM_CHANNELS],
-		    val2 = row[channel + (h + i) * NUM_CHANNELS];
-
-		new_row[channel + 2 * i * NUM_CHANNELS] = (val1 + val2) / sqrt_of_two;
-		new_row[channel + (2 * i + 1) * NUM_CHANNELS] = (val1 - val2) / sqrt_of_two;
-	    }
-	}
-	memcpy(row, new_row, sizeof(float) * NUM_CHANNELS * IMAGE_SIZE);
-	h = h * 2;
-    }
-
-    for (i = 0; i < NUM_CHANNELS * IMAGE_SIZE; ++i)
-	row[i] = row[i] * sqrt_of_image_size;
-}
-
-void
-compose_image (float *image)
-{
-    int row;
-    float *transposed_image = (float*)malloc(sizeof(float) * 3 * IMAGE_SIZE * IMAGE_SIZE);
-
-    transpose_image(image, transposed_image);
-    for (row = 0; row < IMAGE_SIZE; ++row)
-	compose_row(transposed_image + NUM_CHANNELS * IMAGE_SIZE * row);
-    transpose_image(transposed_image, image);
-    for (row = 0; row < IMAGE_SIZE; ++row)
-	compose_row(image + NUM_CHANNELS * IMAGE_SIZE * row);
-
-    free(transposed_image);
-}
-
-int
-compare_coeffs_with_index (const void *p1, const void *p2)
-{
-    const coefficient_with_index_t *coeff1 = (const coefficient_with_index_t*)p1;
-    const coefficient_with_index_t *coeff2 = (const coefficient_with_index_t*)p2;
-
-    if (fabs(coeff1->coeff) < fabs(coeff2->coeff))
-	return 1;
-    else if (fabs(coeff1->coeff) == fabs(coeff2->coeff))
-	return 0;
-    return -1;
-}
-
-void
-find_highest_coefficients (float *image, coefficient_with_index_t highest_coeffs[NUM_COEFFS])
-{
-    int index, channel;
-
-    for (channel = 0; channel < NUM_CHANNELS; ++channel)
-    {
-	for (index = 1; index < SIGNIFICANT_COEFFS + 1; ++index)
-	{
-	    float coeff = image[channel + NUM_CHANNELS * index];
-	    int sign = coeff > 0.0 ? 1 : -1;
-
-	    highest_coeffs[index - 1 + channel * SIGNIFICANT_COEFFS].index = compute_index(index, channel, sign);
-	    highest_coeffs[index - 1 + channel * SIGNIFICANT_COEFFS].coeff = coeff;
-	}
-
-	qsort(highest_coeffs + channel * SIGNIFICANT_COEFFS, SIGNIFICANT_COEFFS,
-	      sizeof(coefficient_with_index_t), compare_coeffs_with_index);
-    }
-
-    for (index = SIGNIFICANT_COEFFS + 1; index < IMAGE_SIZE * IMAGE_SIZE; ++index)
-    {
-	for (channel = 0; channel < NUM_CHANNELS; ++channel)
-	{
-	    float coeff = image[channel + NUM_CHANNELS * index];
-
-	    if (fabs(coeff) > fabs(highest_coeffs[(channel + 1) * SIGNIFICANT_COEFFS - 1].coeff))
-	    {
-		int significance;
-		int sign = coeff > 0.0 ? 1 : -1;
-
-		for (significance = (channel + 1) * SIGNIFICANT_COEFFS - 2;
-		     significance >= channel * SIGNIFICANT_COEFFS;
-		     --significance)
-		    if (fabs(coeff) <= fabs(highest_coeffs[significance].coeff))
-			break;
-		++significance;
-		memmove(highest_coeffs + significance + 1,
-			highest_coeffs + significance,
-			sizeof(coefficient_with_index_t) * ((channel + 1) * SIGNIFICANT_COEFFS - 1 - significance));
-		highest_coeffs[significance].index = compute_index(index, channel, sign);
-		highest_coeffs[significance].coeff = coeff;
-	    }
-	}
-    }
-}
-
-static float
-weight_function (int index)
-{
-    static float weight_table[NUM_CHANNELS][6] =
-    {
-	{ 5.00, 0.83, 1.01, 0.52, 0.47, 0.30 },
-	{ 19.21, 1.26, 0.44, 0.53, 0.28, 0.14 },
-	{ 34, 0.36, 0.45, 0.14, 0.18, 0.27 }
-    };
-
-    int real_index, channel, sign;
-    int i, j, bin;
-
-    uncompute_index(index, &real_index, &channel, &sign);
-
-    i = real_index % IMAGE_SIZE;
-    j = real_index / IMAGE_SIZE;
-    bin = MIN(MAX(i, j), 5);
-
-    return weight_table[channel][bin] * weight_factors[channel];
-}
-
-static int
-compare_indexes_by_weight_descending (const void *p1, const void *p2)
-{
-    const index_t *i1 = (const index_t*)p1, *i2 = (const index_t*)p2;
-
-    if (index_weights[*i1] < index_weights[*i2])
-	return 1;
-    else if (index_weights[*i1] == index_weights[*i2])
-	return 0;
-    return -1;
-}
-
-static void
-compute_index_weights (void)
-{
-    int i;
-
-    for (i = 0; i < NUM_INDEXES; ++i)
-	index_weights[i] = weight_function(i);
-
-    for (i = 0; i < NUM_INDEXES; ++i)
-	weight_ordered_index_to_index[i] = i;
-    qsort(weight_ordered_index_to_index, NUM_INDEXES, sizeof(index_t), compare_indexes_by_weight_descending);
-    for (i = 0; i < NUM_INDEXES; ++i)
-	index_to_weight_ordered_index[weight_ordered_index_to_index[i]] = i;
-}
-
+/*
 static float
 wavelet_compare (coeffs_t *coeffs, metapixel_t *pixel, float best_score)
 {
@@ -549,6 +157,7 @@ wavelet_compare (coeffs_t *coeffs, metapixel_t *pixel, float best_score)
 
     return score;
 }
+*/
 
 static float
 subpixel_compare (coeffs_t *coeffs, metapixel_t *pixel, float best_score)
@@ -576,50 +185,15 @@ subpixel_compare (coeffs_t *coeffs, metapixel_t *pixel, float best_score)
 }
 
 void
-add_metapixel (metapixel_t *pixel)
-{
-    pixel->next = first_pixel;
-    first_pixel = pixel;
-    ++num_metapixels;
-}
-
-static int
-compare_indexes (const void *p1, const void *p2)
-{
-    index_t *i1 = (index_t*)p1;
-    index_t *i2 = (index_t*)p2;
-
-    return *i1 - *i2;
-}
-
-void
-generate_search_coeffs (search_coefficients_t *search_coeffs, float sums[NUM_COEFFS],
-			coefficient_with_index_t raw_coeffs[NUM_COEFFS])
-{
-    int i;
-    float sum;
-
-    for (i = 0; i < NUM_COEFFS; ++i)
-	search_coeffs->coeffs[i] = index_to_weight_ordered_index[raw_coeffs[i].index];
-
-    qsort(search_coeffs->coeffs, NUM_COEFFS, sizeof(index_t), compare_indexes);
-
-    sum = 0.0;
-    for (i = NUM_COEFFS - 1; i >= 0; --i)
-    {
-	sum += index_weights[weight_ordered_index_to_index[search_coeffs->coeffs[i]]];
-	sums[i] = sum;
-    }
-}
-
-void
-generate_search_coeffs_for_subimage (coeffs_t *coeffs, unsigned char *image_data, int image_width, int image_height,
+generate_search_coeffs_for_subimage (coeffs_t *coeffs, bitmap_t *bitmap,
 				     int x, int y, int width, int height, int metric)
 {
+    /* FIXME: not reentrant */
     static float *float_image = 0;
 
     if (metric == METRIC_WAVELET)
     {
+	/*
 	coefficient_with_index_t raw_coeffs[NUM_COEFFS];
 	int i;
 
@@ -657,23 +231,38 @@ generate_search_coeffs_for_subimage (coeffs_t *coeffs, unsigned char *image_data
 
 	for (i = 0; i < NUM_CHANNELS; ++i)
 	    coeffs->wavelet.means[i] = float_image[i];
+	*/
     }
     else if (metric == METRIC_SUBPIXEL)
     {
-	unsigned char *scaled_data;
+	bitmap_t *sub_bitmap, *scaled_bitmap;
 	int i;
 	int channel;
 
 	if (float_image == 0)
 	    float_image = (float*)malloc(sizeof(float) * NUM_SUBPIXELS * NUM_CHANNELS);
+	assert(float_image != 0);
 
-	scaled_data = scale_image(image_data, image_width, image_height, x, y, width, height,
-				  NUM_SUBPIXEL_ROWS_COLS, NUM_SUBPIXEL_ROWS_COLS);
+	sub_bitmap = bitmap_sub(bitmap, x, y, width, height);
+	assert(sub_bitmap != 0);
+
+	//bitmap_write(sub_bitmap, "/tmp/sub.png");
+
+	scaled_bitmap = bitmap_scale(sub_bitmap, NUM_SUBPIXEL_ROWS_COLS, NUM_SUBPIXEL_ROWS_COLS, FILTER_MITCHELL);
+	assert(scaled_bitmap != 0);
+
+	bitmap_free(sub_bitmap);
+
+	//bitmap_write(scaled_bitmap, "/tmp/scaled.png");
+
+	assert(scaled_bitmap->color == COLOR_RGB_8);
+	assert(scaled_bitmap->pixel_stride == NUM_CHANNELS);
+	assert(scaled_bitmap->row_stride == NUM_SUBPIXEL_ROWS_COLS * NUM_CHANNELS);
 
 	for (i = 0; i < NUM_SUBPIXELS * NUM_CHANNELS; ++i)
-	    float_image[i] = scaled_data[i];
+	    float_image[i] = scaled_bitmap->data[i];
 
-	free(scaled_data);
+	bitmap_free(scaled_bitmap);
 
 	transform_rgb_to_yiq(float_image, NUM_SUBPIXELS);
 
@@ -683,67 +272,6 @@ generate_search_coeffs_for_subimage (coeffs_t *coeffs, unsigned char *image_data
     }
     else
 	assert(0);
-}
-
-static void
-generate_metapixel_coefficients (metapixel_t *pixel, unsigned char *image_data,
-				 coefficient_with_index_t raw_coeffs[NUM_COEFFS])
-{
-    static float float_image[NUM_CHANNELS * IMAGE_SIZE * IMAGE_SIZE];
-    static float sums[NUM_COEFFS];
-
-    unsigned char *scaled_data;
-    int i, channel;
-
-    /* generate wavelet coefficients */
-    if (small_width != IMAGE_SIZE || small_height != IMAGE_SIZE)
-    {
-	scaled_data = scale_image(image_data, small_width, small_height,
-				  0, 0, small_width, small_height, IMAGE_SIZE, IMAGE_SIZE);
-	assert(scaled_data != 0);
-    }
-    else
-	scaled_data = image_data;
-
-    for (i = 0; i < IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS; ++i)
-	float_image[i] = scaled_data[i];
-
-    if (scaled_data != image_data)
-	free(scaled_data);
-
-    transform_rgb_to_yiq(float_image, IMAGE_SIZE * IMAGE_SIZE);
-    decompose_image(float_image);
-
-    find_highest_coefficients(float_image, raw_coeffs);
-
-    generate_search_coeffs(&pixel->coeffs, sums, raw_coeffs);
-
-    for (i = 0; i < NUM_CHANNELS; ++i)
-	pixel->means[i] = float_image[i];
-
-    /* generate subpixel coefficients */
-    if (small_width != NUM_SUBPIXEL_ROWS_COLS || small_height != NUM_SUBPIXEL_ROWS_COLS)
-    {
-	scaled_data = scale_image(image_data, small_width, small_height, 0, 0, small_width, small_height,
-				  NUM_SUBPIXEL_ROWS_COLS, NUM_SUBPIXEL_ROWS_COLS);
-	assert(scaled_data != 0);
-    }
-    else
-	scaled_data = image_data;
-
-    assert(NUM_SUBPIXELS <= IMAGE_SIZE * IMAGE_SIZE);
-
-    for (i = 0; i < NUM_SUBPIXELS * NUM_CHANNELS; ++i)
-	float_image[i] = scaled_data[i];
-
-    transform_rgb_to_yiq(float_image, NUM_SUBPIXELS);
-
-    for (channel = 0; channel < NUM_CHANNELS; ++channel)
-	for (i = 0; i < NUM_SUBPIXELS; ++i)
-	    pixel->subpixels[channel * NUM_SUBPIXELS + i] = (int)float_image[i * NUM_CHANNELS + channel];
-
-    if (scaled_data != image_data)
-	free(scaled_data);
 }
 
 static int
@@ -761,7 +289,8 @@ compare_func_t
 compare_func_for_metric (int metric)
 {
     if (metric == METRIC_WAVELET)
-	return wavelet_compare;
+	//return wavelet_compare;
+	assert(0);
     else if (metric == METRIC_SUBPIXEL)
 	return subpixel_compare;
     else
@@ -782,16 +311,17 @@ metapixel_nearest_to (coeffs_t *coeffs, int metric, int x, int y,
 		      void *validity_func_data)
 {
     float best_score = 1e99;
-    metapixel_t *best_fit = 0, *pixel;
+    metapixel_t *best_fit = 0;
     compare_func_t compare_func = compare_func_for_metric(metric);
     match_t match;
 
-    for (pixel = first_pixel; pixel != 0; pixel = pixel->next)
+    FOR_EACH_METAPIXEL(pixel)
     {
 	float score;
 
-	if (manhattan_distance(x, y, pixel->anti_x, pixel->anti_y)
-	    < forbid_reconstruction_radius)
+	if (pixel->client_data != 0
+	    && (manhattan_distance(x, y, pixel->client_data->anti_x, pixel->client_data->anti_y)
+		< forbid_reconstruction_radius))
 	    continue;
 
 	score = compare_func(coeffs, pixel, best_score);
@@ -803,6 +333,7 @@ metapixel_nearest_to (coeffs_t *coeffs, int metric, int x, int y,
 	    best_fit = pixel;
 	}
     }
+    END_FOR_EACH_METAPIXEL
 
     match.pixel = best_fit;
     match.score = best_score;
@@ -815,12 +346,11 @@ get_n_metapixel_nearest_to (int n, global_match_t *matches, coeffs_t *coeffs, in
 {
     compare_func_t compare_func = compare_func_for_metric(metric);
     int i;
-    metapixel_t *pixel;
 
     assert(num_metapixels >= n);
 
     i = 0;
-    for (pixel = first_pixel; pixel != 0; pixel = pixel->next)
+    FOR_EACH_METAPIXEL(pixel)
     {
 	float score = compare_func(coeffs, pixel, (i < n) ? 1e99 : matches[n - 1].score);
 
@@ -844,51 +374,36 @@ get_n_metapixel_nearest_to (int n, global_match_t *matches, coeffs_t *coeffs, in
 
 	++i;
     }
+    END_FOR_EACH_METAPIXEL
 
     assert(i >= n);
 }
 
 static void
-paste_metapixel (metapixel_t *pixel, unsigned char *data, int width, int height, int x, int y)
+paste_metapixel (metapixel_t *pixel, bitmap_t *image, int x, int y)
 {
-    int i;
-    int pixel_width, pixel_height;
-    unsigned char *pixel_data;
+    bitmap_t *bitmap;
 
-    if (pixel->data != 0)
+    bitmap = metapixel_get_bitmap(pixel);
+    if (bitmap == 0)
     {
-	pixel_data = pixel->data;
-	pixel_width = pixel->width;
-	pixel_height = pixel->height;
-    }
-    else
-    {
-	pixel_data = read_image(pixel->filename, &pixel_width, &pixel_height);
-
-	if (pixel_data == 0)
-	{
-	    fprintf(stderr, "Error: cannot read metapixel file `%s'\n", pixel->filename);
-	    exit(1);
-	}
+	fprintf(stderr, "Error: cannot read metapixel image `%s'.\n", pixel->filename);
+	exit(1);
     }
 
-    if (pixel_width != small_width || pixel_height != small_height)
+    if (bitmap->width != small_width || bitmap->height != small_height)
     {
-	unsigned char *scaled_data = scale_image(pixel_data, pixel_width, pixel_height,
-						 0, 0, pixel_width, pixel_height,
-						 small_width, small_height);
+	bitmap_t *scaled_bitmap = bitmap_scale(bitmap, small_width, small_height, FILTER_MITCHELL);
 
-	if (pixel->data == 0)
-	    free(pixel_data);
-	pixel_data = scaled_data;
+	assert(scaled_bitmap != 0);
+
+	bitmap_free(bitmap);
+	bitmap = scaled_bitmap;
     }
 
-    for (i = 0; i < small_height; ++i)
-	memcpy(data + NUM_CHANNELS * (x + (y + i) * width),
-	       pixel_data + NUM_CHANNELS * i * small_width, NUM_CHANNELS * small_width);
+    bitmap_paste(image, bitmap, x, y);
 
-    if (pixel_data != pixel->data)
-	free(pixel_data);
+    bitmap_free(bitmap);
 }
 
 static classic_reader_t*
@@ -917,7 +432,7 @@ init_classic_reader (char *input_name, float scale)
     reader->metawidth = reader->out_image_width / small_width;
     reader->metaheight = reader->out_image_height / small_height;
 
-    reader->in_image_data = 0;
+    reader->in_image = 0;
     reader->y = 0;
 
     return reader;
@@ -926,10 +441,12 @@ init_classic_reader (char *input_name, float scale)
 static void
 read_classic_row (classic_reader_t *reader)
 {
-    if (reader->in_image_data != 0)
+    unsigned char *image_data;
+
+    if (reader->in_image != 0)
     {
 	assert(reader->y > 0);
-	free(reader->in_image_data);
+	bitmap_free(reader->in_image);
     }
     else
 	assert(reader->y == 0);
@@ -937,12 +454,15 @@ read_classic_row (classic_reader_t *reader)
     reader->num_lines = (reader->y + 1) * reader->in_image_height / reader->metaheight
 	- reader->y * reader->in_image_height / reader->metaheight;
 
-    reader->in_image_data = (unsigned char*)malloc(reader->num_lines * reader->in_image_width * NUM_CHANNELS);
-    assert(reader->in_image_data != 0);
+    image_data = (unsigned char*)malloc(reader->num_lines * reader->in_image_width * NUM_CHANNELS);
+    assert(image_data != 0);
 
-    read_lines(reader->image_reader, reader->in_image_data, reader->num_lines);
+    read_lines(reader->image_reader, image_data, reader->num_lines);
 
     ++reader->y;
+
+    reader->in_image = bitmap_new_packed(COLOR_RGB_8, reader->in_image_width, reader->num_lines, image_data);
+    assert(reader->in_image != 0);
 }
 
 static void
@@ -958,15 +478,15 @@ generate_search_coeffs_for_classic_subimage (classic_reader_t *reader, int x, co
     int left_x, width;
 
     compute_classic_column_coords(reader, x, &left_x, &width);
-    generate_search_coeffs_for_subimage(coeffs, reader->in_image_data, reader->in_image_width, reader->num_lines,
+    generate_search_coeffs_for_subimage(coeffs, reader->in_image,
 					left_x, 0, width, reader->num_lines, metric);
 }
 
 static void
 free_classic_reader (classic_reader_t *reader)
 {
-    if (reader->in_image_data != 0)
-	free(reader->in_image_data);
+    if (reader->in_image != 0)
+	bitmap_free(reader->in_image);
     free_image_reader(reader->image_reader);
     free(reader);
 }
@@ -1006,6 +526,8 @@ generate_local_classic (classic_reader_t *reader, int min_distance, int metric)
     for (y = 0; y < metaheight; ++y)
     {
 	read_classic_row(reader);
+
+	// bitmap_write(reader->in_image, "/tmp/metarow.png");
 
 	for (x = 0; x < metawidth; ++x)
 	{
@@ -1072,7 +594,6 @@ generate_global_classic (classic_reader_t *reader, int metric)
     int num_matches = (metawidth * metaheight) * (metawidth * metaheight);
     int i, ignore_forbidden;
     int num_locations_filled;
-    metapixel_t *pixel;
 
     if (num_metapixels < metawidth * metaheight)
     {
@@ -1117,8 +638,10 @@ generate_global_classic (classic_reader_t *reader, int metric)
 
     qsort(matches, num_matches, sizeof(global_match_t), compare_global_matches);
 
-    for (pixel = first_pixel; pixel != 0; pixel = pixel->next)
-	pixel->flag = 0;
+    FOR_EACH_METAPIXEL(pixel)
+	assert_client_data(pixel);
+	pixel->client_data->flag = 0;
+    END_FOR_EACH_METAPIXEL
 
     num_locations_filled = 0;
     for (ignore_forbidden = 0; ignore_forbidden < 2; ++ignore_forbidden)
@@ -1127,13 +650,14 @@ generate_global_classic (classic_reader_t *reader, int metric)
 	{
 	    int index = matches[i].y * metawidth + matches[i].x;
 
-	    if (!ignore_forbidden
-		&& manhattan_distance(matches[i].x, matches[i].y,
-				      matches[i].pixel->anti_x, matches[i].pixel->anti_y)
-		  < forbid_reconstruction_radius)
+	    if (!ignore_forbidden && matches[i].pixel->client_data != 0
+		&& (manhattan_distance(matches[i].x, matches[i].y,
+				       matches[i].pixel->client_data->anti_x,
+				       matches[i].pixel->client_data->anti_y)
+		    < forbid_reconstruction_radius))
 		continue;
 
-	    if (matches[i].pixel->flag)
+	    if (matches[i].pixel->client_data->flag)
 		continue;
 
 	    if (num_locations_filled >= metawidth * metaheight)
@@ -1149,7 +673,7 @@ generate_global_classic (classic_reader_t *reader, int metric)
 		mosaic->matches[index].pixel = matches[i].pixel;
 		mosaic->matches[index].score = matches[i].score;
 
-		matches[i].pixel->flag = 1;
+		matches[i].pixel->client_data->flag = 1;
 
 		++num_locations_filled;
 	    }
@@ -1186,6 +710,7 @@ paste_classic (mosaic_t *mosaic, char *input_name, char *output_name, int cheat)
     unsigned char *out_image_data;
     int in_image_width, in_image_height;
     int metawidth = mosaic->metawidth, metaheight = mosaic->metaheight;
+    bitmap_t *out_bitmap;
 
     if (cheat > 0)
     {
@@ -1210,7 +735,8 @@ paste_classic (mosaic_t *mosaic, char *input_name, char *output_name, int cheat)
 
     if (!benchmark_rendering)
     {
-	writer = open_image_writing(output_name, out_image_width, out_image_height, IMAGE_FORMAT_PNG);
+	writer = open_image_writing(output_name, out_image_width, out_image_height,
+				    out_image_width * 3, IMAGE_FORMAT_PNG);
 	if (writer == 0)
 	{
 	    fprintf(stderr, "cannot write image `%s'\n", output_name);
@@ -1218,7 +744,10 @@ paste_classic (mosaic_t *mosaic, char *input_name, char *output_name, int cheat)
 	}
     }
 
-    out_image_data = (unsigned char*)malloc(out_image_width * small_height * NUM_CHANNELS);
+    out_bitmap = bitmap_new_empty(COLOR_RGB_8, out_image_width, small_height);
+    assert(out_bitmap != 0);
+
+    out_image_data = out_bitmap->data;
 
     if (benchmark_rendering)
 	print_current_time();
@@ -1228,10 +757,9 @@ paste_classic (mosaic_t *mosaic, char *input_name, char *output_name, int cheat)
 	for (x = 0; x < metawidth; ++x)
 	{
 	    if (benchmark_rendering)
-		assert(mosaic->matches[y * metawidth + x].pixel->data != 0);
+		assert(mosaic->matches[y * metawidth + x].pixel->bitmap != 0);
 
-	    paste_metapixel(mosaic->matches[y * metawidth + x].pixel, out_image_data, out_image_width,
-			    small_height, x * small_width, 0);
+	    paste_metapixel(mosaic->matches[y * metawidth + x].pixel, out_bitmap, x * small_width, 0);
 	    if (!benchmark_rendering)
 	    {
 		printf("X");
@@ -1243,25 +771,27 @@ paste_classic (mosaic_t *mosaic, char *input_name, char *output_name, int cheat)
 	{
 	    int num_lines = (y + 1) * in_image_height / metaheight - y * in_image_height / metaheight;
 	    unsigned char *in_image_data = (unsigned char*)malloc(num_lines * in_image_width * NUM_CHANNELS);
-	    unsigned char *source_data;
+	    bitmap_t *in_bitmap;
+	    bitmap_t *source_bitmap;
 
 	    assert(in_image_data != 0);
 
 	    read_lines(reader, in_image_data, num_lines);
 
+	    in_bitmap = bitmap_new_packed(COLOR_RGB_8, in_image_width, num_lines, in_image_data);
+	    assert(in_bitmap != 0);
+
 	    if (in_image_width != out_image_width || num_lines != small_height)
-		source_data = scale_image(in_image_data, in_image_width, num_lines,
-					  0, 0, in_image_width, num_lines,
-					  out_image_width, small_height);
+		source_bitmap = bitmap_scale(in_bitmap, out_image_width, small_height, FILTER_MITCHELL);
 	    else
-		source_data = in_image_data;
+		source_bitmap = in_bitmap;
 
-	    alpha_compose(out_image_data, out_image_width, small_height, source_data, cheat);
+	    bitmap_alpha_compose(out_bitmap, source_bitmap, cheat * 0x10000 / 100);
 
-	    if (source_data != in_image_data)
-		free(source_data);
+	    if (source_bitmap != in_bitmap)
+		bitmap_free(source_bitmap);
 
-	    free(in_image_data);
+	    bitmap_free(in_bitmap);
 	}
 
 	if (!benchmark_rendering)
@@ -1271,7 +801,7 @@ paste_classic (mosaic_t *mosaic, char *input_name, char *output_name, int cheat)
     if (benchmark_rendering)
 	print_current_time();
 
-    free(out_image_data);
+    bitmap_free(out_bitmap);
 
     if (!benchmark_rendering)
 	free_image_writer(writer);
@@ -1291,8 +821,9 @@ pixel_add_collage_position (metapixel_t *pixel, int x, int y)
     position->x = x;
     position->y = y;
 
-    position->next = pixel->collage_positions;
-    pixel->collage_positions = position;
+    assert_client_data(pixel);
+    position->next = pixel->client_data->collage_positions;
+    pixel->client_data->collage_positions = position;
 }
 
 static int
@@ -1304,9 +835,10 @@ pixel_valid_for_collage_position (void *data, metapixel_t *pixel, int x, int y)
     if (min_distance <= 0)
 	return 1;
 
-    for (position = pixel->collage_positions; position != 0; position = position->next)
-	if (manhattan_distance(x, y, position->x, position->y) < min_distance)
-	    return 0;
+    if (pixel->client_data != 0)
+	for (position = pixel->client_data->collage_positions; position != 0; position = position->next)
+	    if (manhattan_distance(x, y, position->x, position->y) < min_distance)
+		return 0;
 
     return 1;
 }
@@ -1314,49 +846,45 @@ pixel_valid_for_collage_position (void *data, metapixel_t *pixel, int x, int y)
 static void
 generate_collage (char *input_name, char *output_name, float scale, int min_distance, int metric, int cheat)
 {
-    unsigned char *in_image_data, *out_image_data;
-    int in_image_width, in_image_height;
+    bitmap_t *in_bitmap, *out_bitmap;
     char *bitmap;
     int num_pixels_done = 0;
 
-    in_image_data = read_image(input_name, &in_image_width, &in_image_height);
-    if (in_image_data == 0)
+    in_bitmap = bitmap_read(input_name);
+    if (in_bitmap == 0)
     {
-	fprintf(stderr, "could not read image `%s'\n", input_name);
+	fprintf(stderr, "Error: Could not read image `%s'.\n", input_name);
 	exit(1);
     }
 
     if (scale != 1.0)
     {
-	int new_width = (float)in_image_width * scale;
-	int new_height = (float)in_image_height * scale;
-	unsigned char *scaled_data;
+	int new_width = (float)in_bitmap->width * scale;
+	int new_height = (float)in_bitmap->height * scale;
+	bitmap_t *scaled_bitmap;
 
 	if (new_width < small_width || new_height < small_height)
 	{
-	    fprintf(stderr, "source image or scaling factor too small\n");
+	    fprintf(stderr, "Error: Source image or scaling factor too small.\n");
 	    exit(1);
 	}
 
-	printf("scaling source image to %dx%d\n", new_width, new_height);
+	printf("Scaling source image to %dx%d\n", new_width, new_height);
 
-	scaled_data = scale_image(in_image_data, in_image_width, in_image_height,
-				  0, 0, in_image_width, in_image_height,
-				  new_width, new_height);
+	scaled_bitmap = bitmap_scale(in_bitmap, new_width, new_height, FILTER_MITCHELL);
+	assert(scaled_bitmap != 0);
 
-	in_image_width = new_width;
-	in_image_height = new_height;
-
-	free(in_image_data);
-	in_image_data = scaled_data;
+	bitmap_free(in_bitmap);
+	in_bitmap = scaled_bitmap;
     }
 
-    out_image_data = (unsigned char*)malloc(in_image_width * in_image_height * NUM_CHANNELS);
+    out_bitmap = bitmap_new_empty(COLOR_RGB_8, in_bitmap->width, in_bitmap->height);
+    assert(out_bitmap != 0);
 
-    bitmap = (char*)malloc(in_image_width * in_image_height);
-    memset(bitmap, 0, in_image_width * in_image_height);
+    bitmap = (char*)malloc(in_bitmap->width * in_bitmap->height);
+    memset(bitmap, 0, in_bitmap->width * in_bitmap->height);
 
-    while (num_pixels_done < in_image_width * in_image_height)
+    while (num_pixels_done < in_bitmap->width * in_bitmap->height)
     {
 	int i, j;
 	int x, y;
@@ -1365,41 +893,40 @@ generate_collage (char *input_name, char *output_name, float scale, int min_dist
 
 	while (1)
 	{
-	    x = random() % in_image_width - small_width / 2;
-	    y = random() % in_image_height - small_height / 2;
+	    x = random() % in_bitmap->width - small_width / 2;
+	    y = random() % in_bitmap->height - small_height / 2;
 
 	    if (x < 0)
 		x = 0;
-	    if (x + small_width > in_image_width)
-		x = in_image_width - small_width;
+	    if (x + small_width > in_bitmap->width)
+		x = in_bitmap->width - small_width;
 
 	    if (y < 0)
 		y = 0;
-	    if (y + small_height > in_image_height)
-		y = in_image_height - small_height;
+	    if (y + small_height > in_bitmap->height)
+		y = in_bitmap->height - small_height;
 
 	    for (j = 0; j < small_height; ++j)
 		for (i = 0; i < small_width; ++i)
-		    if (!bitmap[(y + j) * in_image_width + x + i])
+		    if (!bitmap[(y + j) * in_bitmap->width + x + i])
 			goto out;
 	}
 
     out:
-	generate_search_coeffs_for_subimage(&coeffs, in_image_data, in_image_width, in_image_height,
-					    x, y, small_width, small_height, metric);
+	generate_search_coeffs_for_subimage(&coeffs, in_bitmap, x, y, small_width, small_height, metric);
 
 	match = metapixel_nearest_to(&coeffs, metric, x, y, 0, 0,
 				     pixel_valid_for_collage_position, (void*)min_distance);
-	paste_metapixel(match.pixel, out_image_data, in_image_width, in_image_height, x, y);
+	paste_metapixel(match.pixel, out_bitmap, x, y);
 
 	if (min_distance > 0)
 	    pixel_add_collage_position(match.pixel, x, y);
 
 	for (j = 0; j < small_height; ++j)
 	    for (i = 0; i < small_width; ++i)
-		if (!bitmap[(y + j) * in_image_width + x + i])
+		if (!bitmap[(y + j) * in_bitmap->width + x + i])
 		{
-		    bitmap[(y + j) * in_image_width + x + i] = 1;
+		    bitmap[(y + j) * in_bitmap->width + x + i] = 1;
 		    ++num_pixels_done;
 		}
 
@@ -1407,136 +934,20 @@ generate_collage (char *input_name, char *output_name, float scale, int min_dist
 	fflush(stdout);
     }
 
-    write_image(output_name, in_image_width, in_image_height, out_image_data, IMAGE_FORMAT_PNG);
+    bitmap_write(out_bitmap, output_name);
 
     free(bitmap);
-    free(out_image_data);
-    free(in_image_data);
-}
-
-static int
-read_tables (const char *library_dir)
-{
-    lisp_object_t *pattern;
-    lisp_object_t *obj;
-    lisp_stream_t stream;
-    int num_subs;
-    pools_t pools;
-    allocator_t allocator;
-    int dir_strlen = strlen(library_dir);
-    char tables_name[dir_strlen + 1 + strlen(TABLES_FILENAME) + 1];
-
-    strcpy(tables_name, library_dir);
-    strcat(tables_name, "/");
-    strcat(tables_name, TABLES_FILENAME);
-
-    if (lisp_stream_init_path(&stream, tables_name) == 0)
-	return 0;
-
-    pattern = lisp_read_from_string("(small-image #?(string) (size #?(integer) #?(integer))"
-				    "  (wavelet (means #?(real) #?(real) #?(real)) (coeffs . #?(list)))"
-				    "  (subpixel (y . #?(list)) (i . #?(list)) (q . #?(list))))");
-    assert(pattern != 0
-	   && lisp_type(pattern) != LISP_TYPE_EOF
-	   && lisp_type(pattern) != LISP_TYPE_PARSE_ERROR);
-    assert(lisp_compile_pattern(&pattern, &num_subs));
-    assert(num_subs == 10);
-
-    init_pools(&pools);
-    init_pools_allocator(&allocator, &pools);
-
-    for (;;)
-    {
-        int type;
-
-	reset_pools(&pools);
-        obj = lisp_read_with_allocator(&allocator, &stream);
-        type = lisp_type(obj);
-        if (type != LISP_TYPE_EOF && type != LISP_TYPE_PARSE_ERROR)
-        {
-            lisp_object_t *vars[10];
-
-            if (lisp_match_pattern(pattern, obj, vars, num_subs))
-	    {
-		metapixel_t *pixel = new_metapixel();
-		coefficient_with_index_t coeffs[NUM_COEFFS];
-		lisp_object_t *lst;
-		int channel, i;
-		char *filename = strip_path(lisp_string(vars[0]));
-
-		pixel->filename = (char*)malloc(dir_strlen + 1 + strlen(filename) + 1);
-
-		strcpy(pixel->filename, library_dir);
-		strcat(pixel->filename, "/");
-		strcat(pixel->filename, filename);
-
-		for (channel = 0; channel < NUM_CHANNELS; ++channel)
-		    pixel->means[channel] = lisp_real(vars[3 + channel]);
-
-		if (lisp_list_length(vars[6]) != NUM_COEFFS)
-		    fprintf(stderr, "wrong number of wavelet coefficients in `%s'\n", pixel->filename);
-		else
-		{
-		    static float sums[NUM_COEFFS];
-
-		    lst = vars[6];
-		    for (i = 0; i < NUM_COEFFS; ++i)
-		    {
-			coeffs[i].index = lisp_integer(lisp_car(lst));
-			lst = lisp_cdr(lst);
-		    }
-
-		    generate_search_coeffs(&pixel->coeffs, sums, coeffs);
-		}
-
-		for (channel = 0; channel < NUM_CHANNELS; ++channel)
-		{
-		    lst = vars[7 + channel];
-
-		    if (lisp_list_length(lst) != NUM_SUBPIXELS)
-			fprintf(stderr, "wrong number of subpixels in `%s'\n", pixel->filename);
-		    else
-			for (i = 0; i < NUM_SUBPIXELS; ++i)
-			{
-			    pixel->subpixels[channel * NUM_SUBPIXELS + i] = lisp_integer(lisp_car(lst));
-			    lst = lisp_cdr(lst);
-			}
-		}
-
-		pixel->data = 0;
-		pixel->collage_positions = 0;
-
-		add_metapixel(pixel);
-	    }
-	    else
-	    {
-		fprintf(stderr, "unknown expression ");
-		lisp_dump(obj, stderr);
-		fprintf(stderr, "\n");
-	    }
-        }
-        else if (type == LISP_TYPE_PARSE_ERROR)
-            fprintf(stderr, "Error: parse error in tables file.\n");
-
-        if (type == LISP_TYPE_EOF)
-            break;
-    }
-
-    lisp_stream_free_path(&stream);
-
-    free_pools(&pools);
-
-    return 1;
+    bitmap_free(out_bitmap);
+    bitmap_free(in_bitmap);
 }
 
 static metapixel_t*
 find_metapixel (char *filename)
 {
-    metapixel_t *pixel;
-
-    for (pixel = first_pixel; pixel != 0; pixel = pixel->next)
+    FOR_EACH_METAPIXEL(pixel)
 	if (strcmp(pixel->filename, filename) == 0)
 	    return pixel;
+    END_FOR_EACH_METAPIXEL
 
     return 0;
 }
@@ -1694,11 +1105,10 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
 	{
 	    metapixel_t *pixel = mosaic->matches[i].pixel;
 
-	    if (pixel->data == 0)
+	    if (pixel->bitmap == 0)
 	    {
-		pixel->data = read_image(pixel->filename, &pixel->width, &pixel->height);
-
-		assert(pixel->data != 0);
+		pixel->bitmap = metapixel_get_bitmap(pixel);
+		assert(pixel->bitmap != 0);
 	    }
 	}
     }
@@ -1858,8 +1268,8 @@ usage (void)
 	   "      print out version number\n"
 	   "  metapixel --help\n"
 	   "      print this help text\n"
-	   "  metapixel [option ...] --prepare <inimage> <outimage> <tablefile>\n"
-	   "      calculate and output tables for <file>\n"
+	   "  metapixel [option ...] --prepare <library-dir> <image>\n"
+	   "      add <image> to the library in <library-dir>\n"
 	   "  metapixel [option ...] --metapixel <in> <out>\n"
 	   "      transform <in> to <out>\n"
 	   "  metapixel [option ...] --batch <batchfile>\n"
@@ -1923,6 +1333,8 @@ main (int argc, char *argv[])
 
     small_width = default_small_width;
     small_height = default_small_height;
+    prepare_width = default_prepare_width;
+    prepare_height = default_prepare_height;
     memcpy(weight_factors, default_weight_factors, sizeof(weight_factors));
     metric = default_metric;
     search = default_search;
@@ -2182,25 +1594,14 @@ main (int argc, char *argv[])
 	}
     }
 
-    sqrt_of_two = sqrt(2);
-    sqrt_of_image_size = sqrt(IMAGE_SIZE);
-
-    compute_index_weights();
-
     if (mode == MODE_PREPARE)
     {
-	static coefficient_with_index_t highest_coeffs[NUM_COEFFS];
+	char *inimage_name, *library_name;
+	metapixel_t *pixel;
+	bitmap_t *bitmap;
+	library_t *library;
 
-	int i, channel;
-	unsigned char *image_data;
-	unsigned char *scaled_data;
-	char *inimage_name, *outimage_name, *tables_name;
-	FILE *tables_file;
-	int in_width, in_height;
-	metapixel_t pixel;
-	lisp_object_t *obj;
-
-	if (argc - optind != 3)
+	if (argc - optind != 2)
 	{
 	    usage();
 	    return 1;
@@ -2208,60 +1609,37 @@ main (int argc, char *argv[])
 
 	assert(prepare_width > 0 && prepare_height > 0);
 
-	inimage_name = argv[optind + 0];
-	outimage_name = argv[optind + 1];
-	tables_name = argv[optind + 2];
+	library_name = argv[optind + 0];
+	inimage_name = argv[optind + 1];
 
-	image_data = read_image(inimage_name, &in_width, &in_height);
-
-	if (image_data == 0)
+	library = library_open_without_reading(library_name);
+	if (library == 0)
 	{
-	    fprintf(stderr, "could not read image `%s'\n", inimage_name);
+	    fprintf(stderr, "Error: could not open library `%s'.\n", library_name);
 	    return 1;
 	}
 
-	tables_file = fopen(tables_name, "a");
-	if (tables_file == 0)
+	bitmap = bitmap_read(inimage_name);
+	if (bitmap == 0)
 	{
-	    fprintf(stderr, "could not open file `%s' for writing\n", tables_name);
+	    fprintf(stderr, "Error: could not read image `%s'.\n", inimage_name);
 	    return 1;
 	}
 
-	/* generate small image */
-	scaled_data = scale_image(image_data, in_width, in_height, 0, 0,
-				  in_width, in_height, prepare_width, prepare_height);
-	assert(scaled_data != 0);
+	pixel = metapixel_new_from_bitmap(bitmap, strip_path(inimage_name), prepare_width, prepare_height);
+	assert(pixel != 0);
 
-	write_image(outimage_name, prepare_width, prepare_height, scaled_data, IMAGE_FORMAT_PNG);
+	bitmap_free(bitmap);
 
-	generate_metapixel_coefficients(&pixel, scaled_data, highest_coeffs);
-
-	free(scaled_data);
-
-	fprintf(tables_file, "(small-image ");
-	obj = lisp_make_string(strip_path(outimage_name));
-	lisp_dump(obj, tables_file);
-	lisp_free(obj);
-
-	fprintf(tables_file, " (size %d %d) (wavelet (means %f %f %f) (coeffs",
-		prepare_width, prepare_height,
-		pixel.means[0], pixel.means[1], pixel.means[2]);
-	for (i = 0; i < NUM_COEFFS; ++i)
-	    fprintf(tables_file, " %d", highest_coeffs[i].index);
-
-	fprintf(tables_file, ")) (subpixel");
-	for (channel = 0; channel < NUM_CHANNELS; ++channel)
+	if (!library_add_metapixel(library, pixel))
 	{
-	    static char *channel_names[] = { "y", "i", "q" };
-
-	    fprintf(tables_file, " (%s", channel_names[channel]);
-	    for (i = 0; i < NUM_SUBPIXELS; ++i)
-		fprintf(tables_file, " %d", (int)pixel.subpixels[channel * NUM_SUBPIXELS + i]);
-	    fprintf(tables_file, ")");
+	    fprintf(stderr, "Error: could not add metapixel to library.\n");
+	    return 1;
 	}
-	fprintf(tables_file, "))\n");
 
-	fclose(tables_file);
+	metapixel_free(pixel);
+
+	library_close(library);
     }
     else if (mode == MODE_METAPIXEL
 	     || mode == MODE_BATCH)
@@ -2278,6 +1656,7 @@ main (int argc, char *argv[])
 
 	if (antimosaic_filename != 0)
 	{
+	    /*
 	    classic_reader_t *reader = init_classic_reader(antimosaic_filename, scale);
 	    int x, y;
 
@@ -2320,17 +1699,29 @@ main (int argc, char *argv[])
 	    printf("\n");
 
 	    free_classic_reader(reader);
+	    */
+	    assert(0);
 	}
 	else if (library_directories != 0)
 	{
 	    string_list_t *lst;
+	    unsigned int i;
 
-	    for (lst = library_directories; lst != 0; lst = lst->next)
-		if (!read_tables(lst->str))
+	    num_libraries = string_list_length(library_directories);
+	    libraries = (library_t**)malloc(num_libraries * sizeof(library_t*));
+
+	    for (i = 0, lst = library_directories; lst != 0; ++i, lst = lst->next)
+	    {
+		libraries[i] = library_open(lst->str);
+
+		if (libraries[i] == 0)
 		{
-		    fprintf(stderr, "Error: cannot read library table `%s/%s'.\n", lst->str, TABLES_FILENAME);
+		    fprintf(stderr, "Error: cannot open library `%s'.\n", lst->str);
 		    return 1;
 		}
+
+		num_metapixels += libraries[i]->num_metapixels;
+	    }
 
 	    forbid_reconstruction_radius = 0;
 	}

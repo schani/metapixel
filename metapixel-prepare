@@ -30,21 +30,6 @@ use Getopt::Long;
 use File::Basename;
 use IO::Handle;
 
-sub disambiguate_filename {
-    my $filename = shift;
-    my $suffix = shift;
-
-    return "$filename$suffix" if !-e "$filename$suffix";
-
-    my $ctr = 1;
-
-    while (-e "$filename.$ctr$suffix") {
-	++$ctr;
-    }
-
-    return "$filename.$ctr$suffix";
-}
-
 sub usage {
     print STDERR "Usage: $0 [OPTION]... <srcdir> <destdir>
 
@@ -103,6 +88,8 @@ if (! -d $destdir) {
     exit(1);
 }
 
+`touch "$destdir/tables.mxt"`;
+
 STDOUT->autoflush(1);
 
 sub process_dir {
@@ -127,9 +114,7 @@ sub process_dir {
 
 		print "Processing: $fullname\n" if $DEBUG;
 
-		my $thumbname = disambiguate_filename("$destdir/$name$suffix", ".png");
-		
-		`metapixel $opts --prepare "$fullname" "$thumbname" "$destdir/tables.mxt"`;
+		`metapixel $opts --prepare "$destdir" "$fullname"`;
 		if ($? != 0) {
 		    print "Error running metapixel - skipping file $fullname\n"
 		    }

@@ -5,7 +5,7 @@
  *
  * metapixel
  *
- * Copyright (C) 2000 Mark Probst
+ * Copyright (C) 2000-2004 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -36,7 +36,7 @@ typedef struct
 } jpeg_data_t;
 
 void*
-open_jpeg_file (char *filename, int *width, int *height)
+open_jpeg_file (const char *filename, int *width, int *height)
 {
     jpeg_data_t *data = (jpeg_data_t*)malloc(sizeof(jpeg_data_t));
 

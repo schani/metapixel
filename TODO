@@ -1,3 +1,9 @@
+there's a bug in the zoom code: zoom coribelly to 64x64 and then to
+5x5 and you get a very different image than if zooming to 128x128 and
+then to 5x5!
+
+***
+
 for 0.11:
 
 debian package: http://packages.debian.org/cgi-bin/search_packages.pl?searchon=names&version=all&release=all&keywords=metapixel

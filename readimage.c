@@ -5,7 +5,7 @@
  *
  * metapixel
  *
- * Copyright (C) 2000 Mark Probst
+ * Copyright (C) 2000-2004 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -32,7 +32,7 @@
 #include "rwpng.h"
 
 image_reader_t*
-open_image_reading (char *filename)
+open_image_reading (const char *filename)
 {
     unsigned char magic[4];
     FILE *file;
@@ -102,7 +102,7 @@ free_image_reader (image_reader_t *reader)
 }
 
 unsigned char*
-read_image (char *filename, int *width, int *height)
+read_image (const char *filename, int *width, int *height)
 {
     image_reader_t *reader = open_image_reading(filename);
     unsigned char *data;

@@ -7,8 +7,8 @@ MANDIR = $(PREFIX)/man
 
 VERSION = 0.11
 
-#DEBUG = -g
-OPTIMIZE = -O2
+DEBUG = -g
+#OPTIMIZE = -O2
 #PROFILE = -pg
 
 MACOS_LDOPTS = -L/sw/lib
@@ -20,7 +20,7 @@ CC = gcc
 #LIBFFM = -lffm
 
 LISPREADER_OBJS = lispreader.o pools.o allocator.o
-OBJS = metapixel.o vector.o zoom.o rwpng.o rwjpeg.o readimage.o writeimage.o \
+OBJS = main.o bitmap.o metapixel.o library.o vector.o zoom.o rwpng.o rwjpeg.o readimage.o writeimage.o \
        $(LISPREADER_OBJS) getopt.o getopt1.o
 CONVERT_OBJS = convert.o $(LISPREADER_OBJS) getopt.o getopt1.o
 IMAGESIZE_OBJS = imagesize.o rwpng.o rwjpeg.o readimage.o

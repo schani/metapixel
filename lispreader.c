@@ -740,32 +740,33 @@ _match_pattern_var (lisp_object_t *pattern, lisp_object_t *obj, lisp_object_t **
 	    break;
 
 	case LISP_PATTERN_SYMBOL :
-	    if (obj == 0 || lisp_type(obj) != LISP_TYPE_SYMBOL)
+	    if (lisp_type(obj) != LISP_TYPE_SYMBOL)
 		return 0;
 	    break;
 
 	case LISP_PATTERN_STRING :
-	    if (obj == 0 || lisp_type(obj) != LISP_TYPE_STRING)
+	    if (lisp_type(obj) != LISP_TYPE_STRING)
 		return 0;
 	    break;
 
 	case LISP_PATTERN_INTEGER :
-	    if (obj == 0 || lisp_type(obj) != LISP_TYPE_INTEGER)
+	    if (lisp_type(obj) != LISP_TYPE_INTEGER)
 		return 0;
 	    break;
 
         case LISP_PATTERN_REAL :
-	    if (obj == 0 || lisp_type(obj) != LISP_TYPE_REAL)
+	    if (lisp_type(obj) != LISP_TYPE_REAL)
 		return 0;
 	    break;
 	  
 	case LISP_PATTERN_BOOLEAN :
-	    if (obj == 0 || lisp_type(obj) != LISP_TYPE_BOOLEAN)
+	    if (lisp_type(obj) != LISP_TYPE_BOOLEAN)
 		return 0;
 	    break;
 
 	case LISP_PATTERN_LIST :
-	    if (obj == 0 || lisp_type(obj) != LISP_TYPE_CONS)
+	    if (lisp_type(obj) != LISP_TYPE_CONS
+		&& lisp_type(obj) != LISP_TYPE_NIL)
 		return 0;
 	    break;
 
@@ -788,8 +789,8 @@ _match_pattern_var (lisp_object_t *pattern, lisp_object_t *obj, lisp_object_t **
 	    break;
 
 	case LISP_PATTERN_NUMBER :
-	    if (obj == 0 || (lisp_type(obj) != LISP_TYPE_INTEGER
-			     && lisp_type(obj) != LISP_TYPE_REAL))
+	    if (lisp_type(obj) != LISP_TYPE_INTEGER
+		&& lisp_type(obj) != LISP_TYPE_REAL)
 		return 0;
 	    break;
 
@@ -808,9 +809,6 @@ _match_pattern (lisp_object_t *pattern, lisp_object_t *obj, lisp_object_t **vars
 {
     if (pattern == 0)
 	return obj == 0;
-
-    if (obj == 0)
-	return 0;
 
     if (lisp_type(pattern) == LISP_TYPE_PATTERN_VAR)
 	return _match_pattern_var(pattern, obj, vars);

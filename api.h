@@ -79,6 +79,10 @@ void bitmap_paste (bitmap_t *dst, bitmap_t *src, unsigned int x, unsigned int y)
 /* Opacity is 0 for full transparency and 0x10000 (65536) for full opacity. */
 void bitmap_alpha_compose (bitmap_t *dst, bitmap_t *src, unsigned int opacity);
 
+#ifndef CLIENT_METAPIXEL_DATA_T
+#define CLIENT_METAPIXEL_DATA_T void
+#endif
+
 struct _metapixel_t
 {
     library_t *library;
@@ -107,17 +111,16 @@ struct _metapixel_t
     metapixel_t *next;		/* next in library */
 
     /* the following is only used by the command line metapixel and
-       will be removed when it has been rewritten. */
-#ifdef ADDITIONAL_METAPIXEL_T_MEMBERS
-    ADDITIONAL_METAPIXEL_T_MEMBERS
-#endif
+       will be removed when that has been rewritten. */
+    CLIENT_METAPIXEL_DATA_T *client_data;
 };
 
 struct _library_t
 {
     char *path;
 
-    metapixel_t *pixels;
+    metapixel_t *metapixels;
+    unsigned int num_metapixels;
 };
 
 typedef struct

@@ -5,7 +5,7 @@
  *
  * metapixel
  *
- * Copyright (C) 1997-2000 Mark Probst
+ * Copyright (C) 1997-2004 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -34,10 +34,11 @@ typedef struct
     FILE *file;
     png_structp png_ptr;
     png_infop info_ptr, end_info;
+    int row_stride;
 } png_data_t;
 
 void*
-open_png_file_reading (char *filename, int *width, int *height)
+open_png_file_reading (const char *filename, int *width, int *height)
 {
     png_data_t *data = (png_data_t*)malloc(sizeof(png_data_t));
 
@@ -124,7 +125,7 @@ png_free_reader_data (void *_data)
 }
 
 void*
-open_png_file_writing (char *filename, int width, int height)
+open_png_file_writing (const char *filename, int width, int height, int row_stride)
 {
     png_data_t *data = (png_data_t*)malloc(sizeof(png_data_t));
 
@@ -159,6 +160,8 @@ open_png_file_writing (char *filename, int width, int height)
 
     png_write_info(data->png_ptr, data->info_ptr);
 
+    data->row_stride = row_stride;
+
     return data;
 }
 
@@ -172,7 +175,7 @@ png_write_lines (void *_data, unsigned char *lines, int num_lines)
 	assert(0);
 
     for (i = 0; i < num_lines; ++i)
-	png_write_row(data->png_ptr, (png_bytep)(lines + i * 3 * data->info_ptr->width));
+	png_write_row(data->png_ptr, (png_bytep)(lines + i * data->row_stride));
 }
 
 void

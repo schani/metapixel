@@ -5,7 +5,7 @@
  *
  * metapixel
  *
- * Copyright (C) 1997-2000 Mark Probst
+ * Copyright (C) 1997-2004 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -25,11 +25,11 @@
 #ifndef __RWPNG_H__
 #define __RWPNG_H__
 
-void* open_png_file_reading (char *filename, int *width, int *height);
+void* open_png_file_reading (const char *filename, int *width, int *height);
 void png_read_lines (void *data, unsigned char *lines, int num_lines);
 void png_free_reader_data (void *data);
 
-void* open_png_file_writing (char *filename, int width, int height);
+void* open_png_file_writing (const char *filename, int width, int height, int row_stride);
 void png_write_lines (void *data, unsigned char *lines, int num_lines);
 void png_free_writer_data (void *data);
 

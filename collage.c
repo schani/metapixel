@@ -25,6 +25,8 @@
 #include <string.h>
 #include <assert.h>
 
+#include "lispreader.h"
+
 #include "api.h"
 
 typedef struct _position_t
@@ -302,4 +304,141 @@ collage_paste_to_bitmap (collage_mosaic_t *mosaic, unsigned int out_width, unsig
     }
 
     return out_bitmap;
+}
+
+collage_mosaic_t*
+collage_read (int num_libraries, library_t **libraries, const char *filename,
+	      int *num_new_libraries, library_t ***new_libraries)
+{
+    lisp_stream_t stream;
+    lisp_object_t *obj;
+    int type;
+    collage_mosaic_t *mosaic = (collage_mosaic_t*)malloc(sizeof(collage_mosaic_t));
+
+    assert(mosaic != 0);
+
+    *num_new_libraries = 0;
+
+    if (lisp_stream_init_path(&stream, filename) == 0)
+    {
+	error_report(ERROR_PROTOCOL_FILE_CANNOT_OPEN, error_make_string_info(filename));
+	return 0;
+    }
+
+    obj = lisp_read(&stream);
+    type = lisp_type(obj);
+
+    if (type != LISP_TYPE_EOF && type != LISP_TYPE_PARSE_ERROR)
+    {
+	lisp_object_t *vars[5];
+
+	if (lisp_match_string("(collage-mosaic (input-size #?(integer) #?(integer)) "
+			      "                (metapixel-size #?(integer) #?(integer)) "
+			      "                (metapixels . #?(list)))", obj, vars))
+	{
+	    lisp_object_t *lst;
+	    unsigned int i;
+
+	    mosaic->in_image_width = lisp_integer(vars[0]);
+	    mosaic->in_image_height = lisp_integer(vars[1]);
+
+	    mosaic->small_image_width = lisp_integer(vars[2]);
+	    mosaic->small_image_height = lisp_integer(vars[3]);
+
+	    mosaic->num_matches = lisp_list_length(vars[4]);
+	    assert(mosaic->num_matches > 0);
+
+	    mosaic->matches = (collage_match_t*)malloc(sizeof(collage_match_t) * mosaic->num_matches);
+
+	    lst = vars[4];
+	    for (i = 0; i < mosaic->num_matches; ++i)
+	    {
+		lisp_object_t *vars[4];
+
+		if (lisp_match_string("(#?(integer) #?(integer) #?(string) #?(string))",
+				      lisp_car(lst), vars))
+		{
+		    mosaic->matches[i].x = lisp_integer(vars[0]);
+		    mosaic->matches[i].y = lisp_integer(vars[1]);
+
+		    mosaic->matches[i].match.pixel = metapixel_find_in_libraries(num_libraries, libraries,
+										 lisp_string(vars[2]), lisp_string(vars[3]),
+										 num_new_libraries, new_libraries);
+
+		    if (mosaic->matches[i].match.pixel == 0)
+		    {
+			/* FIXME: free stuff */
+			return 0;
+		    }
+		}
+		else
+		{
+		    /* FIXME: free stuff */
+
+		    error_report(ERROR_PROTOCOL_SYNTAX_ERROR, error_make_string_info(filename));
+		    return 0;
+		}
+
+		lst = lisp_cdr(lst);
+	    }
+
+	}
+	else
+	{
+	    /* FIXME: free stuff */
+
+	    error_report(ERROR_PROTOCOL_SYNTAX_ERROR, error_make_string_info(filename));
+	    return 0;
+	}
+    }
+    else
+    {
+	/* FIXME: free stuff */
+
+	error_report(ERROR_PROTOCOL_PARSE_ERROR, error_make_string_info(filename));
+	return 0;
+    }
+    lisp_free(obj);
+
+    lisp_stream_free_path(&stream);
+
+    return mosaic;
+}
+
+int
+collage_write (collage_mosaic_t *mosaic, FILE *out)
+{
+    unsigned int i;
+
+    for (i = 0; i < mosaic->num_matches; ++i)
+	if (mosaic->matches[i].match.pixel->library == 0
+	    || mosaic->matches[i].match.pixel->library->path == 0)
+	{
+	    error_report(ERROR_METAPIXEL_NOT_IN_SAVED_LIBRARY,
+			 error_make_string_info(mosaic->matches[i].match.pixel->name));
+	    return 0;
+	}
+
+    /* FIXME: handle write errors */
+    fprintf(out, "(collage-mosaic (input-size %d %d) (metapixel-size %d %d) (metapixels \n",
+	    mosaic->in_image_width, mosaic->in_image_height,
+	    mosaic->small_image_width, mosaic->small_image_height);
+    for (i = 0; i < mosaic->num_matches; ++i)
+    {
+	collage_match_t *match = &mosaic->matches[i];
+	lisp_object_t *library_obj = lisp_make_string(match->match.pixel->library->path);
+	lisp_object_t *filename_obj = lisp_make_string(match->match.pixel->filename);
+
+	fprintf(out, "(%u %u ", match->x, match->y);
+	lisp_dump(library_obj, out);
+	fprintf(out, " ");
+	lisp_dump(filename_obj, out);
+	fprintf(out, ") ; %f\n", match->match.score);
+
+	lisp_free(library_obj);
+	lisp_free(filename_obj);
+    }
+    fprintf(out, "))\n");
+
+    return 1;
 }

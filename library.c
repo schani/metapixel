@@ -464,3 +464,37 @@ library_count_metapixels (int num_libraries, library_t **libraries)
 
     return n;
 }
+
+library_t*
+library_find_or_open (int num_libraries, library_t **libraries,
+		      const char *library_path,
+		      int *num_new_libraries, library_t ***new_libraries)
+{
+    int i;
+    library_t *library;
+
+    /* FIXME: we should do better path comparison */
+
+    for (i = 0; i < num_libraries; ++i)
+	if (strcmp(libraries[i]->path, library_path) == 0)
+	    return libraries[i];
+
+    for (i = 0; i < *num_new_libraries; ++i)
+	if (strcmp((*new_libraries)[i]->path, library_path) == 0)
+	    return (*new_libraries)[i];
+
+    library = library_open(library_path);
+
+    if (library == 0)
+	return 0;
+
+    if ((*num_new_libraries)++ == 0)
+	*new_libraries = (library_t**)malloc(sizeof(library_t*));
+    else
+	*new_libraries = (library_t**)realloc(*new_libraries, *num_new_libraries * sizeof(library_t*));
+    assert(*new_libraries != 0);
+
+    (*new_libraries)[*num_new_libraries - 1] = library;
+
+    return library;
+}

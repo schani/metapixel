@@ -669,62 +669,6 @@ classic_paste_to_bitmap (classic_mosaic_t *mosaic, unsigned int width, unsigned 
     return out_bitmap;
 }
 
-static library_t*
-find_library (int num_libraries, library_t **libraries,
-	      const char *library_path,
-	      int *num_new_libraries, library_t ***new_libraries)
-{
-    int i;
-    library_t *library;
-
-    /* FIXME: we should do better path comparison */
-
-    for (i = 0; i < num_libraries; ++i)
-	if (strcmp(libraries[i]->path, library_path) == 0)
-	    return libraries[i];
-
-    for (i = 0; i < *num_new_libraries; ++i)
-	if (strcmp((*new_libraries)[i]->path, library_path) == 0)
-	    return (*new_libraries)[i];
-
-    library = library_open(library_path);
-
-    if (library == 0)
-	return 0;
-
-    if ((*num_new_libraries)++ == 0)
-	*new_libraries = (library_t**)malloc(sizeof(library_t*));
-    else
-	*new_libraries = (library_t**)realloc(*new_libraries, *num_new_libraries * sizeof(library_t*));
-    assert(*new_libraries != 0);
-
-    (*new_libraries)[*num_new_libraries - 1] = library;
-
-    return library;
-}
-
-static metapixel_t*
-find_metapixel (int num_libraries, library_t **libraries,
-		const char *library_path, const char *filename,
-		int *num_new_libraries, library_t ***new_libraries)
-{
-    library_t *library = find_library(num_libraries, libraries,
-				      library_path,
-				      num_new_libraries, new_libraries);
-    metapixel_t *pixel;
-
-    if (library == 0)
-	return 0;
-
-    for (pixel = library->metapixels; pixel != 0; pixel = pixel->next)
-	if (strcmp(pixel->filename, filename) == 0)
-	    return pixel;
-
-    error_report(ERROR_METAPIXEL_NOT_FOUND, error_make_string_info(filename));
-
-    return 0;
-}
-
 classic_mosaic_t*
 classic_read (int num_libraries, library_t **libraries, const char *filename,
 	      int *num_new_libraries, library_t ***new_libraries)
@@ -734,8 +678,9 @@ classic_read (int num_libraries, library_t **libraries, const char *filename,
     classic_mosaic_t *mosaic = (classic_mosaic_t*)malloc(sizeof(classic_mosaic_t));
     int type;
 
-    *num_new_libraries = 0;
+    assert(mosaic != 0);
 
+    *num_new_libraries = 0;
 
     if (lisp_stream_init_path(&stream, filename) == 0)
     {
@@ -749,7 +694,7 @@ classic_read (int num_libraries, library_t **libraries, const char *filename,
     {
 	lisp_object_t *vars[3];
 
-	if (lisp_match_string("(mosaic (size #?(integer) #?(integer)) (metapixels . #?(list)))",
+	if (lisp_match_string("(classic-mosaic (size #?(integer) #?(integer)) (metapixels . #?(list)))",
 			      obj, vars))
 	{
 	    int i;
@@ -801,9 +746,9 @@ classic_read (int num_libraries, library_t **libraries, const char *filename,
 			return 0;
 		    }
 
-		    pixel = find_metapixel(num_libraries, libraries,
-					   lisp_string(vars[4]), lisp_string(vars[5]),
-					   num_new_libraries, new_libraries);
+		    pixel = metapixel_find_in_libraries(num_libraries, libraries,
+							lisp_string(vars[4]), lisp_string(vars[5]),
+							num_new_libraries, new_libraries);
 
 		    if (pixel == 0)
 		    {
@@ -837,7 +782,6 @@ classic_read (int num_libraries, library_t **libraries, const char *filename,
 	/* FIXME: free stuff */
 
 	error_report(ERROR_PROTOCOL_PARSE_ERROR, error_make_string_info(filename));
-
 	return 0;
     }
     lisp_free(obj);
@@ -864,7 +808,7 @@ classic_write (classic_mosaic_t *mosaic, FILE *out)
 	}
 
     /* FIXME: handle write errors */
-    fprintf(out, "(mosaic (size %d %d)\n(metapixels\n",
+    fprintf(out, "(classic-mosaic (size %d %d)\n(metapixels\n",
 	    mosaic->tiling.metawidth, mosaic->tiling.metaheight);
     for (y = 0; y < mosaic->tiling.metaheight; ++y)
     {

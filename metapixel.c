@@ -215,3 +215,25 @@ metapixel_set_enabled (metapixel_t *metapixel, int enabled)
 {
     /* FIXME: implement */
 }
+
+metapixel_t*
+metapixel_find_in_libraries (int num_libraries, library_t **libraries,
+			     const char *library_path, const char *filename,
+			     int *num_new_libraries, library_t ***new_libraries)
+{
+    library_t *library = library_find_or_open(num_libraries, libraries,
+					      library_path,
+					      num_new_libraries, new_libraries);
+    metapixel_t *pixel;
+
+    if (library == 0)
+	return 0;
+
+    for (pixel = library->metapixels; pixel != 0; pixel = pixel->next)
+	if (strcmp(pixel->filename, filename) == 0)
+	    return pixel;
+
+    error_report(ERROR_METAPIXEL_NOT_FOUND, error_make_string_info(filename));
+
+    return 0;
+}

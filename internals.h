@@ -156,6 +156,11 @@ typedef struct
 
 unsigned int library_count_metapixels (int num_libraries, library_t **libraries);
 
+/* num_new_libraries and new_libraries have very peculiar semantics! */
+library_t* library_find_or_open (int num_libraries, library_t **libraries,
+				 const char *library_path,
+				 int *num_new_libraries, library_t ***new_libraries);
+
 /* Does not initialize coefficients! */
 metapixel_t* metapixel_new (const char *name, unsigned int scaled_width, unsigned int scaled_height,
 			    float aspect_ratio);
@@ -164,6 +169,11 @@ int metapixel_paste (metapixel_t *pixel, bitmap_t *image, unsigned int x, unsign
 
 /* Converts the RGB subpixel data to HSV and YIQ */
 void metapixel_complete_subpixel (metapixel_t *pixel);
+
+/* num_new_libraries and new_libraries have very peculiar semantics! */
+metapixel_t* metapixel_find_in_libraries (int num_libraries, library_t **libraries,
+					  const char *library_path, const char *filename,
+					  int *num_new_libraries, library_t ***new_libraries);
 
 void wavelet_decompose_image (float *image);
 void wavelet_find_highest_coeffs (float *image, coefficient_with_index_t highest_coeffs[NUM_WAVELET_COEFFS]);

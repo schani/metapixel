@@ -329,14 +329,18 @@ generate_local (int num_libraries, library_t **libraries, classic_reader_t *read
 
 	    mosaic->matches[y * metawidth + x] = match;
 
+#ifdef CONSOLE_OUTPUT
 	    printf(".");
 	    fflush(stdout);
+#endif
 	}
     }
 
     free(neighborhood);
 
+#ifdef CONSOLE_OUTPUT
     printf("\n");
+#endif
 
     return mosaic;
 }
@@ -406,8 +410,10 @@ generate_global (int num_libraries, library_t **libraries, classic_reader_t *rea
 
 	    m += metawidth * metaheight;
 
+#ifdef CONSOLE_OUTPUT
 	    printf(".");
 	    fflush(stdout);
+#endif
 	}
     }
 
@@ -443,8 +449,10 @@ generate_global (int num_libraries, library_t **libraries, classic_reader_t *rea
 	    {
 		if (forbid_reconstruction_radius > 0 && ignore_forbidden)
 		{
+#ifdef CONSOLE_OUTPUT
 		    printf("!");
 		    fflush(stdout);
+#endif
 		}
 		mosaic->matches[index].pixel = matches[i].pixel;
 		mosaic->matches[index].score = matches[i].score;
@@ -462,7 +470,9 @@ generate_global (int num_libraries, library_t **libraries, classic_reader_t *rea
     free(matches);
     free(flags);
 
+#ifdef CONSOLE_OUTPUT
     printf("\n");
+#endif
 
     return mosaic;
 }
@@ -559,8 +569,10 @@ classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int 
 
 	    //if (!benchmark_rendering)
 	    {
+#ifdef CONSOLE_OUTPUT
 		printf("X");
 		fflush(stdout);
+#endif
 	    }
 	}
 
@@ -592,7 +604,9 @@ classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int 
 	print_current_time();
     */
 
+#ifdef CONSOLE_OUTPUT
     printf("\n");
+#endif
 
     return 1;
 }
@@ -725,8 +739,10 @@ classic_read (int num_libraries, library_t **libraries, const char *filename,
 
 	    if (lisp_list_length(vars[2]) != num_pixels)
 	    {
-		fprintf(stderr, "mosaic should have %d metapixels, not %d\n", num_pixels, lisp_list_length(vars[2]));
-		exit(1);
+		/* FIXME: free stuff */
+
+		error_report(ERROR_PROTOCOL_INCONSISTENCY, error_make_string_info(filename));
+		return 0;
 	    }
 
 	    lst = vars[2];

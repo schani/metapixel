@@ -330,11 +330,11 @@ main (int argc, char *argv[])
 
     dst = (unsigned char*)malloc(3 * dst_width * dst_height);
 
-    zoom_image(dst, src, get_filter(FILTER_TRIANGLE), 3,
+    zoom_image(dst, src, get_filter(FILTER_MITCHELL), 3,
 	       dst_width, dst_height, dst_width * 3,
 	       src_width, src_height, src_width * 3);
 
-    write_image(argv[4], dst_width, dst_height, dst, IMAGE_FORMAT_PNG);
+    write_image(argv[4], dst_width, dst_height, dst, dst_width * 3, IMAGE_FORMAT_PNG);
 
     return 0;
     

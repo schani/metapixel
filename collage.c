@@ -112,7 +112,9 @@ collage_make (int num_libraries, library_t **libraries, bitmap_t *in_bitmap, flo
 	    return 0;
 	}
 
-	//printf("Scaling source image to %dx%d\n", new_width, new_height);
+#ifdef CONSOLE_OUTPUT
+	printf("Scaling source image to %dx%d\n", new_width, new_height);
+#endif
 
 	scaled_bitmap = bitmap_scale(in_bitmap, new_width, new_height, FILTER_MITCHELL);
 	assert(scaled_bitmap != 0);
@@ -199,8 +201,10 @@ collage_make (int num_libraries, library_t **libraries, bitmap_t *in_bitmap, flo
 		    ++num_pixels_done;
 		}
 
+#ifdef CONSOLE_OUTPUT
 	printf(".");
 	fflush(stdout);
+#endif
     }
 
     free(bitmap);

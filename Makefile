@@ -8,7 +8,7 @@ VERSION = 0.3
 #PROFILE = -pg
 
 LDOPTS = -L/usr/X11R6/lib $(PROFILE)
-CCOPTS = -I/usr/X11R6/include -I/usr/X11R6/include/X11 -Wall -O9 $(PROFILE)
+CCOPTS = -I/usr/X11R6/include -I/usr/X11R6/include/X11 -Wall -O9 $(PROFILE) -DMETAPIXEL_VERSION=\"$(VERSION)\"
 CC = gcc
 #LIBFFM = -lffm
 
@@ -38,5 +38,7 @@ dist :
 	rm -rf metapixel-$(VERSION)
 	mkdir metapixel-$(VERSION)
 	cp Makefile README NEWS COPYING *.[ch] metapixel-prepare metapixel-$(VERSION)/
+	mkdir metapixel-$(VERSION)/libzoom
+	cp libzoom/Makefile libzoom/*.[ch] metapixel-$(VERSION)/libzoom/
 	tar -zcvf metapixel-$(VERSION).tar.gz metapixel-$(VERSION)
 	rm -rf metapixel-$(VERSION)

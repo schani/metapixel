@@ -760,7 +760,7 @@ main (int argc, char *argv[])
 		break;
 
 	    case 256 :
-		printf("metapixel 0.2\n"
+		printf("metapixel " METAPIXEL_VERSION "\n"
 		       "\n"
 		       "Copyright (C) 1997-2000 Mark Probst\n"
 		       "\n"

@@ -102,6 +102,10 @@ void bitmap_paste (bitmap_t *dst, bitmap_t *src, unsigned int x, unsigned int y)
 /* Opacity is 0 for full transparency and 0x10000 (65536) for full opacity. */
 void bitmap_alpha_compose (bitmap_t *dst, bitmap_t *src, unsigned int opacity);
 
+#define COLOR_SPACE_RGB        1
+#define COLOR_SPACE_HSV        2
+#define COLOR_SPACE_YIQ        3
+
 struct _metapixel_t
 {
     library_t *library;

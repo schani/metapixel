@@ -55,7 +55,7 @@ classic_reader_new_from_file (const char *image_filename, tiling_t *tiling)
     image_reader = open_image_reading(image_filename);
     if (image_reader == 0)
     {
-	fprintf(stderr, "Error: cannot read image `%s'.\n", image_filename);
+	error_report(ERROR_CANNOT_READ_INPUT_IMAGE, error_make_filename_info(image_filename));
 	return 0;
     }
 
@@ -75,6 +75,7 @@ classic_reader_new_from_bitmap (bitmap_t *bitmap, tiling_t *tiling)
     assert(reader != 0);
 
     reader->v.bitmap = bitmap_copy(bitmap);
+    assert(reader->v.bitmap != 0);
 
     return reader;
 }
@@ -99,6 +100,7 @@ read_classic_row (classic_reader_t *reader)
 	image_data = (unsigned char*)malloc(reader->num_lines * reader->in_image_width * NUM_CHANNELS);
 	assert(image_data != 0);
 
+	/* FIXME: add error handling */
 	read_lines(reader->v.image_reader, image_data, reader->num_lines);
 
 	reader->in_image = bitmap_new_packed(COLOR_RGB_8, reader->in_image_width, reader->num_lines, image_data);
@@ -156,7 +158,7 @@ classic_writer_new_for_file (const char *filename, unsigned int width, unsigned 
     image_writer = open_image_writing(filename, width, height, width * 3, IMAGE_FORMAT_PNG);
     if (image_writer == 0)
     {
-	fprintf(stderr, "Error: cannot write image `%s'.\n", filename);
+	error_report(ERROR_CANNOT_WRITE_OUTPUT_IMAGE, error_make_filename_info(filename));
 	return 0;
     }
 
@@ -207,6 +209,7 @@ writer_write_row (classic_writer_t *writer, bitmap_t *bitmap)
 	assert(bitmap->pixel_stride == 3);
 	assert(bitmap->row_stride == bitmap->pixel_stride * bitmap->width);
 
+	/* FIXME: add error handling */
 	write_lines(writer->v.image_writer, bitmap->data, bitmap->height);
     }
     else if (writer->kind == CLASSIC_WRITER_BITMAP)
@@ -241,8 +244,8 @@ init_mosaic_from_reader (classic_reader_t *reader)
     assert(mosaic != 0);
 
     mosaic->tiling = reader->tiling;
-    mosaic->matches = (metapixel_match_t*)malloc(sizeof(metapixel_match_t) * metawidth * metaheight);
 
+    mosaic->matches = (metapixel_match_t*)malloc(sizeof(metapixel_match_t) * metawidth * metaheight);
     assert(mosaic->matches != 0);
 
     for (i = 0; i < metawidth * metaheight; ++i)
@@ -316,8 +319,9 @@ generate_local (int num_libraries, library_t **libraries, classic_reader_t *read
 
 	    if (match.pixel == 0)
 	    {
-		fprintf(stderr, "Error: cannot find a matching image - try using a shorter distance.\n");
 		/* FIXME: free stuff */
+
+		error_report(ERROR_CANNOT_FIND_LOCAL_MATCH, error_make_null_info());
 		return 0;
 	    }
 
@@ -365,10 +369,8 @@ generate_global (int num_libraries, library_t **libraries, classic_reader_t *rea
 
     if (library_count_metapixels(num_libraries, libraries) < metawidth * metaheight)
     {
-	fprintf(stderr,
-		"global search method needs at least as much\n"
-		"metapixels as there are locations\n");
-	exit(1);
+	error_report(ERROR_NOT_ENOUGH_GLOBAL_METAPIXELS, error_make_null_info());
+	return 0;
     }
 
     mosaic = init_mosaic_from_reader(reader);
@@ -410,6 +412,8 @@ generate_global (int num_libraries, library_t **libraries, classic_reader_t *rea
     qsort(matches, num_matches, sizeof(global_match_t), compare_global_matches);
 
     flags = (char*)malloc(num_metapixels * sizeof(char));
+    assert(flags != 0);
+
     memset(flags, 0, num_metapixels * sizeof(char));
 
     num_locations_filled = 0;
@@ -545,8 +549,11 @@ classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int 
 
 	    if (!metapixel_paste(mosaic->matches[y * mosaic->tiling.metawidth + x].pixel,
 				 out_bitmap, column_x, 0, column_width, row_height))
-		/* FIXME: this could go wrong! */
-		assert(0);
+	    {
+		/* FIXME: free stuff */
+
+		return 0;
+	    }
 
 	    //if (!benchmark_rendering)
 	    {
@@ -567,6 +574,7 @@ classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int 
 		source_bitmap = bitmap_scale(reader->in_image, out_image_width, row_height, FILTER_MITCHELL);
 	    else
 		source_bitmap = bitmap_copy(reader->in_image);
+	    assert(source_bitmap != 0);
 
 	    bitmap_alpha_compose(out_bitmap, source_bitmap, cheat);
 

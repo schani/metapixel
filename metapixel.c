@@ -102,7 +102,10 @@ generate_coefficients (metapixel_t *pixel)
 	assert(scaled_bitmap != 0);
     }
     else
-	scaled_bitmap = pixel->bitmap;
+    {
+	scaled_bitmap = bitmap_copy(pixel->bitmap);
+	assert(scaled_bitmap != 0);
+    }
 
     //bitmap_write(scaled_bitmap, "/tmp/debug.png");
 
@@ -117,8 +120,7 @@ generate_coefficients (metapixel_t *pixel)
 	for (i = 0; i < NUM_SUBPIXELS; ++i)
 	    pixel->subpixels[channel * NUM_SUBPIXELS + i] = (int)float_image[i * NUM_CHANNELS + channel];
 
-    if (scaled_bitmap != pixel->bitmap)
-	bitmap_free(scaled_bitmap);
+    bitmap_free(scaled_bitmap);
 }
 
 metapixel_t*
@@ -191,6 +193,17 @@ metapixel_get_bitmap (metapixel_t *metapixel)
 
 	bitmap = bitmap_read(filename);
 
+	if (bitmap == 0)
+	{
+	    error_info_t info = error_make_filename_info(filename);
+
+	    free(filename);
+
+	    error_report(ERROR_CANNOT_READ_METAPIXEL_IMAGE, info);
+
+	    return 0;
+	}
+
 	free(filename);
 
 	return bitmap;
@@ -205,10 +218,7 @@ metapixel_paste (metapixel_t *pixel, bitmap_t *image, unsigned int x, unsigned i
 
     bitmap = metapixel_get_bitmap(pixel);
     if (bitmap == 0)
-    {
-	fprintf(stderr, "Error: cannot read metapixel image `%s'.\n", pixel->filename);
 	return 0;
-    }
 
     if (bitmap->width != small_width || bitmap->height != small_height)
     {

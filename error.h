@@ -23,13 +23,20 @@
 #ifndef __METAPIXEL_ERROR_H__
 #define __METAPIXEL_ERROR_H__
 
-#define ERROR_WRONG_NUM_SUBPIXELS             1 // "Error: wrong number of subpixels in `%s'\n", pixel->filename
-#define ERROR_TABLES_PARSE_ERROR              2 // "Error: parse error in tables file.\n"
-#define ERROR_TABLES_SYNTAX_ERROR             3 // "Error: unknown expression "
-#define ERROR_TABLES_FILE_EXISTS              4
-#define ERROR_TABLES_FILE_CANNOT_CREATE       5
-#define ERROR_TABLES_FILE_CANNOT_OPEN         6
-#define ERROR_CANNOT_FIND_SMALL_IMAGE_NAME    7
+#define ERROR_WRONG_NUM_SUBPIXELS                 1
+#define ERROR_TABLES_PARSE_ERROR                  2
+#define ERROR_TABLES_SYNTAX_ERROR                 3
+#define ERROR_TABLES_FILE_EXISTS                  4
+#define ERROR_TABLES_FILE_CANNOT_CREATE           5
+#define ERROR_TABLES_FILE_CANNOT_OPEN             6
+#define ERROR_CANNOT_FIND_METAPIXEL_IMAGE_NAME    7
+#define ERROR_CANNOT_READ_METAPIXEL_IMAGE         8
+#define ERROR_CANNOT_READ_INPUT_IMAGE             9
+#define ERROR_CANNOT_WRITE_OUTPUT_IMAGE          10
+#define ERROR_CANNOT_FIND_LOCAL_MATCH            11
+#define ERROR_NOT_ENOUGH_GLOBAL_METAPIXELS       12
+#define ERROR_CANNOT_FIND_COLLAGE_MATCH          13
+#define ERROR_IMAGE_TOO_SMALL                    14
 
 #define ERROR_INFO_NULL             0
 #define ERROR_INFO_FILENAME         1

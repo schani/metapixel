@@ -407,7 +407,7 @@ library_add_metapixel (library_t *library, metapixel_t *metapixel)
 
     if (access(bitmap_filename, F_OK) == 0)
     {
-	error_report(ERROR_CANNOT_FIND_SMALL_IMAGE_NAME, error_make_filename_info(bitmap_filename));
+	error_report(ERROR_CANNOT_FIND_METAPIXEL_IMAGE_NAME, error_make_filename_info(bitmap_filename));
 
 	return 0;
     }

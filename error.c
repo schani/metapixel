@@ -39,7 +39,14 @@ error_kind (int error_code)
 	  { ERROR_TABLES_FILE_EXISTS, ERROR_INFO_FILENAME },
 	  { ERROR_TABLES_FILE_CANNOT_CREATE, ERROR_INFO_FILENAME },
 	  { ERROR_TABLES_FILE_CANNOT_OPEN, ERROR_INFO_FILENAME },
-	  { ERROR_CANNOT_FIND_SMALL_IMAGE_NAME, ERROR_INFO_FILENAME },
+	  { ERROR_CANNOT_FIND_METAPIXEL_IMAGE_NAME, ERROR_INFO_FILENAME },
+	  { ERROR_CANNOT_READ_METAPIXEL_IMAGE, ERROR_INFO_FILENAME },
+	  { ERROR_CANNOT_READ_INPUT_IMAGE, ERROR_INFO_FILENAME },
+	  { ERROR_CANNOT_WRITE_OUTPUT_IMAGE, ERROR_INFO_FILENAME },
+	  { ERROR_CANNOT_FIND_LOCAL_MATCH, ERROR_INFO_NULL },
+	  { ERROR_NOT_ENOUGH_GLOBAL_METAPIXELS, ERROR_INFO_NULL },
+	  { ERROR_CANNOT_FIND_COLLAGE_MATCH, ERROR_INFO_NULL },
+	  { ERROR_IMAGE_TOO_SMALL, ERROR_INFO_NULL },
 	  { -1, -1 } };
 
     int i;
@@ -63,7 +70,14 @@ error_format_error (int error_code, error_info_t info)
 	  { ERROR_TABLES_FILE_EXISTS, "Tables file `%s' already exists" },
 	  { ERROR_TABLES_FILE_CANNOT_CREATE, "Cannot create tables file `%s'" },
 	  { ERROR_TABLES_FILE_CANNOT_OPEN, "Cannot open tables file `%s'" },
-	  { ERROR_CANNOT_FIND_SMALL_IMAGE_NAME, "Cannot find name for small image `%s'" },
+	  { ERROR_CANNOT_FIND_METAPIXEL_IMAGE_NAME, "Cannot find name for metapixel image `%s'" },
+	  { ERROR_CANNOT_READ_METAPIXEL_IMAGE, "Cannot read metapixel image `%s'" },
+	  { ERROR_CANNOT_READ_INPUT_IMAGE, "Cannot read input image `%s'" },
+	  { ERROR_CANNOT_WRITE_OUTPUT_IMAGE, "Cannot write output image `%s'" },
+	  { ERROR_CANNOT_FIND_LOCAL_MATCH, "Cannot find a matching metapixel - try adding metapixels or using a shorter minimum distance" },
+	  { ERROR_NOT_ENOUGH_GLOBAL_METAPIXELS, "Not enough metapixels to create a global mosaic of the specified size" },
+	  { ERROR_CANNOT_FIND_COLLAGE_MATCH, "Cannot find a matching metapixel - try adding metapixels or using a shorter minimum distance" },
+	  { ERROR_IMAGE_TOO_SMALL, "Source image or scaling factor too small" },
 	  { -1, 0 } };
 
     int kind = error_kind(error_code);

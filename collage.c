@@ -95,7 +95,10 @@ collage_make (int num_libraries, library_t **libraries, bitmap_t *in_bitmap, flo
     unsigned int i;
 
     if (num_metapixels == 0)
+    {
+	error_report(ERROR_CANNOT_FIND_COLLAGE_MATCH, error_make_null_info());
 	return 0;
+    }
     
     if (in_image_scale != 1.0)
     {
@@ -105,8 +108,8 @@ collage_make (int num_libraries, library_t **libraries, bitmap_t *in_bitmap, flo
 
 	if (new_width < small_width || new_height < small_height)
 	{
-	    fprintf(stderr, "Error: Source image or scaling factor too small.\n");
-	    exit(1);
+	    error_report(ERROR_IMAGE_TOO_SMALL, error_make_null_info());
+	    return 0;
 	}
 
 	//printf("Scaling source image to %dx%d\n", new_width, new_height);
@@ -117,14 +120,22 @@ collage_make (int num_libraries, library_t **libraries, bitmap_t *in_bitmap, flo
 	bitmap_free(in_bitmap);
 	in_bitmap = scaled_bitmap;
     }
+    else
+	if (in_bitmap->width < small_width || in_bitmap->height < small_height)
+	{
+	    error_report(ERROR_IMAGE_TOO_SMALL, error_make_null_info());
+	    return 0;
+	}
 
     out_bitmap = bitmap_new_empty(COLOR_RGB_8, in_bitmap->width, in_bitmap->height);
     assert(out_bitmap != 0);
 
     bitmap = (char*)malloc(in_bitmap->width * in_bitmap->height);
+    assert(bitmap != 0);
     memset(bitmap, 0, in_bitmap->width * in_bitmap->height);
 
     collage_positions = (position_t**)malloc(num_metapixels * sizeof(position_t*));
+    assert(collage_positions != 0);
     memset(collage_positions, 0, num_metapixels * sizeof(position_t*));
 
     while (num_pixels_done < in_bitmap->width * in_bitmap->height)
@@ -162,11 +173,20 @@ collage_make (int num_libraries, library_t **libraries, bitmap_t *in_bitmap, flo
 	match = search_metapixel_nearest_to(num_libraries, libraries, &coeffs, metric, x, y,
 					    0, 0, 0,
 					    pixel_valid_for_collage_position, &valid_data);
-	/* FIXME: match.pixel can be zero! */
-	assert(match.pixel != 0);
+	if (match.pixel == 0)
+	{
+	    /* FIXME: free stuff */
+
+	    error_report(ERROR_CANNOT_FIND_COLLAGE_MATCH, error_make_null_info());
+
+	    return 0;
+	}
 	if (!metapixel_paste(match.pixel, out_bitmap, x, y, small_width, small_height))
-	    /* FIXME: this could go wrong! */
-	    assert(0);
+	{
+	    /* FIXME: free stuff */
+
+	    return 0;
+	}
 
 	if (min_distance > 0)
 	    add_collage_position(&collage_positions[match.pixel_index], x, y);

@@ -1,3 +1,11 @@
+Changes since version 0.7:
+
+  * global search mode
+
+  * protocol writing and reading
+
+  * antimosaic
+
 Changes since version 0.6:
 
   * scaling of input image added

@@ -82,7 +82,8 @@ STDOUT->autoflush(1);
 foreach my $filename (glob("$srcdir/*")) {
     if (-f $filename && -r $filename) {
 	my ($name, $path, $suffix) = fileparse($filename);
-	`metapixel $opts --prepare $filename $destdir/$name$suffix.png $destdir/tables`;
+	`metapixel $opts --prepare "$filename" "$destdir/$name$suffix.png" "$destdir/tables.mxt"`;
+	die "error running metapixel" if ($? != 0);
 	print ".";
     }
 }

@@ -5,7 +5,7 @@
  *
  * metapixel
  *
- * Copyright (C) 1997-2000 Mark Probst
+ * Copyright (C) 1997-2004 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -28,6 +28,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <math.h>
+#include <errno.h>
 
 #include "getopt.h"
 
@@ -36,6 +37,9 @@
 #include "writeimage.h"
 #include "libzoom/raw.h"
 #include "libzoom/zoom.h"
+#include "lispreader.h"
+
+#include "metapixel.h"
 
 #ifndef MIN
 #define MIN(a,b)           ((a)<(b)?(a):(b))
@@ -44,66 +48,10 @@
 #define MAX(a,b)           ((a)>(b)?(a):(b))
 #endif
 
-#define DEFAULT_WIDTH       64
-#define DEFAULT_HEIGHT      64
-
-#define NUM_CHANNELS        3
-
-#define IMAGE_SIZE          64
-#define ROW_LENGTH          (IMAGE_SIZE * NUM_CHANNELS)
-#define SIGNIFICANT_COEFFS  40
-
-#define NUM_COEFFS          (NUM_CHANNELS * SIGNIFICANT_COEFFS)
-
-#define NUM_INDEXES         (IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS * 2)
-
-#define NUM_SUBPIXEL_ROWS_COLS       5
-#define NUM_SUBPIXELS                (NUM_SUBPIXEL_ROWS_COLS * NUM_SUBPIXEL_ROWS_COLS)
-
-#define METHOD_WAVELET  1
-#define METHOD_SUBPIXEL 2
-
-typedef struct
-{
-    int index;
-    float coeff;
-} coefficient_with_index_t;
-
-typedef unsigned short index_t;
-
-typedef struct
-{
-    index_t coeffs[NUM_COEFFS];
-} search_coefficients_t;
-
 int index_order[IMAGE_SIZE * IMAGE_SIZE];
 
-typedef struct _metapixel_t
-{
-    char filename[1024];	/* FIXME: should be done dynamically */
-    search_coefficients_t coeffs;
-    float means[NUM_CHANNELS];
-    unsigned char subpixels[NUM_SUBPIXELS * NUM_CHANNELS];
-    struct _metapixel_t *next;
-} metapixel_t;
-
-typedef union
-{
-    struct
-    {
-	search_coefficients_t coeffs;
-	float means[NUM_CHANNELS];
-	float sums[NUM_COEFFS];
-    } wavelet;
-    struct
-    {
-	unsigned char subpixels[NUM_SUBPIXELS * NUM_CHANNELS];
-    } subpixel;
-} coeffs_t;
-
-typedef float(*compare_func_t)(coeffs_t*, metapixel_t*, float);
-
 static metapixel_t *first_pixel = 0;
+static int num_metapixels = 0;
 
 float sqrt_of_two, sqrt_of_image_size;
 
@@ -114,6 +62,8 @@ index_t weight_ordered_index_to_index[NUM_INDEXES];
 index_t index_to_weight_ordered_index[NUM_INDEXES];
 
 int small_width = DEFAULT_WIDTH, small_height = DEFAULT_HEIGHT;
+
+int forbid_reconstruction_radius = 0;
 
 static unsigned char*
 scale_image (unsigned char *image, int image_width, int image_height, int x, int y, int width, int height, int new_width, int new_height)
@@ -611,6 +561,7 @@ add_metapixel (metapixel_t *pixel)
 {
     pixel->next = first_pixel;
     first_pixel = pixel;
+    ++num_metapixels;
 }
 
 static int
@@ -713,6 +664,67 @@ generate_search_coeffs_for_subimage (coeffs_t *coeffs, unsigned char *image_data
 	assert(0);
 }
 
+static void
+generate_metapixel_coefficients (metapixel_t *pixel, unsigned char *image_data,
+				 coefficient_with_index_t raw_coeffs[NUM_COEFFS])
+{
+    static float float_image[NUM_CHANNELS * IMAGE_SIZE * IMAGE_SIZE];
+    static float sums[NUM_COEFFS];
+
+    unsigned char *scaled_data;
+    int i, channel;
+
+    /* generate wavelet coefficients */
+    if (small_width != IMAGE_SIZE || small_height != IMAGE_SIZE)
+    {
+	scaled_data = scale_image(image_data, small_width, small_height,
+				  0, 0, small_width, small_height, IMAGE_SIZE, IMAGE_SIZE);
+	assert(scaled_data != 0);
+    }
+    else
+	scaled_data = image_data;
+
+    for (i = 0; i < IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS; ++i)
+	float_image[i] = scaled_data[i];
+
+    if (scaled_data != image_data)
+	free(scaled_data);
+
+    transform_rgb_to_yiq(float_image, IMAGE_SIZE * IMAGE_SIZE);
+    decompose_image(float_image);
+
+    find_highest_coefficients(float_image, raw_coeffs);
+
+    generate_search_coeffs(&pixel->coeffs, sums, raw_coeffs);
+
+    for (i = 0; i < NUM_CHANNELS; ++i)
+	pixel->means[i] = float_image[i];
+
+    /* generate subpixel coefficients */
+    if (small_width != NUM_SUBPIXEL_ROWS_COLS || small_height != NUM_SUBPIXEL_ROWS_COLS)
+    {
+	scaled_data = scale_image(image_data, small_width, small_height, 0, 0, small_width, small_height,
+				  NUM_SUBPIXEL_ROWS_COLS, NUM_SUBPIXEL_ROWS_COLS);
+	assert(scaled_data != 0);
+    }
+    else
+	scaled_data = image_data;
+
+    assert(NUM_SUBPIXELS <= IMAGE_SIZE * IMAGE_SIZE);
+
+    for (i = 0; i < NUM_SUBPIXELS * NUM_CHANNELS; ++i)
+	float_image[i] = scaled_data[i];
+
+    transform_rgb_to_yiq(float_image, NUM_SUBPIXELS);
+
+    for (channel = 0; channel < NUM_CHANNELS; ++channel)
+	for (i = 0; i < NUM_SUBPIXELS; ++i)
+	    pixel->subpixels[channel * NUM_SUBPIXELS + i] = (int)float_image[i * NUM_CHANNELS + channel];
+
+    if (scaled_data != image_data)
+	free(scaled_data);
+}
+
 static int
 metapixel_in_array (metapixel_t *pixel, metapixel_t **array, int size)
 {
@@ -724,23 +736,41 @@ metapixel_in_array (metapixel_t *pixel, metapixel_t **array, int size)
     return 0;
 }
 
-static metapixel_t*
-metapixel_nearest_to (coeffs_t *coeffs, metapixel_t **forbidden, int num_forbidden, int method)
+compare_func_t
+compare_func_for_method (int method)
+{
+    if (method == METHOD_WAVELET)
+	return wavelet_compare;
+    else if (method == METHOD_SUBPIXEL)
+	return subpixel_compare;
+    else
+	assert(0);
+    return 0;
+}
+
+static int
+manhattan_distance (int x1, int y1, int x2, int y2)
+{
+    return abs(x1 - x2) + abs(y1 - y2);
+}
+
+static match_t
+metapixel_nearest_to (coeffs_t *coeffs, metapixel_t **forbidden, int num_forbidden, int method, int x, int y)
 {
     float best_score = 1e99;
     metapixel_t *best_fit = 0, *pixel;
-    compare_func_t compare_func = 0;
-
-    if (method == METHOD_WAVELET)
-	compare_func = wavelet_compare;
-    else if (method == METHOD_SUBPIXEL)
-	compare_func = subpixel_compare;
-    else
-	assert(0);
+    compare_func_t compare_func = compare_func_for_method(method);
+    match_t match;
 
     for (pixel = first_pixel; pixel != 0; pixel = pixel->next)
     {
-	float score = compare_func(coeffs, pixel, best_score);
+	float score;
+
+	if (manhattan_distance(x, y, pixel->anti_x, pixel->anti_y)
+	    < forbid_reconstruction_radius)
+	    continue;
+
+	score = compare_func(coeffs, pixel, best_score);
 
 	if (score < best_score && !metapixel_in_array(pixel, forbidden, num_forbidden))
 	{
@@ -749,7 +779,48 @@ metapixel_nearest_to (coeffs_t *coeffs, metapixel_t **forbidden, int num_forbidd
 	}
     }
 
-    return best_fit;
+    match.pixel = best_fit;
+    match.score = best_score;
+
+    return match;
+}
+
+static void
+get_n_metapixel_nearest_to (int n, global_match_t *matches, coeffs_t *coeffs, int method)
+{
+    compare_func_t compare_func = compare_func_for_method(method);
+    int i;
+    metapixel_t *pixel;
+
+    assert(num_metapixels >= n);
+
+    i = 0;
+    for (pixel = first_pixel; pixel != 0; pixel = pixel->next)
+    {
+	float score = compare_func(coeffs, pixel, (i < n) ? 1e99 : matches[n - 1].score);
+
+	if (i < n || score < matches[n - 1].score)
+	{
+	    int j, m;
+
+	    m = MIN(i, n);
+
+	    for (j = 0; j < m; ++j)
+		if (matches[j].score > score)
+		    break;
+
+	    assert(j <= m && j < n);
+
+	    memmove(matches + j + 1, matches + j, sizeof(global_match_t) * (MIN(n, m + 1) - (j + 1)));
+
+	    matches[j].pixel = pixel;
+	    matches[j].score = score;
+	}
+
+	++i;
+    }
+
+    assert(i >= n);
 }
 
 static void
@@ -757,87 +828,160 @@ paste_metapixel (metapixel_t *pixel, unsigned char *data, int width, int height,
 {
     int i;
     int pixel_width, pixel_height;
-    unsigned char *pixel_data = read_image(pixel->filename, &pixel_width, &pixel_height);
+    unsigned char *pixel_data;
 
-    if (pixel_width != small_width || pixel_height != small_height)
+    if (pixel->data != 0)
+	pixel_data = pixel->data;
+    else
     {
-	unsigned char *scaled_data = scale_image(pixel_data, pixel_width, pixel_height,
-						 0, 0, pixel_width, pixel_height,
-						 small_width, small_height);
+	pixel_data = read_image(pixel->filename, &pixel_width, &pixel_height);
 
-	free(pixel_data);
-	pixel_data = scaled_data;
+	if (pixel_data == 0)
+	{
+	    fprintf(stderr, "cannot read metapixel file `%s'\n", pixel->filename);
+	    exit(1);
+	}
+
+	if (pixel_width != small_width || pixel_height != small_height)
+	{
+	    unsigned char *scaled_data = scale_image(pixel_data, pixel_width, pixel_height,
+						     0, 0, pixel_width, pixel_height,
+						     small_width, small_height);
+
+	    free(pixel_data);
+	    pixel_data = scaled_data;
+	}
     }
 
     for (i = 0; i < small_height; ++i)
 	memcpy(data + NUM_CHANNELS * (x + (y + i) * width),
 	       pixel_data + NUM_CHANNELS * i * small_width, NUM_CHANNELS * small_width);
 
-    free(pixel_data);
+    if (pixel_data != pixel->data)
+	free(pixel_data);
+}
+
+static classic_reader_t*
+init_classic_reader (char *input_name, float scale)
+{
+    classic_reader_t *reader = (classic_reader_t*)malloc(sizeof(classic_reader_t));
+
+    assert(reader != 0);
+
+    reader->image_reader = open_image_reading(input_name);
+    if (reader->image_reader == 0)
+    {
+	fprintf(stderr, "cannot read image `%s'\n", input_name);
+	exit(1);
+    }
+
+    reader->in_image_width = reader->image_reader->width;
+    reader->in_image_height = reader->image_reader->height;
+
+    reader->out_image_width = (((int)((float)reader->in_image_width * scale) - 1) / small_width + 1) * small_width;
+    reader->out_image_height = (((int)((float)reader->in_image_height * scale) - 1) / small_height + 1) * small_height;
+
+    assert(reader->out_image_width % small_width == 0);
+    assert(reader->out_image_height % small_height == 0);
+
+    reader->metawidth = reader->out_image_width / small_width;
+    reader->metaheight = reader->out_image_height / small_height;
+
+    reader->in_image_data = 0;
+    reader->y = 0;
+
+    return reader;
 }
 
 static void
-generate_classic (char *input_name, char *output_name, float scale, int min_distance, int method, int cheat)
+read_classic_row (classic_reader_t *reader)
 {
-    metapixel_t **metapixels, **neighborhood = 0;
+    if (reader->in_image_data != 0)
+    {
+	assert(reader->y > 0);
+	free(reader->in_image_data);
+    }
+    else
+	assert(reader->y == 0);
+
+    reader->num_lines = (reader->y + 1) * reader->in_image_height / reader->metaheight
+	- reader->y * reader->in_image_height / reader->metaheight;
+
+    reader->in_image_data = (unsigned char*)malloc(reader->num_lines * reader->in_image_width * NUM_CHANNELS);
+    assert(reader->in_image_data != 0);
+
+    read_lines(reader->image_reader, reader->in_image_data, reader->num_lines);
+
+    ++reader->y;
+}
+
+static void
+compute_classic_column_coords (classic_reader_t *reader, int x, int *left_x, int *width)
+{
+    *left_x = x * reader->in_image_width / reader->metawidth;
+    *width = (x + 1) * reader->in_image_width / reader->metawidth - *left_x;
+}
+
+static void
+generate_search_coeffs_for_classic_subimage (classic_reader_t *reader, int x, coeffs_t *coeffs, int method)
+{
+    int left_x, width;
+
+    compute_classic_column_coords(reader, x, &left_x, &width);
+    generate_search_coeffs_for_subimage(coeffs, reader->in_image_data, reader->in_image_width, reader->num_lines,
+					left_x, 0, width, reader->num_lines, method);
+}
+
+static void
+free_classic_reader (classic_reader_t *reader)
+{
+    if (reader->in_image_data != 0)
+	free(reader->in_image_data);
+    free_image_reader(reader->image_reader);
+    free(reader);
+}
+
+static mosaic_t*
+init_mosaic_from_reader (classic_reader_t *reader)
+{
+    mosaic_t *mosaic = (mosaic_t*)malloc(sizeof(mosaic_t));
+    int metawidth = reader->metawidth, metaheight = reader->metaheight;
+    int i;
+
+    assert(mosaic != 0);
+
+    mosaic->metawidth = metawidth;
+    mosaic->metaheight = metaheight;
+    mosaic->matches = (match_t*)malloc(sizeof(match_t) * metawidth * metaheight);
+
+    for (i = 0; i < metawidth * metaheight; ++i)
+	mosaic->matches[i].pixel = 0;
+
+    return mosaic;
+}
+
+static mosaic_t*
+generate_local_classic (classic_reader_t *reader, int min_distance, int method)
+{
+    mosaic_t *mosaic = init_mosaic_from_reader(reader);
+    int metawidth = reader->metawidth, metaheight = reader->metaheight;
     int x, y;
-    int metawidth, metaheight;
+    metapixel_t **neighborhood = 0;
     int neighborhood_diameter = min_distance * 2 + 1;
     int neighborhood_size = (neighborhood_diameter * neighborhood_diameter - 1) / 2;
-    int in_image_width, in_image_height;
-    int out_image_width, out_image_height;
-    image_reader_t *reader;
-    image_writer_t *writer;
-    unsigned char *out_image_data;
 
-    reader = open_image_reading(input_name);
-    if (reader == 0)
-    {
-	fprintf(stderr, "cannot read image %s\n", input_name);
-	exit(1);
-    }
-
-    in_image_width = reader->width;
-    in_image_height = reader->height;
-
-    out_image_width = (((int)((float)in_image_width * scale) - 1) / small_width + 1) * small_width;
-    out_image_height = (((int)((float)in_image_height * scale) - 1) / small_height + 1) * small_height;
-
-    assert(out_image_width % small_width == 0);
-    assert(out_image_height % small_height == 0);
-
-    writer = open_image_writing(output_name, out_image_width, out_image_height, IMAGE_FORMAT_PNG);
-    if (writer == 0)
-    {
-	fprintf(stderr, "cannot write image %s\n", output_name);
-	exit(1);
-    }
-
-    metawidth = out_image_width / small_width;
-    metaheight = out_image_height / small_height;
-
-    metapixels = (metapixel_t**)malloc(sizeof(metapixel_t*) * metawidth * metaheight);
     if (min_distance > 0)
 	neighborhood = (metapixel_t**)malloc(sizeof(metapixel_t*) * neighborhood_size);
 
-    out_image_data = (unsigned char*)malloc(out_image_width * small_height * NUM_CHANNELS);
-
     for (y = 0; y < metaheight; ++y)
     {
-	int num_lines = (y + 1) * in_image_height / metaheight - y * in_image_height / metaheight;
-	unsigned char *in_image_data = (unsigned char*)malloc(num_lines * in_image_width * NUM_CHANNELS);
-
-	assert(in_image_data != 0);
-
-	read_lines(reader, in_image_data, num_lines);
+	read_classic_row(reader);
 
 	for (x = 0; x < metawidth; ++x)
 	{
-	    metapixel_t *pixel;
+	    match_t match;
 	    int i;
 	    coeffs_t coeffs;
-	    int left_x = x * in_image_width / metawidth;
-	    int width = (x + 1) * in_image_width / metawidth - left_x;
 
 	    for (i = 0; i < neighborhood_size; ++i)
 	    {
@@ -847,24 +991,199 @@ generate_classic (char *input_name, char *output_name, float scale, int min_dist
 		if (nx < 0 || nx >= metawidth || ny < 0 || ny >= metaheight)
 		    neighborhood[i] = 0;
 		else
-		    neighborhood[i] = metapixels[ny * metawidth + nx];
+		    neighborhood[i] = mosaic->matches[ny * metawidth + nx].pixel;
 	    }
 
-	    generate_search_coeffs_for_subimage(&coeffs, in_image_data, in_image_width, num_lines,
-						left_x, 0, width, num_lines, method);
+	    generate_search_coeffs_for_classic_subimage(reader, x, &coeffs, method);
 
-	    pixel = metapixel_nearest_to(&coeffs, neighborhood, neighborhood_size, method);
-	    paste_metapixel(pixel, out_image_data, out_image_width, small_height, x * small_width, 0);
+	    match = metapixel_nearest_to(&coeffs, neighborhood, neighborhood_size, method, x, y);
 
-	    metapixels[y * metawidth + x] = pixel;
+	    mosaic->matches[y * metawidth + x] = match;
 
 	    printf(".");
+	    fflush(stdout);
+	}
+    }
+
+    free(neighborhood);
+
+    printf("\n");
+
+    return mosaic;
+}
+
+static int
+compare_global_matches (const void *_m1, const void *_m2)
+{
+    global_match_t *m1 = (global_match_t*)_m1;
+    global_match_t *m2 = (global_match_t*)_m2;
+
+    if (m1->score < m2->score)
+	return -1;
+    if (m1->score > m2->score)
+	return 1;
+    return 0;
+}
+
+static mosaic_t*
+generate_global_classic (classic_reader_t *reader, int method)
+{
+    mosaic_t *mosaic = init_mosaic_from_reader(reader);
+    int metawidth = reader->metawidth, metaheight = reader->metaheight;
+    int x, y;
+    global_match_t *matches, *m;
+    int num_matches = (metawidth * metaheight) * (metawidth * metaheight);
+    int i, ignore_forbidden;
+    int num_locations_filled;
+    metapixel_t *pixel;
+
+    if (num_metapixels < metawidth * metaheight)
+    {
+	fprintf(stderr,
+		"global search method needs at least as much\n"
+		"metapixels as there are locations\n");
+	exit(1);
+    }
+
+    matches = (global_match_t*)malloc(sizeof(global_match_t) * num_matches);
+    assert(matches != 0);
+
+    m = matches;
+    for (y = 0; y < metaheight; ++y)
+    {
+	read_classic_row(reader);
+
+	for (x = 0; x < metawidth; ++x)
+	{
+	    coeffs_t coeffs;
+
+	    generate_search_coeffs_for_classic_subimage(reader, x, &coeffs, method);
+	    
+	    get_n_metapixel_nearest_to(metawidth * metaheight, m, &coeffs, method);
+	    for (i = 0; i < metawidth * metaheight; ++i)
+	    {
+		m[i].x = x;
+		m[i].y = y;
+	    }
+
+	    m += metawidth * metaheight;
+
+	    printf(".");
+	    fflush(stdout);
+	}
+    }
+
+    qsort(matches, num_matches, sizeof(global_match_t), compare_global_matches);
+
+    for (pixel = first_pixel; pixel != 0; pixel = pixel->next)
+	pixel->flag = 0;
+
+    num_locations_filled = 0;
+    for (ignore_forbidden = 0; ignore_forbidden < 2; ++ignore_forbidden)
+    {
+	for (i = 0; i < num_matches; ++i)
+	{
+	    int index = matches[i].y * metawidth + matches[i].x;
+
+	    if (!ignore_forbidden
+		&& manhattan_distance(matches[i].x, matches[i].y,
+				      matches[i].pixel->anti_x, matches[i].pixel->anti_y)
+		  < forbid_reconstruction_radius)
+		continue;
+
+	    if (matches[i].pixel->flag)
+		continue;
+
+	    if (num_locations_filled >= metaheight * metaheight)
+		break;
+
+	    if (mosaic->matches[index].pixel == 0)
+	    {
+		if (forbid_reconstruction_radius > 0 && ignore_forbidden)
+		{
+		    printf("!");
+		    fflush(stdout);
+		}
+		mosaic->matches[index].pixel = matches[i].pixel;
+		mosaic->matches[index].score = matches[i].score;
+
+		matches[i].pixel->flag = 1;
+
+		++num_locations_filled;
+	    }
+	}
+	if (forbid_reconstruction_radius == 0)
+	    break;
+    }
+    assert(num_locations_filled == metawidth * metaheight);
+
+    free(matches);
+
+    printf("\n");
+
+    return mosaic;
+}
+
+static void
+paste_classic (mosaic_t *mosaic, char *input_name, char *output_name, int cheat)
+{
+    image_reader_t *reader;
+    image_writer_t *writer;
+    int out_image_width, out_image_height;
+    int x, y;
+    unsigned char *out_image_data;
+    int in_image_width, in_image_height;
+    int metawidth = mosaic->metawidth, metaheight = mosaic->metaheight;
+
+    if (cheat > 0)
+    {
+	reader = open_image_reading(input_name);
+	if (reader == 0)
+	{
+	    fprintf(stderr, "cannot read image `%s'\n", input_name);
+	    exit(1);
+	}
+
+	in_image_width = reader->width;
+	in_image_height = reader->height;
+    }
+    else
+    {
+	reader = 0;
+	in_image_width = in_image_height = 0;
+    }
+
+    out_image_width = mosaic->metawidth * small_width;
+    out_image_height = mosaic->metaheight * small_height;
+
+    writer = open_image_writing(output_name, out_image_width, out_image_height, IMAGE_FORMAT_PNG);
+    if (writer == 0)
+    {
+	fprintf(stderr, "cannot write image `%s'\n", output_name);
+	exit(1);
+    }
+
+    out_image_data = (unsigned char*)malloc(out_image_width * small_height * NUM_CHANNELS);
+
+    for (y = 0; y < metaheight; ++y)
+    {
+	for (x = 0; x < metawidth; ++x)
+	{
+	    paste_metapixel(mosaic->matches[y * metawidth + x].pixel, out_image_data, out_image_width,
+			    small_height, x * small_width, 0);
+	    printf("X");
 	    fflush(stdout);
 	}
 
 	if (cheat > 0)
 	{
+	    int num_lines = (y + 1) * in_image_height / metaheight - y * in_image_height / metaheight;
+	    unsigned char *in_image_data = (unsigned char*)malloc(num_lines * in_image_width * NUM_CHANNELS);
 	    unsigned char *source_data;
+
+	    assert(in_image_data != 0);
+
+	    read_lines(reader, in_image_data, num_lines);
 
 	    if (in_image_width != out_image_width || num_lines != small_height)
 		source_data = scale_image(in_image_data, in_image_width, num_lines,
@@ -877,9 +1196,9 @@ generate_classic (char *input_name, char *output_name, float scale, int min_dist
 
 	    if (source_data != in_image_data)
 		free(source_data);
-	}
 
-	free(in_image_data);
+	    free(in_image_data);
+	}
 
 	write_lines(writer, out_image_data, small_height);
     }
@@ -887,7 +1206,8 @@ generate_classic (char *input_name, char *output_name, float scale, int min_dist
     free(out_image_data);
 
     free_image_writer(writer);
-    free_image_reader(reader);
+    if (cheat > 0)
+	free_image_reader(reader);
 
     printf("\n");
 }
@@ -903,7 +1223,7 @@ generate_collage (char *input_name, char *output_name, float scale, int method, 
     in_image_data = read_image(input_name, &in_image_width, &in_image_height);
     if (in_image_data == 0)
     {
-	fprintf(stderr, "could not read image %s\n", input_name);
+	fprintf(stderr, "could not read image `%s'\n", input_name);
 	exit(1);
     }
 
@@ -942,7 +1262,7 @@ generate_collage (char *input_name, char *output_name, float scale, int method, 
 	int i, j;
 	int x, y;
 	coeffs_t coeffs;
-	metapixel_t *pixel;
+	match_t match;
 
 	while (1)
 	{
@@ -968,8 +1288,8 @@ generate_collage (char *input_name, char *output_name, float scale, int method, 
     out:
 	generate_search_coeffs_for_subimage(&coeffs, in_image_data, in_image_width, in_image_height, x, y, small_width, small_height, method);
 
-	pixel = metapixel_nearest_to(&coeffs, 0, 0, method);
-	paste_metapixel(pixel, out_image_data, in_image_width, in_image_height, x, y);
+	match = metapixel_nearest_to(&coeffs, 0, 0, method, x, y);
+	paste_metapixel(match.pixel, out_image_data, in_image_width, in_image_height, x, y);
 
 	for (j = 0; j < small_height; ++j)
 	    for (i = 0; i < small_width; ++i)
@@ -990,6 +1310,201 @@ generate_collage (char *input_name, char *output_name, float scale, int method, 
     free(in_image_data);
 }
 
+static void
+read_tables (FILE *in)
+{
+    lisp_object_t *obj;
+    lisp_stream_t stream;
+
+    lisp_stream_init_file(&stream, in);
+
+    for (;;)
+    {
+        int type;
+
+        obj = lisp_read(&stream);
+        type = lisp_type(obj);
+        if (type != LISP_TYPE_EOF && type != LISP_TYPE_PARSE_ERROR)
+        {
+            lisp_object_t *vars[10];
+
+            if (lisp_match_string("(small-image #?(string) (size #?(integer) #?(integer))"
+				  "  (wavelet (means #?(real) #?(real) #?(real)) (coeffs . #?(list)))"
+				  "  (subpixel (y . #?(list)) (i . #?(list)) (q . #?(list))))",
+				  obj, vars))
+	    {
+		metapixel_t *pixel = (metapixel_t*)malloc(sizeof(metapixel_t));
+		coefficient_with_index_t coeffs[NUM_COEFFS];
+		lisp_object_t *lst;
+		int channel, i;
+
+		pixel->filename = strdup(lisp_string(vars[0]));
+
+		for (channel = 0; channel < NUM_CHANNELS; ++channel)
+		    pixel->means[channel] = lisp_real(vars[3 + channel]);
+
+		if (lisp_list_length(vars[6]) != NUM_COEFFS)
+		    fprintf(stderr, "wrong number of wavelet coefficients in `%s'\n", pixel->filename);
+		else
+		{
+		    static float sums[NUM_COEFFS];
+
+		    lst = vars[6];
+		    for (i = 0; i < NUM_COEFFS; ++i)
+		    {
+			coeffs[i].index = lisp_integer(lisp_car(lst));
+			lst = lisp_cdr(lst);
+		    }
+
+		    generate_search_coeffs(&pixel->coeffs, sums, coeffs);
+		}
+
+		for (channel = 0; channel < NUM_CHANNELS; ++channel)
+		{
+		    lst = vars[7 + channel];
+
+		    if (lisp_list_length(lst) != NUM_SUBPIXELS)
+			fprintf(stderr, "wrong number of subpixels in `%s'\n", pixel->filename);
+		    else
+			for (i = 0; i < NUM_SUBPIXELS; ++i)
+			{
+			    pixel->subpixels[channel * NUM_SUBPIXELS + i] = lisp_integer(lisp_car(lst));
+			    lst = lisp_cdr(lst);
+			}
+		}
+
+		pixel->data = 0;
+
+		add_metapixel(pixel);
+	    }
+	    else
+	    {
+		fprintf(stderr, "unknown expression ");
+		lisp_dump(obj, stderr);
+		fprintf(stderr, "\n");
+	    }
+        }
+        else if (type == LISP_TYPE_PARSE_ERROR)
+            fprintf(stderr, "parse error\n");
+        lisp_free(obj);
+
+        if (type == LISP_TYPE_EOF)
+            break;
+    }
+}
+
+static metapixel_t*
+find_metapixel (char *filename)
+{
+    metapixel_t *pixel;
+
+    for (pixel = first_pixel; pixel != 0; pixel = pixel->next)
+	if (strcmp(pixel->filename, filename) == 0)
+	    return pixel;
+
+    return 0;
+}
+
+static mosaic_t*
+read_protocol (FILE *in)
+{
+    lisp_object_t *obj;
+    lisp_stream_t stream;
+    mosaic_t *mosaic = (mosaic_t*)malloc(sizeof(mosaic_t));
+    int type;
+
+    lisp_stream_init_file(&stream, in);
+
+    obj = lisp_read(&stream);
+    type = lisp_type(obj);
+    if (type != LISP_TYPE_EOF && type != LISP_TYPE_PARSE_ERROR)
+    {
+	lisp_object_t *vars[3];
+
+	if (lisp_match_string("(mosaic (size #?(integer) #?(integer)) (metapixels . #?(list)))",
+			      obj, vars))
+	{
+	    int i;
+	    int num_pixels;
+	    lisp_object_t *lst;
+
+	    mosaic->metawidth = lisp_integer(vars[0]);
+	    mosaic->metaheight = lisp_integer(vars[1]);
+	    num_pixels = mosaic->metawidth * mosaic->metaheight;
+	    mosaic->matches = (match_t*)malloc(sizeof(match_t) * num_pixels);
+
+	    for (i = 0; i < num_pixels; ++i)
+		mosaic->matches[i].pixel = 0;
+
+	    if (lisp_list_length(vars[2]) != num_pixels)
+	    {
+		fprintf(stderr, "mosaic should have %d metapixels, not %d\n", num_pixels, lisp_list_length(vars[2]));
+		exit(1);
+	    }
+
+	    lst = vars[2];
+	    for (i = 0; i < num_pixels; ++i)
+	    {
+		lisp_object_t *vars[5];
+
+		if (lisp_match_string("(#?(integer) #?(integer) #?(integer) #?(integer) #?(string))",
+				      lisp_car(lst), vars))
+		{
+		    int x = lisp_integer(vars[0]);
+		    int y = lisp_integer(vars[1]);
+		    int width = lisp_integer(vars[2]);
+		    int height = lisp_integer(vars[3]);
+		    metapixel_t *pixel;
+
+		    if (width != 1 || height != 1)
+		    {
+			fprintf(stderr, "width and height in metapixel must both be 1\n");
+			exit(1);
+		    }
+
+		    if (mosaic->matches[y * mosaic->metawidth + x].pixel != 0)
+		    {
+			fprintf(stderr, "location (%d,%d) is assigned to twice\n", x, y);
+			exit(1);
+		    }
+
+		    pixel = find_metapixel(lisp_string(vars[4]));
+
+		    if (pixel == 0)
+		    {
+			fprintf(stderr, "could not find metapixel `%s'\n", lisp_string(vars[4]));
+			exit(1);
+		    }
+
+		    mosaic->matches[y * mosaic->metawidth + x].pixel = pixel;
+		}
+		else
+		{
+		    fprintf(stderr, "metapixel ");
+		    lisp_dump(lisp_car(lst), stderr);
+		    fprintf(stderr, " has wrong format\n");
+		    exit(1);
+		}
+
+		lst = lisp_cdr(lst);
+	    }
+	}
+	else
+	{
+	    fprintf(stderr, "malformed expression in protocol file\n");
+	    exit(1);
+	}
+    }
+    else
+    {
+	fprintf(stderr, "error in protocol file\n");
+	exit(1);
+    }
+    lisp_free(obj);
+
+    return mosaic;
+}
+
 void
 usage (void)
 {
@@ -1003,19 +1518,26 @@ usage (void)
 	   "  metapixel [option ...] --metapixel <in> <out>\n"
 	   "      transform <in> to <out>\n"
 	   "Options:\n"
-	   "  -w, --width=WIDTH           set width for small images\n"
-	   "  -h, --height=HEIGHT         set height for small images\n"
-	   "  -y, --y-weight=WEIGHT       assign relative weight for the Y-channel\n"
-	   "  -i, --i-weight=WEIGHT       assign relative weight for the I-channel\n"
-	   "  -q, --q-weight=WEIGHT       assign relative weight for the Q-channel\n"
-	   "  -s  --scale=SCALE           scale input image by specified factor\n"
-	   "  -m, --metric=METRIC         choose metric (subpixel or wavelet)\n"
-	   "  -c, --collage               collage mode\n"
-	   "  -d, --distance=DIST         minimum distance between two instances of\n"
-	   "                              the same constituent image\n"
-	   "  -a, --cheat=PERC            cheat with specified percentage\n"
+	   "  -w, --width=WIDTH            set width for small images\n"
+	   "  -h, --height=HEIGHT          set height for small images\n"
+	   "  -y, --y-weight=WEIGHT        assign relative weight for the Y-channel\n"
+	   "  -i, --i-weight=WEIGHT        assign relative weight for the I-channel\n"
+	   "  -q, --q-weight=WEIGHT        assign relative weight for the Q-channel\n"
+	   "  -s  --scale=SCALE            scale input image by specified factor\n"
+	   "  -m, --metric=METRIC          choose metric (subpixel or wavelet)\n"
+	   "  -e, --search=SEARCH          choose search method (local or global)\n"
+	   "  -c, --collage                collage mode\n"
+	   "  -d, --distance=DIST          minimum distance between two instances of\n"
+	   "                               the same constituent image\n"
+	   "  -a, --cheat=PERC             cheat with specified percentage\n"
+	   "  -x, --antimosaic=PIC         use PIC as an antimosaic\n"
+	   "  -f, --forbid-reconstruction=DIST\n"
+	   "                               forbid placing antimosaic images on their\n"
+	   "                               original locations or locations around it\n"
+	   "  --out=FILE                   write protocol to file\n"
+	   "  --in=FILE                    read protocol from file and use it\n"
 	   "\n"
-	   "Report bug reports and suggestions to schani@complang.tuwien.ac.at\n");
+	   "Report bugs and suggestions to schani@complang.tuwien.ac.at\n");
 }
 
 #define MODE_NONE       0
@@ -1027,10 +1549,14 @@ main (int argc, char *argv[])
 {
     int mode = MODE_NONE;
     int method = METHOD_SUBPIXEL;
+    int search = SEARCH_LOCAL;
     int collage = 0;
     int min_distance = 0;
     int cheat = 0;
     float scale = 1.0;
+    char *out_filename = 0;
+    char *in_filename = 0;
+    char *antimosaic_filename = 0;
 
     while (1)
     {
@@ -1040,6 +1566,8 @@ main (int argc, char *argv[])
 		{ "help", no_argument, 0, 257 },
 		{ "prepare", no_argument, 0, 258 },
 		{ "metapixel", no_argument, 0, 259 },
+		{ "out", required_argument, 0, 260 },
+		{ "in", required_argument, 0, 261 },
 		{ "width", required_argument, 0, 'w' },
 		{ "height", required_argument, 0, 'h' },
 		{ "y-weight", required_argument, 0, 'y' },
@@ -1050,13 +1578,15 @@ main (int argc, char *argv[])
 		{ "distance", required_argument, 0, 'd' },
 		{ "cheat", required_argument, 0, 'a' },
 		{ "metric", required_argument, 0, 'm' },
+		{ "search", required_argument, 0, 'e' },
+		{ "antimosaic", required_argument, 0, 'x' },
+		{ "forbid-reconstruction", required_argument, 0, 'f' },
 		{ 0, 0, 0, 0 }
 	    };
 
-	int option,
-	    option_index;
+	int option, option_index;
 
-	option = getopt_long(argc, argv, "m:w:h:y:i:q:s:cd:a:", long_options, &option_index);
+	option = getopt_long(argc, argv, "m:e:w:h:y:i:q:s:cd:a:x:f:", long_options, &option_index);
 
 	if (option == -1)
 	    break;
@@ -1071,6 +1601,26 @@ main (int argc, char *argv[])
 		mode = MODE_METAPIXEL;
 		break;
 
+	    case 260 :
+		if (out_filename != 0)
+		{
+		    fprintf(stderr, "the --out option can be used at most once\n");
+		    return 1;
+		}
+		out_filename = strdup(optarg);
+		assert(out_filename != 0);
+		break;
+
+	    case 261 :
+		if (in_filename != 0)
+		{
+		    fprintf(stderr, "the --in option can be used at most once\n");
+		    return 1;
+		}
+		in_filename = strdup(optarg);
+		assert(in_filename != 0);
+		break;
+
 	    case 'm' :
 		if (strcmp(optarg, "wavelet") == 0)
 		    method = METHOD_WAVELET;
@@ -1078,7 +1628,19 @@ main (int argc, char *argv[])
 		    method = METHOD_SUBPIXEL;
 		else
 		{
-		    fprintf(stderr, "method must either be subpixel or wavelet\n");
+		    fprintf(stderr, "metric must either be subpixel or wavelet\n");
+		    return 1;
+		}
+		break;
+
+	    case 'e' :
+		if (strcmp(optarg, "local") == 0)
+		    search = SEARCH_LOCAL;
+		else if (strcmp(optarg, "global") == 0)
+		    search = SEARCH_GLOBAL;
+		else
+		{
+		    fprintf(stderr, "search method must either be local or global\n");
 		    return 1;
 		}
 		break;
@@ -1126,10 +1688,24 @@ main (int argc, char *argv[])
 		assert(cheat >= 0 && cheat <= 100);
 		break;
 
+	    case 'x' :
+		if (antimosaic_filename != 0)
+		{
+		    fprintf(stderr, "at most one antimosaic picture can be specified\n");
+		    return 1;
+		}
+		antimosaic_filename = strdup(optarg);
+		break;
+
+	    case 'f' :
+		forbid_reconstruction_radius = atoi(optarg) + 1;
+		assert(forbid_reconstruction_radius > 0);
+		break;
+
 	    case 256 :
 		printf("metapixel " METAPIXEL_VERSION "\n"
 		       "\n"
-		       "Copyright (C) 1997-2000 Mark Probst\n"
+		       "Copyright (C) 1997-2004 Mark Probst\n"
 		       "\n"
 		       "This program is free software; you can redistribute it and/or modify\n"
 		       "it under the terms of the GNU General Public License as published by\n"
@@ -1149,6 +1725,23 @@ main (int argc, char *argv[])
 	    case 257 :
 		usage();
 		return 0;
+
+	    default :
+		assert(0);
+	}
+    }
+
+    if (in_filename != 0 || out_filename != 0)
+    {
+	if (mode != MODE_METAPIXEL)
+	{
+	    fprintf(stderr, "the --in and --out options can only be used in metapixel mode\n");
+	    return 1;
+	}
+	if (collage)
+	{
+	    fprintf(stderr, "the --in and --out options can only be used for classic mosaics\n");
+	    return 1;
 	}
     }
 
@@ -1159,14 +1752,16 @@ main (int argc, char *argv[])
 
     if (mode == MODE_PREPARE)
     {
-	float *float_image = (float*)malloc(sizeof(float) * NUM_CHANNELS * IMAGE_SIZE * IMAGE_SIZE);
+	static coefficient_with_index_t highest_coeffs[NUM_COEFFS];
+
 	int i, channel;
-	coefficient_with_index_t highest_coeffs[NUM_COEFFS];
 	unsigned char *image_data;
 	unsigned char *scaled_data;
 	char *inimage_name, *outimage_name, *tables_name;
 	FILE *tables_file;
 	int in_width, in_height;
+	metapixel_t pixel;
+	lisp_object_t *obj;
 
 	if (argc - optind != 3)
 	{
@@ -1182,14 +1777,14 @@ main (int argc, char *argv[])
 
 	if (image_data == 0)
 	{
-	    fprintf(stderr, "could not read image %s\n", inimage_name);
+	    fprintf(stderr, "could not read image `%s'\n", inimage_name);
 	    return 1;
 	}
 
 	tables_file = fopen(tables_name, "a");
 	if (tables_file == 0)
 	{
-	    fprintf(stderr, "could not open file %s for writing\n", tables_name);
+	    fprintf(stderr, "could not open file `%s' for writing\n", tables_name);
 	    return 1;
 	}
 
@@ -1199,50 +1794,32 @@ main (int argc, char *argv[])
 
 	write_image(outimage_name, small_width, small_height, scaled_data, IMAGE_FORMAT_PNG);
 
-	/* generate wavelet coefficients */
-	if (small_width != IMAGE_SIZE || small_height != IMAGE_SIZE)
-	{
-	    free(scaled_data);
-
-	    scaled_data = scale_image(image_data, in_width, in_height, 0, 0, in_width, in_height, IMAGE_SIZE, IMAGE_SIZE);
-	    assert(scaled_data != 0);
-	}
-
-	for (i = 0; i < IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS; ++i)
-	    float_image[i] = scaled_data[i];
+	generate_metapixel_coefficients(&pixel, scaled_data, highest_coeffs);
 
 	free(scaled_data);
 
-	transform_rgb_to_yiq(float_image, IMAGE_SIZE * IMAGE_SIZE);
-	decompose_image(float_image);
-	
-	find_highest_coefficients(float_image, highest_coeffs);
+	fprintf(tables_file, "(small-image ");
+	obj = lisp_make_string(outimage_name);
+	lisp_dump(obj, tables_file);
+	lisp_free(obj);
 
-	fprintf(tables_file, "%s\n", outimage_name);
-	for (channel = 0; channel < NUM_CHANNELS; ++channel)
-	    fprintf(tables_file, "%f ", float_image[channel]);
-	fprintf(tables_file, "\n");
+	fprintf(tables_file, " (size %d %d) (wavelet (means %f %f %f) (coeffs",
+		small_width, small_height,
+		pixel.means[0], pixel.means[1], pixel.means[2]);
 	for (i = 0; i < NUM_COEFFS; ++i)
-	    fprintf(tables_file, "%d ", highest_coeffs[i].index);
-	fprintf(tables_file, "\n");
+	    fprintf(tables_file, " %d", highest_coeffs[i].index);
 
-	/* generate subpixel coefficients */
-	scaled_data = scale_image(image_data, in_width, in_height, 0, 0, in_width, in_height, NUM_SUBPIXEL_ROWS_COLS, NUM_SUBPIXEL_ROWS_COLS);
-	assert(scaled_data != 0);
-
-	for (i = 0; i < NUM_SUBPIXELS * NUM_CHANNELS; ++i)
-	    float_image[i] = scaled_data[i];
-
-	transform_rgb_to_yiq(float_image, NUM_SUBPIXELS);
-
+	fprintf(tables_file, ")) (subpixel");
 	for (channel = 0; channel < NUM_CHANNELS; ++channel)
 	{
-	    for (i = 0; i < NUM_SUBPIXELS; ++i)
-		fprintf(tables_file, "%d ", (int)float_image[i * NUM_CHANNELS + channel]);
-	    fprintf(tables_file, "\n");
-	}
+	    static char *channel_names[] = { "y", "i", "q" };
 
-	free(scaled_data);
+	    fprintf(tables_file, " (%s", channel_names[channel]);
+	    for (i = 0; i < NUM_SUBPIXELS; ++i)
+		fprintf(tables_file, " %d", (int)pixel.subpixels[channel * NUM_SUBPIXELS + i]);
+	    fprintf(tables_file, ")");
+	}
+	fprintf(tables_file, "))\n");
 
 	fclose(tables_file);
     }
@@ -1254,38 +1831,118 @@ main (int argc, char *argv[])
 	    return 1;
 	}
 
-	do
+	if (antimosaic_filename)
 	{
-	    coefficient_with_index_t coeffs[NUM_COEFFS];
-	    metapixel_t *pixel = (metapixel_t*)malloc(sizeof(metapixel_t));
-	    int i, channel;
-	    float sums[NUM_COEFFS];
+	    classic_reader_t *reader = init_classic_reader(antimosaic_filename, scale);
+	    int x, y;
 
-	    scanf("%s", pixel->filename);
-	    if (feof(stdin))
-		break;
-	    assert(strlen(pixel->filename) > 0);
-	    for (channel = 0; channel < 3; ++channel)
-		scanf("%f", &pixel->means[channel]);
-	    for (i = 0; i < NUM_COEFFS; ++i)
-		scanf("%d", &coeffs[i].index);
+	    for (y = 0; y < reader->metaheight; ++y)
+	    {
+		read_classic_row(reader);
 
-	    generate_search_coeffs(&pixel->coeffs, sums, coeffs);
-
-	    for (channel = 0; channel < NUM_CHANNELS; ++channel)
-		for (i = 0; i < NUM_SUBPIXELS; ++i)
+		for (x = 0; x < reader->metawidth; ++x)
 		{
-		    int val;
+		    static coefficient_with_index_t highest_coeffs[NUM_COEFFS];
 
-		    scanf("%d", &val);
-		    pixel->subpixels[channel * NUM_SUBPIXELS + i] = val;
+		    unsigned char *scaled_data;
+		    metapixel_t *pixel = (metapixel_t*)malloc(sizeof(metapixel_t));
+		    int left_x, width;
+
+		    compute_classic_column_coords(reader, x, &left_x, &width);
+		    scaled_data = scale_image(reader->in_image_data, reader->in_image_width, reader->num_lines,
+					      left_x, 0, width, reader->num_lines, small_width, small_height);
+		    assert(scaled_data != 0);
+
+		    generate_metapixel_coefficients(pixel, scaled_data, highest_coeffs);
+
+		    pixel->data = scaled_data;
+		    pixel->anti_x = x;
+		    pixel->anti_y = y;
+
+		    pixel->filename = (char*)malloc(64);
+		    sprintf(pixel->filename, "(%d,%d)", x, y);
+
+		    add_metapixel(pixel);
+
+		    printf(":");
+		    fflush(stdout);
 		}
+	    }
 
-	    add_metapixel(pixel);
-	} while (!feof(stdin));
+	    printf("\n");
+
+	    free_classic_reader(reader);
+	}
+	else
+	{
+	    read_tables(stdin);
+	    forbid_reconstruction_radius = 0;
+	}
 
 	if (!collage)
-	    generate_classic(argv[optind], argv[optind + 1], scale, min_distance, method, cheat);
+	{
+	    mosaic_t *mosaic;
+	    int x, y;
+
+	    if (in_filename != 0)
+	    {
+		FILE *protocol_in = fopen(in_filename, "r");
+
+		if (protocol_in == 0)
+		{
+		    fprintf(stderr, "cannot open file `%s': %s\n", in_filename, strerror(errno));
+		    return 1;
+		}
+
+		mosaic = read_protocol(protocol_in);
+
+		fclose(protocol_in);
+	    }
+	    else
+	    {
+		classic_reader_t *reader = init_classic_reader(argv[optind], scale);
+
+		if (search == SEARCH_LOCAL)
+		    mosaic = generate_local_classic(reader, min_distance, method);
+		else if (search == SEARCH_GLOBAL)
+		    mosaic = generate_global_classic(reader, method);
+		else
+		    assert(0);
+
+		free_classic_reader(reader);
+	    }
+
+	    if (out_filename != 0)
+	    {
+		FILE *protocol_out = fopen(out_filename, "w");
+
+		if (protocol_out == 0)
+		    fprintf(stderr, "cannot open file `%s': %s\n", out_filename, strerror(errno));
+		else
+		{
+		    fprintf(protocol_out, "(mosaic (size %d %d)\n(metapixels\n", mosaic->metawidth, mosaic->metaheight);
+		    for (y = 0; y < mosaic->metaheight; ++y)
+		    {
+			for (x = 0; x < mosaic->metawidth; ++x)
+			{
+			    match_t *match = &mosaic->matches[y * mosaic->metawidth + x];
+			    lisp_object_t *obj = lisp_make_string(match->pixel->filename);
+
+			    fprintf(protocol_out, "(%d %d 1 1 ", x, y);
+			    lisp_dump(obj, protocol_out);
+			    fprintf(protocol_out, ") ; %f\n", match->score);
+
+			    lisp_free(obj);
+			}
+		    }
+		    fprintf(protocol_out, "))\n");
+		}
+
+		fclose(protocol_out);
+	    }
+
+	    paste_classic(mosaic, argv[optind], argv[optind + 1], cheat);
+	}
 	else
 	    generate_collage(argv[optind], argv[optind + 1], scale, method, cheat);
     }

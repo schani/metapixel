@@ -29,13 +29,13 @@
 #include <string.h>
 #include <math.h>
 
-#include <magick/config.h>
-#include <magick/magick.h>
-
 #include "getopt.h"
 
 #include "vector.h"
 #include "rwpng.h"
+#include "readimage.h"
+#include "libzoom/raw.h"
+#include "libzoom/zoom.h"
 
 #ifndef MIN
 #define MIN(a,b)           ((a)<(b)?(a):(b))
@@ -91,6 +91,49 @@ index_t weight_ordered_index_to_index[NUM_INDEXES];
 index_t index_to_weight_ordered_index[NUM_INDEXES];
 
 int small_width = DEFAULT_WIDTH, small_height = DEFAULT_HEIGHT;
+
+static unsigned char*
+scale_image (unsigned char *image, int image_width, int image_height, int x, int y, int width, int height, int new_width, int new_height)
+{
+    unsigned char *new_image = (unsigned char*)malloc(new_width * new_height * NUM_CHANNELS);
+    Pic pic, new_pic;
+    Window_box window, new_window;
+    Filt *filt;
+
+    pic_create_raw(&pic, image, image_width, image_height);
+    pic_create_raw(&new_pic, new_image, new_width, new_height);
+
+    window_set(x, y, x + width - 1, y + height - 1, (Window*)&window);
+    window_box_set_size(&window);
+
+    window_set(0, 0, new_width - 1, new_height - 1, (Window*)&new_window);
+    window_box_set_size(&new_window);
+
+    filt = filt_find("mitchell");
+    assert(filt != 0);
+
+    zoom(&pic, &window, &new_pic, &new_window, filt, filt);
+
+    return ((raw_pic_t*)new_pic.data)->data;
+
+    /*
+    int i, j;
+
+    for (j = 0; j < new_height; ++j)
+	for (i = 0; i < new_width; ++i)
+	{
+	    int old_x = i * width / new_width;
+	    int old_y = j * height / new_height;
+	    int channel;
+
+	    for (channel = 0; channel < NUM_CHANNELS; ++channel)
+		new_image[(j * new_width + i) * NUM_CHANNELS + channel] =
+		    image[((y + old_y) * image_width + (x + old_x)) * NUM_CHANNELS + channel];
+	}
+
+    return new_image;
+    */
+}
 
 void
 generate_index_order (void)
@@ -541,12 +584,10 @@ generate_search_coeffs (search_coefficients_t *search_coeffs, float sums[NUM_COE
 
 void
 generate_search_coeffs_for_subimage (search_coefficients_t *search_coeffs, float sums[NUM_COEFFS], float means[NUM_CHANNELS],
-				     Image *image, int x, int y, int use_crop)
+				     unsigned char *image_data, int width, int height, int x, int y, int use_crop)
 {
     static float *float_image = 0;
 
-    RectangleInfo rect;
-    Image *subimage, *scaled_image;
     int i;
     coefficient_with_index_t raw_coeffs[NUM_COEFFS];
 
@@ -555,35 +596,19 @@ generate_search_coeffs_for_subimage (search_coefficients_t *search_coeffs, float
 
     if (use_crop)
     {
-	rect.x = x;
-	rect.y = y;
-	rect.width = small_width;
-	rect.height = small_height;
+	unsigned char *scaled_data;
 
-	subimage = CropImage(image, &rect);
-	assert(subimage != 0);
+	scaled_data = scale_image(image_data, width, height, x, y, small_width, small_height, IMAGE_SIZE, IMAGE_SIZE);
+	assert(scaled_data != 0);
 
-	if (small_width != IMAGE_SIZE || small_height != IMAGE_SIZE)
-	{
-	    scaled_image = ScaleImage(subimage, IMAGE_SIZE, IMAGE_SIZE);
-	    assert(scaled_image != 0);
-	    DestroyImage(subimage);
-	}
-	else
-	    scaled_image = subimage;
+	for (i = 0; i < IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS; ++i)
+	    float_image[i] = scaled_data[i];
 
-	UncondenseImage(scaled_image);
-
-	for (i = 0; i < IMAGE_SIZE * IMAGE_SIZE; ++i)
-	{
-	    float_image[i * NUM_CHANNELS + 0] = DownScale(scaled_image->pixels[i].red);
-	    float_image[i * NUM_CHANNELS + 1] = DownScale(scaled_image->pixels[i].green);
-	    float_image[i * NUM_CHANNELS + 2] = DownScale(scaled_image->pixels[i].blue);
-	}
+	free(scaled_data);
     }
     else
     {
-	int j;
+	int j, channel;
 
 	if (small_width != IMAGE_SIZE || small_height != IMAGE_SIZE)
 	{
@@ -593,11 +618,9 @@ generate_search_coeffs_for_subimage (search_coefficients_t *search_coeffs, float
 
 	for (j = 0; j < IMAGE_SIZE; ++j)
 	    for (i = 0; i < IMAGE_SIZE; ++i)
-	    {
-		float_image[(j * IMAGE_SIZE + i) * NUM_CHANNELS + 0] = DownScale(image->pixels[(y + j) * image->columns + x + i].red);
-		float_image[(j * IMAGE_SIZE + i) * NUM_CHANNELS + 1] = DownScale(image->pixels[(y + j) * image->columns + x + i].green);
-		float_image[(j * IMAGE_SIZE + i) * NUM_CHANNELS + 2] = DownScale(image->pixels[(y + j) * image->columns + x + i].blue);
-	    }
+		for (channel = 0; channel < NUM_CHANNELS; ++channel)
+		    float_image[(j * IMAGE_SIZE + i) * NUM_CHANNELS + channel] =
+			image_data[((y + j) * width + (x + i)) * NUM_CHANNELS + channel];
     }
 
     transform_rgb_to_yiq(float_image);
@@ -773,10 +796,10 @@ main (int argc, char *argv[])
 	int i, channel;
 	coefficient_with_index_t highest_coeffs[NUM_COEFFS];
 	unsigned char *image_data;
+	unsigned char *scaled_data;
 	char *inimage_name, *outimage_name, *tables_name;
-	Image *image, *scaled;
-	ImageInfo image_info;
 	FILE *tables_file;
+	int in_width, in_height;
 
 	if (argc - optind != 3)
 	{
@@ -788,10 +811,9 @@ main (int argc, char *argv[])
 	outimage_name = argv[optind + 1];
 	tables_name = argv[optind + 2];
 
-	GetImageInfo(&image_info);
-	strcpy(image_info.filename, inimage_name);
-	image = ReadImage(&image_info);
-	if (image == 0)
+	image_data = read_image(inimage_name, &in_width, &in_height);
+
+	if (image_data == 0)
 	{
 	    fprintf(stderr, "could not read image %s\n", inimage_name);
 	    return 1;
@@ -805,42 +827,22 @@ main (int argc, char *argv[])
 	}
 
 	/* generate small image */
-	image->filter = MitchellFilter;
-	scaled = ZoomImage(image, small_width, small_height);
-	assert(scaled != 0);
+	scaled_data = scale_image(image_data, in_width, in_height, 0, 0, in_width, in_height, small_width, small_height);
+	assert(scaled_data != 0);
 
-	TransformRGBImage(scaled, RGBColorspace);
-	UncondenseImage(scaled);
-
-	image_data = (unsigned char*)malloc(NUM_CHANNELS * small_width * small_height);
-	for (i = 0; i < small_width * small_height; ++i)
-	{
-	    image_data[i * NUM_CHANNELS + 0] = DownScale(scaled->pixels[i].red);
-	    image_data[i * NUM_CHANNELS + 1] = DownScale(scaled->pixels[i].green);
-	    image_data[i * NUM_CHANNELS + 2] = DownScale(scaled->pixels[i].blue);
-	}
-
-	write_png_file(outimage_name, small_width, small_height, image_data);
-	free(image_data);
+	write_png_file(outimage_name, small_width, small_height, scaled_data);
 
 	/* generate coefficients */
 	if (small_width != IMAGE_SIZE || small_height != IMAGE_SIZE)
 	{
-	    DestroyImage(scaled);
-	    image->filter = MitchellFilter;
-	    scaled = ZoomImage(image, IMAGE_SIZE, IMAGE_SIZE);
-	    assert(scaled != 0);
+	    free(scaled_data);
 
-	    TransformRGBImage(scaled, RGBColorspace);
-	    UncondenseImage(scaled);
+	    scaled_data = scale_image(image_data, in_width, in_height, 0, 0, in_width, in_height, IMAGE_SIZE, IMAGE_SIZE);
+	    assert(scaled_data != 0);
 	}
 
-	for (i = 0; i < IMAGE_SIZE * IMAGE_SIZE; ++i)
-	{
-	    float_image[i * NUM_CHANNELS + 0] = DownScale(scaled->pixels[i].red);
-	    float_image[i * NUM_CHANNELS + 1] = DownScale(scaled->pixels[i].green);
-	    float_image[i * NUM_CHANNELS + 2] = DownScale(scaled->pixels[i].blue);
-	}
+	for (i = 0; i < IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS; ++i)
+	    float_image[i] = scaled_data[i];
 
 	transform_rgb_to_yiq(float_image);
 	decompose_image(float_image);
@@ -859,10 +861,8 @@ main (int argc, char *argv[])
     }
     else if (mode == MODE_METAPIXEL)
     {
-	unsigned char *out_image_data;
+	unsigned char *in_image_data, *out_image_data;
 	int in_image_width, in_image_height;
-	Image *image;
-	ImageInfo image_info;
 	int use_crop = 1;
 
 	if (argc - optind != 2)
@@ -891,35 +891,27 @@ main (int argc, char *argv[])
 
 	    add_metapixel(pixel);
 	} while (!feof(stdin));
-	
-	GetImageInfo(&image_info);
-	strcpy(image_info.filename, argv[optind]);
-	image = ReadImage(&image_info);
-	if (image == 0)
+
+	in_image_data = read_image(argv[optind], &in_image_width, &in_image_height);
+	if (in_image_data == 0)
 	{
 	    fprintf(stderr, "could not read image %s\n", argv[optind]);
 	    return 1;
 	}
 
-	in_image_width = image->columns;
-	in_image_height = image->rows;
-
 	if (!collage && (small_width != IMAGE_SIZE || small_height != IMAGE_SIZE))
 	{
-	    Image *scaled_image;
+	    unsigned char *scaled_data;
 
-	    scaled_image = ScaleImage(image, in_image_width / small_width * IMAGE_SIZE, in_image_height / small_height * IMAGE_SIZE);
-	    assert(scaled_image != 0);
-	    DestroyImage(image);
-	    image = scaled_image;
+	    scaled_data = scale_image(in_image_data, in_image_width, in_image_height, 0, 0, in_image_width, in_image_height,
+				      in_image_width / small_width * IMAGE_SIZE, in_image_height / small_height * IMAGE_SIZE);
+	    assert(scaled_data != 0);
+	    free(in_image_data);
+	    in_image_data = scaled_data;
 	}
 
 	if (!collage || (small_width == IMAGE_SIZE || small_height == IMAGE_SIZE))
-	{
-	    UncondenseImage(image);
-
 	    use_crop = 0;
-	}
 
 	out_image_data = (unsigned char*)malloc(in_image_width * in_image_height * NUM_CHANNELS);
 
@@ -938,7 +930,7 @@ main (int argc, char *argv[])
 		    float means[3];
 		    float sums[NUM_COEFFS];
 
-		    generate_search_coeffs_for_subimage(&search_coeffs, sums, means, image,
+		    generate_search_coeffs_for_subimage(&search_coeffs, sums, means, in_image_data, in_image_width, in_image_height,
 							x * small_width, y * small_height, use_crop);
 
 		    pixel = metapixel_nearest_to(&search_coeffs, sums, means);
@@ -987,7 +979,7 @@ main (int argc, char *argv[])
 		}
 
 	    out:
-		generate_search_coeffs_for_subimage(&search_coeffs, sums, means, image, x, y, use_crop);
+		generate_search_coeffs_for_subimage(&search_coeffs, sums, means, in_image_data, in_image_width, in_image_height, x, y, use_crop);
 
 		pixel = metapixel_nearest_to(&search_coeffs, sums, means);
 		paste_metapixel(pixel, out_image_data, in_image_width, in_image_height, x, y);

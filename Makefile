@@ -3,7 +3,7 @@ INSTALL = install
 
 BINDIR = $(PREFIX)/bin
 
-VERSION = 0.2
+VERSION = 0.3
 
 #PROFILE = -pg
 
@@ -12,13 +12,18 @@ CCOPTS = -I/usr/X11R6/include -I/usr/X11R6/include/X11 -Wall -O9 $(PROFILE)
 CC = gcc
 #LIBFFM = -lffm
 
+OBJS = metapixel.o vector.o rwpng.o rwjpeg.o readimage.o getopt.o getopt1.o
+
 all : metapixel
 
-metapixel : metapixel.o vector.o rwpng.o getopt.o getopt1.o
-	$(CC) $(LDOPTS) -o metapixel metapixel.o vector.o rwpng.o getopt.o getopt1.o -lpng $(LIBFFM) -lm -lMagick -lX11 -lz -lbz2
+metapixel : $(OBJS) libzoom/libzoom.a
+	$(CC) $(LDOPTS) -o metapixel $(OBJS) libzoom/libzoom.a -lpng -ljpeg $(LIBFFM) -lm -lz
 
 %.o : %.c
 	$(CC) $(CCOPTS) -c $<
+
+libzoom/libzoom.a :
+	$(MAKE) -C libzoom libzoom.a
 
 install : metapixel
 	$(INSTALL) -d $(BINDIR)
@@ -26,6 +31,7 @@ install : metapixel
 	$(INSTALL) metapixel-prepare $(BINDIR)
 
 clean :
+	$(MAKE) -C libzoom clean
 	rm -f *.o metapixel *~
 
 dist :

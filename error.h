@@ -43,7 +43,7 @@
 #define ERROR_PROTOCOL_SYNTAX_ERROR              18
 #define ERROR_PROTOCOL_INCONSISTENCY             19
 #define ERROR_METAPIXEL_NOT_FOUND                20
-#define ERROR_ZERO_SMALL_IMAGE_SIZE              21
+#define ERROR_ILLEGAL_SMALL_IMAGE_SIZE           21
 
 #define ERROR_INFO_NULL             0
 #define ERROR_INFO_STRING           1

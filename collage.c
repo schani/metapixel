@@ -84,9 +84,16 @@ free_positions (position_t *positions)
     }
 }
 
+static float
+frand (void)
+{
+    return rand() / (float)RAND_MAX;
+}
+
 collage_mosaic_t*
 collage_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_t *in_bitmap,
-			      unsigned int small_width, unsigned int small_height,
+			      unsigned int min_small_width, unsigned int min_small_height,
+			      unsigned int max_small_width, unsigned int max_small_height,
 			      unsigned int min_distance, metric_t *metric,
 			      progress_report_func_t report_func)
 {
@@ -101,13 +108,14 @@ collage_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_t
     collage_mosaic_t *mosaic;
     PROGRESS_DECLS;
 
-    if (small_width == 0 || small_height == 0)
+    if (min_small_width == 0 || min_small_height == 0
+	|| max_small_width < min_small_width || max_small_height < min_small_height)
     {
-	error_report(ERROR_ZERO_SMALL_IMAGE_SIZE, error_make_null_info());
+	error_report(ERROR_ILLEGAL_SMALL_IMAGE_SIZE, error_make_null_info());
 	return 0;
     }
 
-    if (in_bitmap->width < small_width || in_bitmap->height < small_height)
+    if (in_bitmap->width < max_small_width || in_bitmap->height < max_small_height)
     {
 	error_report(ERROR_IMAGE_TOO_SMALL, error_make_null_info());
 	return 0;
@@ -127,7 +135,7 @@ collage_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_t
     assert(collage_positions != 0);
     memset(collage_positions, 0, num_metapixels * sizeof(position_t*));
 
-    num_matches_alloced = (in_bitmap->width / small_width) * (in_bitmap->height / small_height) * 2;
+    num_matches_alloced = (in_bitmap->width / max_small_width) * (in_bitmap->height / max_small_height) * 2;
     assert(num_matches_alloced >= 2);
     matches = (collage_match_t*)malloc(sizeof(collage_match_t) * num_matches_alloced);
     assert(matches != 0);
@@ -136,35 +144,40 @@ collage_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_t
 
     while (num_pixels_done < in_bitmap->width * in_bitmap->height)
     {
+	unsigned int width, height;
 	int i, j;
 	int x, y;
 	coeffs_t coeffs;
 	metapixel_match_t match;
 	collage_position_valid_data_t valid_data = { min_distance, collage_positions };
+	float size_rand = frand();
+
+	width = min_small_width + (unsigned int)(size_rand * (max_small_width - min_small_width));
+	height = min_small_height + (unsigned int)(size_rand * (max_small_height - min_small_height));
 
 	while (1)
 	{
-	    x = random() % in_bitmap->width - small_width / 2;
-	    y = random() % in_bitmap->height - small_height / 2;
+	    x = random() % in_bitmap->width - width / 2;
+	    y = random() % in_bitmap->height - height / 2;
 
 	    if (x < 0)
 		x = 0;
-	    if (x + small_width > in_bitmap->width)
-		x = in_bitmap->width - small_width;
+	    if (x + width > in_bitmap->width)
+		x = in_bitmap->width - width;
 
 	    if (y < 0)
 		y = 0;
-	    if (y + small_height > in_bitmap->height)
-		y = in_bitmap->height - small_height;
+	    if (y + height > in_bitmap->height)
+		y = in_bitmap->height - height;
 
-	    for (j = 0; j < small_height; ++j)
-		for (i = 0; i < small_width; ++i)
+	    for (j = 0; j < height; ++j)
+		for (i = 0; i < width; ++i)
 		    if (!bitmap[(y + j) * in_bitmap->width + x + i])
 			goto out;
 	}
 
     out:
-	metric_generate_coeffs_for_subimage(&coeffs, in_bitmap, x, y, small_width, small_height, metric);
+	metric_generate_coeffs_for_subimage(&coeffs, in_bitmap, x, y, width, height, metric);
 
 	match = search_metapixel_nearest_to(num_libraries, libraries, &coeffs, metric, x, y,
 					    0, 0, 0,
@@ -181,7 +194,7 @@ collage_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_t
 	assert(num_out_metapixels <= num_matches_alloced);
 	if (num_out_metapixels == num_matches_alloced)
 	{
-	    num_matches_alloced += (in_bitmap->width / small_width) * (in_bitmap->height / small_height);
+	    num_matches_alloced += (in_bitmap->width / max_small_width) * (in_bitmap->height / max_small_height);
 	    matches = (collage_match_t*)realloc(matches, sizeof(collage_match_t) * num_matches_alloced);
 	    assert(matches != 0);
 	}
@@ -189,14 +202,16 @@ collage_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_t
 	assert(num_out_metapixels < num_matches_alloced);
 	matches[num_out_metapixels].x = x;
 	matches[num_out_metapixels].y = y;
+	matches[num_out_metapixels].width = width;
+	matches[num_out_metapixels].height = height;
 	matches[num_out_metapixels].match = match;
 	++num_out_metapixels;
 
 	if (min_distance > 0)
 	    add_collage_position(&collage_positions[match.pixel_index], x, y);
 
-	for (j = 0; j < small_height; ++j)
-	    for (i = 0; i < small_width; ++i)
+	for (j = 0; j < height; ++j)
+	    for (i = 0; i < width; ++i)
 		if (!bitmap[(y + j) * in_bitmap->width + x + i])
 		{
 		    bitmap[(y + j) * in_bitmap->width + x + i] = 1;
@@ -223,8 +238,6 @@ collage_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_t
 
     mosaic->in_image_width = in_bitmap->width;
     mosaic->in_image_height = in_bitmap->height;
-    mosaic->small_image_width = small_width;
-    mosaic->small_image_height = small_height;
     mosaic->num_matches = num_out_metapixels;
     mosaic->matches = matches;
 
@@ -270,8 +283,8 @@ collage_paste_to_bitmap (collage_mosaic_t *mosaic, unsigned int out_width, unsig
 
 	x = scale_coord(match->x, mosaic->in_image_width - 1, out_width - 1);
 	y = scale_coord(match->y, mosaic->in_image_height - 1, out_height - 1);
-	width = scale_coord(match->x + mosaic->small_image_width, mosaic->in_image_width, out_width) - x;
-	height = scale_coord(match->y + mosaic->small_image_height, mosaic->in_image_height, out_height) - y;
+	width = scale_coord(match->x + match->width, mosaic->in_image_width, out_width) - x;
+	height = scale_coord(match->y + match->height, mosaic->in_image_height, out_height) - y;
 
 	assert(x < out_width && y < out_width);
 	assert(width > 0 && height > 0);
@@ -330,10 +343,9 @@ collage_read (int num_libraries, library_t **libraries, const char *filename,
 
     if (type != LISP_TYPE_EOF && type != LISP_TYPE_PARSE_ERROR)
     {
-	lisp_object_t *vars[5];
+	lisp_object_t *vars[3];
 
 	if (lisp_match_string("(collage-mosaic (input-size #?(integer) #?(integer)) "
-			      "                (metapixel-size #?(integer) #?(integer)) "
 			      "                (metapixels . #?(list)))", obj, vars))
 	{
 	    lisp_object_t *lst;
@@ -342,27 +354,26 @@ collage_read (int num_libraries, library_t **libraries, const char *filename,
 	    mosaic->in_image_width = lisp_integer(vars[0]);
 	    mosaic->in_image_height = lisp_integer(vars[1]);
 
-	    mosaic->small_image_width = lisp_integer(vars[2]);
-	    mosaic->small_image_height = lisp_integer(vars[3]);
-
-	    mosaic->num_matches = lisp_list_length(vars[4]);
+	    mosaic->num_matches = lisp_list_length(vars[2]);
 	    assert(mosaic->num_matches > 0);
 
 	    mosaic->matches = (collage_match_t*)malloc(sizeof(collage_match_t) * mosaic->num_matches);
 
-	    lst = vars[4];
+	    lst = vars[2];
 	    for (i = 0; i < mosaic->num_matches; ++i)
 	    {
-		lisp_object_t *vars[4];
+		lisp_object_t *vars[6];
 
-		if (lisp_match_string("(#?(integer) #?(integer) #?(string) #?(string))",
+		if (lisp_match_string("(#?(integer) #?(integer) #?(integer) #?(integer) #?(string) #?(string))",
 				      lisp_car(lst), vars))
 		{
 		    mosaic->matches[i].x = lisp_integer(vars[0]);
 		    mosaic->matches[i].y = lisp_integer(vars[1]);
+		    mosaic->matches[i].width = lisp_integer(vars[2]);
+		    mosaic->matches[i].height = lisp_integer(vars[3]);
 
 		    mosaic->matches[i].match.pixel = metapixel_find_in_libraries(num_libraries, libraries,
-										 lisp_string(vars[2]), lisp_string(vars[3]),
+										 lisp_string(vars[4]), lisp_string(vars[5]),
 										 num_new_libraries, new_libraries);
 
 		    if (mosaic->matches[i].match.pixel == 0)
@@ -420,16 +431,15 @@ collage_write (collage_mosaic_t *mosaic, FILE *out)
 	}
 
     /* FIXME: handle write errors */
-    fprintf(out, "(collage-mosaic (input-size %d %d) (metapixel-size %d %d) (metapixels \n",
-	    mosaic->in_image_width, mosaic->in_image_height,
-	    mosaic->small_image_width, mosaic->small_image_height);
+    fprintf(out, "(collage-mosaic (input-size %d %d) (metapixels \n",
+	    mosaic->in_image_width, mosaic->in_image_height);
     for (i = 0; i < mosaic->num_matches; ++i)
     {
 	collage_match_t *match = &mosaic->matches[i];
 	lisp_object_t *library_obj = lisp_make_string(match->match.pixel->library->path);
 	lisp_object_t *filename_obj = lisp_make_string(match->match.pixel->filename);
 
-	fprintf(out, "(%u %u ", match->x, match->y);
+	fprintf(out, "(%u %u %u %u ", match->x, match->y, match->width, match->height);
 	lisp_dump(library_obj, out);
 	fprintf(out, " ");
 	lisp_dump(filename_obj, out);

@@ -167,17 +167,15 @@ typedef struct
 {
     unsigned int x;
     unsigned int y;
+    unsigned int width;
+    unsigned int height;
     metapixel_match_t match;
 } collage_match_t;
 
 typedef struct
 {
     unsigned int in_image_width;
-
     unsigned int in_image_height;
-
-    unsigned int small_image_width;
-    unsigned int small_image_height;
 
     unsigned int num_matches;
     collage_match_t *matches;
@@ -262,8 +260,9 @@ classic_mosaic_t* classic_generate_from_bitmap (int num_libraries, library_t **l
 						bitmap_t *in_image, tiling_t *tiling, matcher_t *matcher,
 						unsigned int forbid_reconstruction_radius,
 						progress_report_func_t report_func);
-collage_mosaic_t* collage_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_t *in_image,
-						unsigned int small_width, unsigned int small_height,
+collage_mosaic_t* collage_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_t *in_bitmap,
+						unsigned int min_small_width, unsigned int min_small_height,
+						unsigned int max_small_width, unsigned int max_small_height,
 						unsigned int min_distance, metric_t *metric,
 						progress_report_func_t report_func);
 

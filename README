@@ -1,4 +1,4 @@
-Metapixel 0.6
+Metapixel 0.7
 =============
 
 Metapixel is a program for generating photomosaics. It can generate
@@ -54,13 +54,16 @@ since the format is not compatible with earlier versions.
 Creating photomosaics
 ---------------------
 
-In order to create a photomosaic for an image, it should be scaled to
-an appropriate size. For classic photomosaics, the width and height of
-the source image should be multiples of the widths and heights of the
-small constituent images, respectively. If they are not, the image is
-scaled to the smallest multiple larger than the image you specify.
-This does not apply to collages, however. The sizes of their source
-images are always left untouched.
+Input images for mosaics can have arbitrary sizes. Should you want the
+created mosaic to be of a different size than the input image, use the
+--scale option. It scales the input image uniformly in both directions
+(i.e. obeying the aspect ratio). If the width or height of the input
+image after scaling are not multiples of the width and height of the
+constituent images, the input image is further scaled up to the
+smallest size (larger than the input image) that fulfills this
+property, possibly changing the aspect ratio a bit. This does not
+apply to collages, however. The sizes of their source images after
+scaling are always left untouched.
 
 Metapixel produces output images in the PNG format. In order to create
 a classic photomosaic for the image input.jpg and write the output to
@@ -103,9 +106,9 @@ seems to give better results while not being slower than the old
 wavelet metric. The metric can be chosen using the --metric
 option. The default is the new subpixel metric.
 
-Note that Metapixel uses ridiculous amounts of main memory. To create
-photomosaics of size 2048x2048 your machine should at least have
-64MBytes RAM.
+Note that Metapixel uses ridiculous amounts of main memory for collage
+mosaics. To create a collage photomosaics of size 2048x2048 your
+machine should at least have 64MBytes RAM.
 
 
 The matching algorithm

@@ -1923,6 +1923,8 @@ main (int argc, char *argv[])
 
     small_width = default_small_width;
     small_height = default_small_height;
+    prepare_width = default_prepare_width;
+    prepare_height = default_prepare_height;
     memcpy(weight_factors, default_weight_factors, sizeof(weight_factors));
     metric = default_metric;
     search = default_search;

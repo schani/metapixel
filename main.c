@@ -39,13 +39,6 @@
 
 #include "cmdline.h"
 
-#define FOR_EACH_METAPIXEL(p)   { unsigned int library_index; \
-                                  for (library_index = 0; library_index < num_libraries; ++library_index) { \
-                                      metapixel_t *p; \
-                                      for (p = libraries[library_index]->metapixels; p != 0; p = p->next)
-#define END_FOR_EACH_METAPIXEL  } }
-
-
 static unsigned int num_metapixels = 0;
 
 static library_t **libraries = 0;
@@ -119,291 +112,18 @@ assert_client_data (metapixel_t *pixel)
     }
 }
 
-/*
-static float
-wavelet_compare (coeffs_t *coeffs, metapixel_t *pixel, float best_score)
+static void
+init_metric (metric_t *metric, int kind)
 {
-    search_coefficients_t *query = &coeffs->wavelet.coeffs;
-    float *query_means = coeffs->wavelet.means;
-    float *sums = coeffs->wavelet.sums;
-    search_coefficients_t *target = &pixel->coeffs;
-    float *target_means = pixel->means;
-    float score = 0.0;
-    int i;
-    int j;
-    int channel;
-
-    for (channel = 0; channel < NUM_CHANNELS; ++channel)
-	score += index_weights[compute_index(0, channel, 0)]
-	    * fabs(query_means[channel] - target_means[channel]) * 0.05;
-
-    j = 0;
-    for (i = 0; i < NUM_COEFFS; ++i)
+    if (kind == METRIC_SUBPIXEL)
+	metric_init_subpixel(metric, weight_factors);
+    /*
+    else if (kind == METRIC_WAVELET)
     {
-	if (score - sums[i] > best_score)
-	    return 1e99;
-
-	while (target->coeffs[j] < query->coeffs[i] && j < NUM_COEFFS)
-	    ++j;
-
-	if (j >= NUM_COEFFS)
-	    break;
-
-	if (target->coeffs[j] > query->coeffs[i])
-	    continue;
-
-	score -= index_weights[weight_ordered_index_to_index[target->coeffs[j]]];
     }
-
-    return score;
-}
-*/
-
-static float
-subpixel_compare (coeffs_t *coeffs, metapixel_t *pixel, float best_score)
-{
-    int channel;
-    float score = 0.0;
-
-    for (channel = 0; channel < NUM_CHANNELS; ++channel)
-    {
-	int i;
-
-	for (i = 0; i < NUM_SUBPIXELS; ++i)
-	{
-	    float dist = (int)coeffs->subpixel.subpixels[channel * NUM_SUBPIXELS + i]
-		- (int)pixel->subpixels[channel * NUM_SUBPIXELS + i];
-
-	    score += dist * dist * weight_factors[channel];
-
-	    if (score >= best_score)
-		return 1e99;
-	}
-    }
-
-    return score;
-}
-
-void
-generate_search_coeffs_for_subimage (coeffs_t *coeffs, bitmap_t *bitmap,
-				     int x, int y, int width, int height, int metric)
-{
-    /* FIXME: not reentrant */
-    static float *float_image = 0;
-
-    if (metric == METRIC_WAVELET)
-    {
-	/*
-	coefficient_with_index_t raw_coeffs[NUM_COEFFS];
-	int i;
-
-	if (float_image == 0)
-	    float_image = (float*)malloc(sizeof(float) * IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS);
-
-	if (width != IMAGE_SIZE || height != IMAGE_SIZE)
-	{
-	    unsigned char *scaled_data;
-
-	    scaled_data = scale_image(image_data, image_width, image_height, x, y, width, height, IMAGE_SIZE, IMAGE_SIZE);
-	    assert(scaled_data != 0);
-
-	    for (i = 0; i < IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS; ++i)
-		float_image[i] = scaled_data[i];
-
-	    free(scaled_data);
-	}
-	else
-	{
-	    int j, channel;
-
-	    for (j = 0; j < IMAGE_SIZE; ++j)
-		for (i = 0; i < IMAGE_SIZE; ++i)
-		    for (channel = 0; channel < NUM_CHANNELS; ++channel)
-			float_image[(j * IMAGE_SIZE + i) * NUM_CHANNELS + channel] =
-			    image_data[((y + j) * image_width + (x + i)) * NUM_CHANNELS + channel];
-	}
-
-	transform_rgb_to_yiq(float_image, IMAGE_SIZE * IMAGE_SIZE);
-	decompose_image(float_image);
-	find_highest_coefficients(float_image, raw_coeffs);
-
-	generate_search_coeffs(&coeffs->wavelet.coeffs, coeffs->wavelet.sums, raw_coeffs);
-
-	for (i = 0; i < NUM_CHANNELS; ++i)
-	    coeffs->wavelet.means[i] = float_image[i];
-	*/
-    }
-    else if (metric == METRIC_SUBPIXEL)
-    {
-	bitmap_t *sub_bitmap, *scaled_bitmap;
-	int i;
-	int channel;
-
-	if (float_image == 0)
-	    float_image = (float*)malloc(sizeof(float) * NUM_SUBPIXELS * NUM_CHANNELS);
-	assert(float_image != 0);
-
-	sub_bitmap = bitmap_sub(bitmap, x, y, width, height);
-	assert(sub_bitmap != 0);
-
-	//bitmap_write(sub_bitmap, "/tmp/sub.png");
-
-	scaled_bitmap = bitmap_scale(sub_bitmap, NUM_SUBPIXEL_ROWS_COLS, NUM_SUBPIXEL_ROWS_COLS, FILTER_MITCHELL);
-	assert(scaled_bitmap != 0);
-
-	bitmap_free(sub_bitmap);
-
-	//bitmap_write(scaled_bitmap, "/tmp/scaled.png");
-
-	assert(scaled_bitmap->color == COLOR_RGB_8);
-	assert(scaled_bitmap->pixel_stride == NUM_CHANNELS);
-	assert(scaled_bitmap->row_stride == NUM_SUBPIXEL_ROWS_COLS * NUM_CHANNELS);
-
-	for (i = 0; i < NUM_SUBPIXELS * NUM_CHANNELS; ++i)
-	    float_image[i] = scaled_bitmap->data[i];
-
-	bitmap_free(scaled_bitmap);
-
-	transform_rgb_to_yiq(float_image, NUM_SUBPIXELS);
-
-	for (channel = 0; channel < NUM_CHANNELS; ++channel)
-	    for (i = 0; i < NUM_SUBPIXELS; ++i)
-		coeffs->subpixel.subpixels[channel * NUM_SUBPIXELS + i] = float_image[i * NUM_CHANNELS + channel];
-    }
+    */
     else
 	assert(0);
-}
-
-static int
-metapixel_in_array (metapixel_t *pixel, metapixel_t **array, int size)
-{
-    int i;
-
-    for (i = 0; i < size; ++i)
-	if (array[i] == pixel)
-	    return 1;
-    return 0;
-}
-
-compare_func_t
-compare_func_for_metric (int metric)
-{
-    if (metric == METRIC_WAVELET)
-	//return wavelet_compare;
-	assert(0);
-    else if (metric == METRIC_SUBPIXEL)
-	return subpixel_compare;
-    else
-	assert(0);
-    return 0;
-}
-
-static int
-manhattan_distance (int x1, int y1, int x2, int y2)
-{
-    return abs(x1 - x2) + abs(y1 - y2);
-}
-
-static match_t
-metapixel_nearest_to (coeffs_t *coeffs, int metric, int x, int y,
-		      metapixel_t **forbidden, int num_forbidden,
-		      int (*validity_func) (void*, metapixel_t*, int, int),
-		      void *validity_func_data)
-{
-    float best_score = 1e99;
-    metapixel_t *best_fit = 0;
-    compare_func_t compare_func = compare_func_for_metric(metric);
-    match_t match;
-
-    FOR_EACH_METAPIXEL(pixel)
-    {
-	float score;
-
-	if (pixel->client_data != 0
-	    && (manhattan_distance(x, y, pixel->client_data->anti_x, pixel->client_data->anti_y)
-		< forbid_reconstruction_radius))
-	    continue;
-
-	score = compare_func(coeffs, pixel, best_score);
-
-	if (score < best_score && !metapixel_in_array(pixel, forbidden, num_forbidden)
-	    && (validity_func == 0 || validity_func(validity_func_data, pixel, x, y)))
-	{
-	    best_score = score;
-	    best_fit = pixel;
-	}
-    }
-    END_FOR_EACH_METAPIXEL
-
-    match.pixel = best_fit;
-    match.score = best_score;
-
-    return match;
-}
-
-static void
-get_n_metapixel_nearest_to (int n, global_match_t *matches, coeffs_t *coeffs, int metric)
-{
-    compare_func_t compare_func = compare_func_for_metric(metric);
-    int i;
-
-    assert(num_metapixels >= n);
-
-    i = 0;
-    FOR_EACH_METAPIXEL(pixel)
-    {
-	float score = compare_func(coeffs, pixel, (i < n) ? 1e99 : matches[n - 1].score);
-
-	if (i < n || score < matches[n - 1].score)
-	{
-	    int j, m;
-
-	    m = MIN(i, n);
-
-	    for (j = 0; j < m; ++j)
-		if (matches[j].score > score)
-		    break;
-
-	    assert(j <= m && j < n);
-
-	    memmove(matches + j + 1, matches + j, sizeof(global_match_t) * (MIN(n, m + 1) - (j + 1)));
-
-	    matches[j].pixel = pixel;
-	    matches[j].score = score;
-	}
-
-	++i;
-    }
-    END_FOR_EACH_METAPIXEL
-
-    assert(i >= n);
-}
-
-static void
-paste_metapixel (metapixel_t *pixel, bitmap_t *image, int x, int y)
-{
-    bitmap_t *bitmap;
-
-    bitmap = metapixel_get_bitmap(pixel);
-    if (bitmap == 0)
-    {
-	fprintf(stderr, "Error: cannot read metapixel image `%s'.\n", pixel->filename);
-	exit(1);
-    }
-
-    if (bitmap->width != small_width || bitmap->height != small_height)
-    {
-	bitmap_t *scaled_bitmap = bitmap_scale(bitmap, small_width, small_height, FILTER_MITCHELL);
-
-	assert(scaled_bitmap != 0);
-
-	bitmap_free(bitmap);
-	bitmap = scaled_bitmap;
-    }
-
-    bitmap_paste(image, bitmap, x, y);
-
-    bitmap_free(bitmap);
 }
 
 static classic_reader_t*
@@ -473,12 +193,12 @@ compute_classic_column_coords (classic_reader_t *reader, int x, int *left_x, int
 }
 
 static void
-generate_search_coeffs_for_classic_subimage (classic_reader_t *reader, int x, coeffs_t *coeffs, int metric)
+generate_search_coeffs_for_classic_subimage (classic_reader_t *reader, int x, coeffs_t *coeffs, metric_t *metric)
 {
     int left_x, width;
 
     compute_classic_column_coords(reader, x, &left_x, &width);
-    generate_search_coeffs_for_subimage(coeffs, reader->in_image,
+    metric_generate_coeffs_for_subimage(coeffs, reader->in_image,
 					left_x, 0, width, reader->num_lines, metric);
 }
 
@@ -511,7 +231,7 @@ init_mosaic_from_reader (classic_reader_t *reader)
 }
 
 static mosaic_t*
-generate_local_classic (classic_reader_t *reader, int min_distance, int metric)
+generate_local_classic (classic_reader_t *reader, int min_distance, metric_t *metric)
 {
     mosaic_t *mosaic = init_mosaic_from_reader(reader);
     int metawidth = reader->metawidth, metaheight = reader->metaheight;
@@ -548,7 +268,8 @@ generate_local_classic (classic_reader_t *reader, int min_distance, int metric)
 
 	    generate_search_coeffs_for_classic_subimage(reader, x, &coeffs, metric);
 
-	    match = metapixel_nearest_to(&coeffs, metric, x, y, neighborhood, neighborhood_size, 0, 0);
+	    match = search_metapixel_nearest_to(num_libraries, libraries,
+						&coeffs, metric, x, y, neighborhood, neighborhood_size, 0, 0);
 
 	    if (match.pixel == 0)
 	    {
@@ -584,7 +305,7 @@ compare_global_matches (const void *_m1, const void *_m2)
 }
 
 static mosaic_t*
-generate_global_classic (classic_reader_t *reader, int metric)
+generate_global_classic (classic_reader_t *reader, metric_t *metric)
 {
     mosaic_t *mosaic = init_mosaic_from_reader(reader);
     int metawidth = reader->metawidth, metaheight = reader->metaheight;
@@ -617,7 +338,7 @@ generate_global_classic (classic_reader_t *reader, int metric)
 
 	    generate_search_coeffs_for_classic_subimage(reader, x, &coeffs, metric);
 	    
-	    get_n_metapixel_nearest_to(metawidth * metaheight, m, &coeffs, metric);
+	    search_n_metapixel_nearest_to(num_libraries, libraries, metawidth * metaheight, m, &coeffs, metric);
 	    for (i = 0; i < metawidth * metaheight; ++i)
 	    {
 		int j;
@@ -638,7 +359,7 @@ generate_global_classic (classic_reader_t *reader, int metric)
 
     qsort(matches, num_matches, sizeof(global_match_t), compare_global_matches);
 
-    FOR_EACH_METAPIXEL(pixel)
+    FOR_EACH_METAPIXEL(pixel, pixel_index)
 	assert_client_data(pixel);
 	pixel->client_data->flag = 0;
     END_FOR_EACH_METAPIXEL
@@ -651,9 +372,9 @@ generate_global_classic (classic_reader_t *reader, int metric)
 	    int index = matches[i].y * metawidth + matches[i].x;
 
 	    if (!ignore_forbidden && matches[i].pixel->client_data != 0
-		&& (manhattan_distance(matches[i].x, matches[i].y,
-				       matches[i].pixel->client_data->anti_x,
-				       matches[i].pixel->client_data->anti_y)
+		&& (utils_manhattan_distance(matches[i].x, matches[i].y,
+					     matches[i].pixel->client_data->anti_x,
+					     matches[i].pixel->client_data->anti_y)
 		    < forbid_reconstruction_radius))
 		continue;
 
@@ -759,7 +480,10 @@ paste_classic (mosaic_t *mosaic, char *input_name, char *output_name, int cheat)
 	    if (benchmark_rendering)
 		assert(mosaic->matches[y * metawidth + x].pixel->bitmap != 0);
 
-	    paste_metapixel(mosaic->matches[y * metawidth + x].pixel, out_bitmap, x * small_width, 0);
+	    if (!metapixel_paste(mosaic->matches[y * metawidth + x].pixel,
+				 out_bitmap, x * small_width, 0, small_width, small_height))
+		/* FIXME: this could go wrong! */
+		assert(0);
 	    if (!benchmark_rendering)
 	    {
 		printf("X");
@@ -812,43 +536,10 @@ paste_classic (mosaic_t *mosaic, char *input_name, char *output_name, int cheat)
 }
 
 static void
-pixel_add_collage_position (metapixel_t *pixel, int x, int y)
-{
-    position_t *position = (position_t*)malloc(sizeof(position_t));
-
-    assert(position != 0);
-
-    position->x = x;
-    position->y = y;
-
-    assert_client_data(pixel);
-    position->next = pixel->client_data->collage_positions;
-    pixel->client_data->collage_positions = position;
-}
-
-static int
-pixel_valid_for_collage_position (void *data, metapixel_t *pixel, int x, int y)
-{
-    int min_distance = (int)data;
-    position_t *position;
-
-    if (min_distance <= 0)
-	return 1;
-
-    if (pixel->client_data != 0)
-	for (position = pixel->client_data->collage_positions; position != 0; position = position->next)
-	    if (manhattan_distance(x, y, position->x, position->y) < min_distance)
-		return 0;
-
-    return 1;
-}
-
-static void
-generate_collage (char *input_name, char *output_name, float scale, int min_distance, int metric, int cheat)
+generate_collage (char *input_name, char *output_name, float scale, int min_distance, int metric_kind, int cheat)
 {
     bitmap_t *in_bitmap, *out_bitmap;
-    char *bitmap;
-    int num_pixels_done = 0;
+    metric_t metric;
 
     in_bitmap = bitmap_read(input_name);
     if (in_bitmap == 0)
@@ -857,94 +548,23 @@ generate_collage (char *input_name, char *output_name, float scale, int min_dist
 	exit(1);
     }
 
-    if (scale != 1.0)
-    {
-	int new_width = (float)in_bitmap->width * scale;
-	int new_height = (float)in_bitmap->height * scale;
-	bitmap_t *scaled_bitmap;
-
-	if (new_width < small_width || new_height < small_height)
-	{
-	    fprintf(stderr, "Error: Source image or scaling factor too small.\n");
-	    exit(1);
-	}
-
-	printf("Scaling source image to %dx%d\n", new_width, new_height);
-
-	scaled_bitmap = bitmap_scale(in_bitmap, new_width, new_height, FILTER_MITCHELL);
-	assert(scaled_bitmap != 0);
-
-	bitmap_free(in_bitmap);
-	in_bitmap = scaled_bitmap;
-    }
-
-    out_bitmap = bitmap_new_empty(COLOR_RGB_8, in_bitmap->width, in_bitmap->height);
+    init_metric(&metric, metric_kind);
+    out_bitmap = make_collage_mosaic(num_libraries, libraries, in_bitmap, scale,
+				     small_width, small_height,
+				     min_distance, &metric, cheat * 0x10000 / 100);
     assert(out_bitmap != 0);
 
-    bitmap = (char*)malloc(in_bitmap->width * in_bitmap->height);
-    memset(bitmap, 0, in_bitmap->width * in_bitmap->height);
-
-    while (num_pixels_done < in_bitmap->width * in_bitmap->height)
-    {
-	int i, j;
-	int x, y;
-	coeffs_t coeffs;
-	match_t match;
-
-	while (1)
-	{
-	    x = random() % in_bitmap->width - small_width / 2;
-	    y = random() % in_bitmap->height - small_height / 2;
-
-	    if (x < 0)
-		x = 0;
-	    if (x + small_width > in_bitmap->width)
-		x = in_bitmap->width - small_width;
-
-	    if (y < 0)
-		y = 0;
-	    if (y + small_height > in_bitmap->height)
-		y = in_bitmap->height - small_height;
-
-	    for (j = 0; j < small_height; ++j)
-		for (i = 0; i < small_width; ++i)
-		    if (!bitmap[(y + j) * in_bitmap->width + x + i])
-			goto out;
-	}
-
-    out:
-	generate_search_coeffs_for_subimage(&coeffs, in_bitmap, x, y, small_width, small_height, metric);
-
-	match = metapixel_nearest_to(&coeffs, metric, x, y, 0, 0,
-				     pixel_valid_for_collage_position, (void*)min_distance);
-	paste_metapixel(match.pixel, out_bitmap, x, y);
-
-	if (min_distance > 0)
-	    pixel_add_collage_position(match.pixel, x, y);
-
-	for (j = 0; j < small_height; ++j)
-	    for (i = 0; i < small_width; ++i)
-		if (!bitmap[(y + j) * in_bitmap->width + x + i])
-		{
-		    bitmap[(y + j) * in_bitmap->width + x + i] = 1;
-		    ++num_pixels_done;
-		}
-
-	printf(".");
-	fflush(stdout);
-    }
+    bitmap_free(in_bitmap);
 
     bitmap_write(out_bitmap, output_name);
 
-    free(bitmap);
     bitmap_free(out_bitmap);
-    bitmap_free(in_bitmap);
 }
 
 static metapixel_t*
 find_metapixel (char *filename)
 {
-    FOR_EACH_METAPIXEL(pixel)
+    FOR_EACH_METAPIXEL(pixel, pixel_index)
 	if (strcmp(pixel->filename, filename) == 0)
 	    return pixel;
     END_FOR_EACH_METAPIXEL
@@ -1061,7 +681,7 @@ free_mosaic (mosaic_t *mosaic)
 
 int
 make_classic_mosaic (char *in_image_name, char *out_image_name,
-		     int metric, float scale, int search, int min_distance, int cheat,
+		     int metric_kind, float scale, int search, int min_distance, int cheat,
 		     char *in_protocol_name, char *out_protocol_name)
 {
     mosaic_t *mosaic;
@@ -1084,11 +704,14 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
     else
     {
 	classic_reader_t *reader = init_classic_reader(in_image_name, scale);
+	metric_t metric;
+
+	init_metric(&metric, metric_kind);
 
 	if (search == SEARCH_LOCAL)
-	    mosaic = generate_local_classic(reader, min_distance, metric);
+	    mosaic = generate_local_classic(reader, min_distance, &metric);
 	else if (search == SEARCH_GLOBAL)
-	    mosaic = generate_global_classic(reader, metric);
+	    mosaic = generate_global_classic(reader, &metric);
 	else
 	    assert(0);
 

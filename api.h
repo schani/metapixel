@@ -28,6 +28,7 @@
 typedef struct _library_t library_t;
 typedef struct _metapixel_t metapixel_t;
 typedef struct _bitmap_t bitmap_t;
+typedef struct _metric_t metric_t;
 
 #include "internals.h"
 
@@ -127,9 +128,11 @@ typedef struct
 {
 } tiling_t;
 
-typedef struct
+struct _metric_t
 {
-} metric_t;
+    int kind;
+    float weights[NUM_CHANNELS];
+};
 
 typedef struct
 {
@@ -167,8 +170,8 @@ void metapixel_set_enabled (metapixel_t *metapixel, int enabled);
 tiling_t* tiling_init_rectangular (tiling_t *tiling, unsigned int small_width, unsigned int small_height);
 
 /* These do not allocate memory for the metric. */
-metric_t* metric_init_subpixel (metric_t *metric, float yiq_weights[]);
-metric_t* metric_init_wavelet (metric_t *metric, float yiq_weights[]);
+metric_t* metric_init_subpixel (metric_t *metric, float weights[]);
+metric_t* metric_init_wavelet (metric_t *metric, float weights[]);
 
 /* These do not allocate memory for the matcher. */
 matcher_t* matcher_init_local (matcher_t *matcher, metric_t *metric, unsigned int min_distance);
@@ -177,5 +180,11 @@ matcher_t* matcher_init_global (matcher_t *matcher, metric_t *metric);
 classic_mosaic_t* generate_classic_mosaic (int num_libraries, library_t **libraries,
 					   bitmap_t *in_image, float in_image_scale,
 					   tiling_t *tiling, matcher_t *matcher);
+
+/* Cheat must be in the range from 0 (full transparency, i.e., no
+   cheating) to 0x10000 (full opacity). */
+bitmap_t* make_collage_mosaic (int num_libraries, library_t **libraries, bitmap_t *in_image, float in_image_scale,
+			       unsigned int small_width, unsigned int small_height,
+			       int min_distance, metric_t *metric, unsigned int cheat);
 
 #endif

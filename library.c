@@ -412,3 +412,15 @@ library_add_metapixel (library_t *library, metapixel_t *metapixel)
 
     return 1;
 }
+
+unsigned int
+library_count_metapixels (int num_libraries, library_t **libraries)
+{
+    int i;
+    unsigned int n = 0;
+
+    for (i = 0; i < num_libraries; ++i)
+	n += libraries[i]->num_metapixels;
+
+    return n;
+}

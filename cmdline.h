@@ -34,34 +34,18 @@
 #define DEFAULT_CLASSIC_MIN_DISTANCE     5
 #define DEFAULT_COLLAGE_MIN_DISTANCE   256
 
-#define METRIC_WAVELET  1
-#define METRIC_SUBPIXEL 2
-
 #define SEARCH_LOCAL    1
 #define SEARCH_GLOBAL   2
-
-typedef struct _position_t
-{
-    int x, y;
-    struct _position_t *next;
-} position_t;
 
 typedef struct
 {
     int flag;
     int anti_x, anti_y;	       /* only used if from an antimosaic */
-    position_t *collage_positions; /* only used in collages */
 } client_metapixel_data_t;
 
 #define CLIENT_METAPIXEL_DATA_T client_metapixel_data_t
 
 #include "api.h"
-
-typedef struct
-{
-    metapixel_t *pixel;
-    float score;
-} match_t;
 
 typedef struct
 {
@@ -84,36 +68,10 @@ typedef struct
     bitmap_t *in_image;
 } classic_reader_t;
 
-typedef union
-{
-    struct
-    {
-	/*
-	wavelet_coefficients_t coeffs;
-	float means[NUM_CHANNELS];
-	float sums[NUM_COEFFS];
-	*/
-    } wavelet;
-    struct
-    {
-	unsigned char subpixels[NUM_SUBPIXELS * NUM_CHANNELS];
-    } subpixel;
-} coeffs_t;
-
-typedef struct
-{
-    metapixel_t *pixel;
-    float score;
-    int x;
-    int y;
-} global_match_t;
-
 typedef struct _string_list_t
 {
     char *str;
     struct _string_list_t *next;
 } string_list_t;
-
-typedef float (*compare_func_t) (coeffs_t*, metapixel_t*, float);
 
 #endif

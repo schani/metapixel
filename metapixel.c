@@ -22,6 +22,7 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <assert.h>
 
 #include "vector.h"
@@ -193,6 +194,36 @@ metapixel_get_bitmap (metapixel_t *metapixel)
 
 	return bitmap;
     }
+}
+
+int
+metapixel_paste (metapixel_t *pixel, bitmap_t *image, unsigned int x, unsigned int y,
+		 unsigned int small_width, unsigned int small_height)
+{
+    bitmap_t *bitmap;
+
+    bitmap = metapixel_get_bitmap(pixel);
+    if (bitmap == 0)
+    {
+	fprintf(stderr, "Error: cannot read metapixel image `%s'.\n", pixel->filename);
+	return 0;
+    }
+
+    if (bitmap->width != small_width || bitmap->height != small_height)
+    {
+	bitmap_t *scaled_bitmap = bitmap_scale(bitmap, small_width, small_height, FILTER_MITCHELL);
+
+	assert(scaled_bitmap != 0);
+
+	bitmap_free(bitmap);
+	bitmap = scaled_bitmap;
+    }
+
+    bitmap_paste(image, bitmap, x, y);
+
+    bitmap_free(bitmap);
+
+    return 1;
 }
 
 void

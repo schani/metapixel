@@ -5,7 +5,7 @@ MANPAGE_XSL = /sw/share/xml/xsl/docbook-xsl/manpages/docbook.xsl
 BINDIR = $(PREFIX)/bin
 MANDIR = $(PREFIX)/man
 
-VERSION = 0.11
+VERSION = 1.0.0
 
 #DEBUG = -g
 OPTIMIZE = -O2

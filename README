@@ -1,5 +1,5 @@
-Metapixel 0.11
-==============
+Metapixel 1.0.0
+===============
 
 Metapixel is a program for generating photomosaics.  It can generate
 classical photomosaics, in which the source image is viewed as a
@@ -7,11 +7,6 @@ matrix of equally sized rectangles for each of which a matching image
 is substitued, as well as collage-style photomosaics, in which
 rectangular parts of the source image at arbitrary positions (i.e. not
 aligned to a matrix) are substituted by matching images.
-
-Metapixel is, as of version 0.11, in a feature-freeze for release 1.0.
-This means that no more features will be implemented in Metapixel
-until we have a stable 1.0 release.  So, if you find any bugs in
-Metapixel, please do report them (to schani@complang.tuwien.ac.at).
 
 
 Installation

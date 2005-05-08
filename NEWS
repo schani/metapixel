@@ -1,4 +1,8 @@
-Changes since version 0.10:
+Changes in version 1.0.0:
+
+  * Bugfixes
+
+Changes since version 0.11:
 
   * The tables files must now always be in the directory where the
     small images reside, and that directory is now called a "library".
@@ -8,7 +12,7 @@ Changes since version 0.10:
 
   * Bugfixes
 
-Changes since version 0.9:
+Changes since version 0.10:
 
   * Metapixel can now enforce a minimum image distance for
     collages.
@@ -29,56 +33,56 @@ Changes since version 0.9:
 
   * Reading the tables file is now more than twice as fast.
 
-  * bugfixes
+  * Bugfixes
+
+Changes since version 0.9:
+
+  * Fixed a bug that prevented global search from working on
+    non-square images
+
+  * Got rid of libzoom, so now Metapixel is standard GPL
+
+  * Added the sizesort utility for sorting images by size
 
 Changes since version 0.8:
 
-  * fixed a bug that prevented global search from working on
-    non-square images
+  * Global search mode
 
-  * got rid of libzoom, so now Metapixel is standard GPL
+  * Protocol writing and reading
 
-  * added the sizesort utility for sorting images by size
+  * Antimosaic
 
 Changes since version 0.7:
 
-  * global search mode
+  * Scaling of input image added
 
-  * protocol writing and reading
-
-  * antimosaic
+  * Tremendous memory usage improvement for classical mosaics
 
 Changes since version 0.6:
 
-  * scaling of input image added
-
-  * tremendous memory usage improvement for classical mosaics
+  * Introduces the subpixel image comparison metric
 
 Changes since version 0.5:
 
-  * introduces the subpixel image comparison metric
+  * Cheat option
 
 Changes since version 0.4:
 
-  * cheat option
+  * Bugfixes
+
+  * Minimum distance between two instances of the same constituent
+    image can be specified
 
 Changes since version 0.3:
 
-  * bugfixes
+  * Bugfixes
 
-  * minimum distance between two instances of the same constituent
-    image can be specified
+  * Speed improvements
+
+  * Got rid of ImageMagick
 
 Changes since version 0.2:
 
-  * bugfixes
+  * Bugfixes
 
-  * speed improvements
-
-  * got rid of ImageMagick
-
-Changes since version 0.1:
-
-  * bugfixes
-
-  * speed improvements
+  * Speed improvements

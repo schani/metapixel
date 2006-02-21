@@ -3,7 +3,7 @@
  *
  * metapixel
  *
- * Copyright (C) 1997-2004 Mark Probst
+ * Copyright (C) 1997-2006 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -28,6 +28,7 @@
 #include <string.h>
 #include <math.h>
 #include <errno.h>
+#include <float.h>
 
 #include "getopt.h"
 
@@ -533,7 +534,7 @@ wavelet_compare (coeffs_t *coeffs, metapixel_t *pixel, float best_score)
     for (i = 0; i < NUM_COEFFS; ++i)
     {
 	if (score - sums[i] > best_score)
-	    return 1e99;
+	    return FLT_MAX;
 
 	while (target->coeffs[j] < query->coeffs[i] && j < NUM_COEFFS)
 	    ++j;
@@ -568,7 +569,7 @@ subpixel_compare (coeffs_t *coeffs, metapixel_t *pixel, float best_score)
 	    score += dist * dist * weight_factors[channel];
 
 	    if (score >= best_score)
-		return 1e99;
+		return FLT_MAX;
 	}
     }
 
@@ -781,7 +782,7 @@ metapixel_nearest_to (coeffs_t *coeffs, int metric, int x, int y,
 		      int (*validity_func) (void*, metapixel_t*, int, int),
 		      void *validity_func_data)
 {
-    float best_score = 1e99;
+    float best_score = FLT_MAX;
     metapixel_t *best_fit = 0, *pixel;
     compare_func_t compare_func = compare_func_for_metric(metric);
     match_t match;
@@ -822,7 +823,7 @@ get_n_metapixel_nearest_to (int n, global_match_t *matches, coeffs_t *coeffs, in
     i = 0;
     for (pixel = first_pixel; pixel != 0; pixel = pixel->next)
     {
-	float score = compare_func(coeffs, pixel, (i < n) ? 1e99 : matches[n - 1].score);
+	float score = compare_func(coeffs, pixel, (i < n) ? FLT_MAX : matches[n - 1].score);
 
 	if (i < n || score < matches[n - 1].score)
 	{
@@ -1030,7 +1031,7 @@ generate_local_classic (classic_reader_t *reader, int min_distance, int metric)
 
 	    if (match.pixel == 0)
 	    {
-		fprintf(stderr, "Error: cannot find a matching image - try using a shorter distance.\n");
+		fprintf(stderr, "Error: cannot find a matching image - try using a shorter minimum distance.\n");
 		exit(1);
 	    }
 
@@ -1390,6 +1391,13 @@ generate_collage (char *input_name, char *output_name, float scale, int min_dist
 
 	match = metapixel_nearest_to(&coeffs, metric, x, y, 0, 0,
 				     pixel_valid_for_collage_position, (void*)min_distance);
+
+	if (match.pixel == 0)
+	{
+	    fprintf(stderr, "Error: cannot find a matching image - try using a shorter minimum distance.\n");
+	    exit(1);
+	}
+
 	paste_metapixel(match.pixel, out_image_data, in_image_width, in_image_height, x, y);
 
 	if (min_distance > 0)
@@ -1658,7 +1666,7 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
 
     if (in_protocol_name != 0)
     {
-	FILE *protocol_in = fopen(in_protocol_name, "r");
+	FILE *protocol_in = fopen(in_protocol_name, "rb");
 
 	if (protocol_in == 0)
 	{
@@ -1705,7 +1713,7 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
 
     if (out_protocol_name != 0)
     {
-	FILE *protocol_out = fopen(out_protocol_name, "w");
+	FILE *protocol_out = fopen(out_protocol_name, "wb");
 
 	if (protocol_out == 0)
 	{
@@ -2077,7 +2085,7 @@ main (int argc, char *argv[])
 	    case 'l' :
 		if (antimosaic_filename != 0)
 		{
-		    fprintf(stderr, "Error: --tables and --antimosaic cannot be used together.\n");
+		    fprintf(stderr, "Error: --library and --antimosaic cannot be used together.\n");
 		    return 1;
 		}
 
@@ -2105,7 +2113,7 @@ main (int argc, char *argv[])
 	    case OPT_VERSION :
 		printf("metapixel " METAPIXEL_VERSION "\n"
 		       "\n"
-		       "Copyright (C) 1997-2004 Mark Probst\n"
+		       "Copyright (C) 1997-2006 Mark Probst\n"
 		       "\n"
 		       "This program is free software; you can redistribute it and/or modify\n"
 		       "it under the terms of the GNU General Public License as published by\n"
@@ -2222,7 +2230,7 @@ main (int argc, char *argv[])
 	    return 1;
 	}
 
-	tables_file = fopen(tables_name, "a");
+	tables_file = fopen(tables_name, "ab");
 	if (tables_file == 0)
 	{
 	    fprintf(stderr, "could not open file `%s' for writing\n", tables_name);
@@ -2338,7 +2346,7 @@ main (int argc, char *argv[])
 	}
 	else
 	{
-	    fprintf(stderr, "Error: you must give one of the option --tables and --antimosaic.\n");
+	    fprintf(stderr, "Error: you must give one of the option --library and --antimosaic.\n");
 	    return 1;
 	}
 
@@ -2354,7 +2362,7 @@ main (int argc, char *argv[])
 	}
 	else if (mode == MODE_BATCH)
 	{
-	    FILE *in = fopen(argv[optind], "r");
+	    FILE *in = fopen(argv[optind], "rb");
 	    lisp_stream_t stream;
 
 	    if (in == 0)

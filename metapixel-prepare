@@ -122,7 +122,8 @@ sub process_dir {
 
 	    print "Testing file: $fullname\n" if $DEBUG;
 
-	    if (-f $fullname && -r $fullname) {
+	    # FIXME: we should actually follow the symbolic link here!
+	    if ((-f $fullname && -r $fullname) || -l $fullname) {
 		my ($name, $path, $suffix) = fileparse($fullname);
 
 		print "Processing: $fullname\n" if $DEBUG;

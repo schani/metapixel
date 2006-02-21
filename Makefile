@@ -5,7 +5,7 @@ MANPAGE_XSL = /sw/share/xml/xsl/docbook-xsl/manpages/docbook.xsl
 BINDIR = $(PREFIX)/bin
 MANDIR = $(PREFIX)/man
 
-VERSION = 1.0.0
+VERSION = 1.0.1
 
 #DEBUG = -g
 OPTIMIZE = -O2
@@ -25,7 +25,7 @@ OBJS = metapixel.o vector.o zoom.o rwpng.o rwjpeg.o readimage.o writeimage.o \
 CONVERT_OBJS = convert.o $(LISPREADER_OBJS) getopt.o getopt1.o
 IMAGESIZE_OBJS = imagesize.o rwpng.o rwjpeg.o readimage.o
 
-all : metapixel metapixel.1 convert imagesize
+all : metapixel metapixel.1 convert metapixel-imagesize
 
 metapixel : $(OBJS)
 	$(CC) $(LDOPTS) -o metapixel $(OBJS) -lpng -ljpeg $(LIBFFM) -lm -lz
@@ -36,8 +36,8 @@ metapixel.1 : metapixel.xml
 convert : $(CONVERT_OBJS)
 	$(CC) $(LDOPTS) -o convert $(CONVERT_OBJS)
 
-imagesize : $(IMAGESIZE_OBJS)
-	$(CC) $(LDOPTS) -o imagesize $(IMAGESIZE_OBJS) -lpng -ljpeg -lm -lz
+metapixel-imagesize : $(IMAGESIZE_OBJS)
+	$(CC) $(LDOPTS) -o metapixel-imagesize $(IMAGESIZE_OBJS) -lpng -ljpeg -lm -lz
 
 zoom : zoom.c rwjpeg.c rwpng.c readimage.c writeimage.c
 	$(CC) -o zoom $(OPTIMIZE) $(PROFILE) $(MACOS_CCOPTS) -DTEST_ZOOM zoom.c rwjpeg.c rwpng.c readimage.c writeimage.c $(MACOS_LDOPTS) -lpng -ljpeg -lm -lz
@@ -50,11 +50,11 @@ install : metapixel metapixel.1
 	$(INSTALL) metapixel $(BINDIR)
 	$(INSTALL) metapixel-prepare $(BINDIR)
 	$(INSTALL) metapixel.1 $(MANDIR)/man1
-#	$(INSTALL) imagesize $(BINDIR)
-#	$(INSTALL) sizesort $(BINDIR)
+	$(INSTALL) metapixel-imagesize $(BINDIR)
+	$(INSTALL) metapixel-sizesort $(BINDIR)
 
 clean :
-	rm -f *.o metapixel convert imagesize *~
+	rm -f *.o metapixel convert metapixel-imagesize *~
 
 realclean : clean
 	rm -f metapixel.1
@@ -62,7 +62,8 @@ realclean : clean
 dist : metapixel.1
 	rm -rf metapixel-$(VERSION)
 	mkdir metapixel-$(VERSION)
-	cp Makefile README NEWS COPYING *.[ch] metapixel-prepare sizesort metapixel.xml metapixel.1 metapixelrc \
-		metapixel-$(VERSION)/
+	cp Makefile README NEWS COPYING *.[ch] metapixel-prepare metapixel-sizesort \
+		metapixel.xml metapixel.1 metapixelrc metapixel.spec \
+			metapixel-$(VERSION)/
 	tar -zcvf metapixel-$(VERSION).tar.gz metapixel-$(VERSION)
 	rm -rf metapixel-$(VERSION)

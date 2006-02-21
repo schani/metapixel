@@ -12,8 +12,8 @@
 (small-image-dimensions 64 64)
 ; we use the default weights, so the following line is commented out
 ;(yiq-weights 1.0 1.0 1.0)
-; also we use the subpixel metrix, which is the default
-;(metrix subpixel)
+; also we use the subpixel metric, which is the default
+;(metric subpixel)
 ; we want the global search method, though
 (search-method global)
 ; for all the other options, we use default values, so everything else

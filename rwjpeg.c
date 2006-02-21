@@ -42,7 +42,7 @@ open_jpeg_file (char *filename, int *width, int *height)
 
     assert(data != 0);
 
-    data->file = fopen(filename, "r");
+    data->file = fopen(filename, "rb");
     assert(data->file != 0);
 
     data->cinfo.err = jpeg_std_error(&data->jerr);

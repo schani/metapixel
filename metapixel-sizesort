@@ -2,11 +2,12 @@
 
 # sizesort --- sort images to directories according to size.
 
-# Copyright (C) 2003-2004 Mark Probst
+# Copyright (C) 2003-2006 Mark Probst, 2005 Christoph Weiss-Schaber
+# Copyright (C) 2005 Christoph Weiss-Schaber
 
-# Author: Mark Probst <schani@complang.tuwien.ac.at>
+# Authors: Mark Probst <schani@complang.tuwien.ac.at>
+#          Christoph Weiss-Schaber <chris@xchaos.de>
 # Maintainer: Mark Probst <schani@complang.tuwien.ac.at>
-# Version: 0.2
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -34,19 +35,26 @@ Moves all images in <srcdir> to subdirectories of <destdir> (which are
 created on the fly) bearing the name of the respective image's size or
 aspect ratio.
 
-  --help              display this help and exit
-  --size              sort by size
-  --ratio=ACCURACY    sort by aspect ratio to ACCURACY decimal places
+  -h, --help           display this help and exit
+  -d, --delete         automatically deletes images which would normally
+                       be ignored because they are corrupted
+  -s, --size           sort by size
+  -r, --ratio=ACCURACY sort by aspect ratio to ACCURACY decimal places
+  -l, --symlink        symlink instead of move
 ";
     exit(1);
 }
 
+my $delete_images;
 my $sort_size;
 my $sort_ratio;
+my $symlink;
 
-if (!GetOptions("help", \&usage,
-		"size", \$sort_size,
-		"ratio=i", \$sort_ratio)) {
+if (!GetOptions("help|h", \&usage,
+		"delete|d", \$delete_images,
+		"size|s", \$sort_size,
+		"ratio|r=i", \$sort_ratio,
+		"symlink|l", \$symlink)) {
     usage();
 }
 
@@ -78,19 +86,31 @@ if (! -d $destdir ) {
 
 foreach my $filename (glob("$srcdir/*")) {
     if (-f $filename && -r $filename) {
-	my ($w, $h) = split /\s+/, `imagesize $filename 2>/dev/null`;
-	die "error running imagesize" if ($? != 0);
-	my $dir;
-	if ($sort_size) {
-	    $dir = sprintf "$destdir/size_%dx%d", $w, $h;
-	    print "$filename $w $h\n";
+	my ($w, $h) = split /\s+/, `metapixel-imagesize "$filename" 2>/dev/null`;
+	if ($? != 0 || $w==0 || $h==0) {
+	    if ($delete_images) {
+		`rm "$filename"`;
+		print "warning: metapixel-imagesize failed for for $filename - deleted\n";
+	    } else {
+		print "warning: metapixel-imagesize failed for for $filename - ignored\n";
+	    }
 	} else {
-	    my $ratio = sprintf "%.${sort_ratio}f", ($w / $h);
-	    print "$filename $w $h $ratio\n";
-	    $dir = sprintf "$destdir/ratio_%s", $ratio;
-	}
+	    my $dir;
+	    if ($sort_size) {
+		$dir = sprintf "$destdir/size_%dx%d", $w, $h;
+		print "$filename $w $h\n";
+	    } else {
+		my $ratio = sprintf "%.${sort_ratio}f", ($w / $h);
+		print "$filename $w $h $ratio\n";
+		$dir = sprintf "$destdir/ratio_%s", $ratio;
+	    }
 
-	`mkdir $dir` if (!-d $dir);
-	`mv $filename $dir`;
+	    `mkdir "$dir"` if (!-d $dir);
+	    if ($symlink) {
+		`ln -s "$filename" "$dir/"`;
+	    } else {
+		`mv "$filename" "$dir/"`;
+	    }
+        }
     }
 }

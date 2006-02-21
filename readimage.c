@@ -42,7 +42,7 @@ open_image_reading (char *filename)
     image_read_func_t read_func;
     image_reader_free_func_t free_func;
 
-    file = fopen(filename, "r");
+    file = fopen(filename, "rb");
     if (file == 0)
 	return 0;
 

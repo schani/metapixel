@@ -43,7 +43,7 @@ open_png_file_reading (char *filename, int *width, int *height)
 
     assert(data != 0);
 
-    data->file = fopen(filename, "r");
+    data->file = fopen(filename, "rb");
     assert(data->file != 0);
 
     data->png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, 0, 0, 0);
@@ -65,9 +65,29 @@ open_png_file_reading (char *filename, int *width, int *height)
     *width = data->info_ptr->width;
     *height = data->info_ptr->height;
 
-    assert(data->info_ptr->bit_depth == 8 || data->info_ptr->bit_depth == 16);
-    assert(data->info_ptr->color_type == PNG_COLOR_TYPE_RGB || data->info_ptr->color_type == PNG_COLOR_TYPE_RGB_ALPHA);
-    assert(data->info_ptr->interlace_type == PNG_INTERLACE_NONE);
+    if (data->info_ptr->bit_depth != 8 && data->info_ptr->bit_depth != 16)
+    {
+	fprintf(stderr, "PNG files are only supported with bit depths 8 and 16.\n");
+	/* FIXME: free stuff */
+	return 0;
+    }
+
+    if (data->info_ptr->color_type != PNG_COLOR_TYPE_RGB
+	&& data->info_ptr->color_type != PNG_COLOR_TYPE_RGB_ALPHA
+	&& data->info_ptr->color_type != PNG_COLOR_TYPE_GRAY
+	&& data->info_ptr->color_type != PNG_COLOR_TYPE_GRAY_ALPHA)
+    {
+	fprintf(stderr, "PNG files are only supported in RGB and Gray, with or without alpha.\n");
+	/* FIXME: free stuff */
+	return 0;
+    }
+
+    if (data->info_ptr->interlace_type != PNG_INTERLACE_NONE)
+    {
+	fprintf(stderr, "Interlaced PNG files are not supported.\n");
+	/* FIXME: free stuff */
+	return 0;
+    }
 
     return data;
 }
@@ -83,7 +103,11 @@ png_read_lines (void *_data, unsigned char *lines, int num_lines)
     if (setjmp(data->png_ptr->jmpbuf))
 	assert(0);
 
-    if (data->info_ptr->color_type == PNG_COLOR_TYPE_RGB)
+    if (data->info_ptr->color_type == PNG_COLOR_TYPE_GRAY)
+	spp = 1;
+    else if (data->info_ptr->color_type == PNG_COLOR_TYPE_GRAY_ALPHA)
+	spp = 2;
+    else if (data->info_ptr->color_type == PNG_COLOR_TYPE_RGB)
 	spp = 3;
     else
 	spp = 4;
@@ -100,9 +124,16 @@ png_read_lines (void *_data, unsigned char *lines, int num_lines)
 	int j, channel;
 
 	png_read_row(data->png_ptr, (png_bytep)row, 0);
-	for (j = 0; j < data->info_ptr->width; ++j)
-	    for (channel = 0; channel < 3; ++channel)
-		lines[i * data->info_ptr->width * 3 + j * 3 + channel] = row[j * spp * bps + channel * bps];
+
+	if (spp <= 2)
+	    for (j = 0; j < data->info_ptr->width; ++j)
+		for (channel = 0; channel < 3; ++channel)
+		    lines[i * data->info_ptr->width * 3 + j * 3 + channel] = row[j * spp * bps];
+	else
+	    for (j = 0; j < data->info_ptr->width; ++j)
+		for (channel = 0; channel < 3; ++channel)
+		    lines[i * data->info_ptr->width * 3 + j * 3 + channel]
+			= row[j * spp * bps + channel * bps];
     }
 
     free(row);
@@ -130,7 +161,7 @@ open_png_file_writing (char *filename, int width, int height)
 
     assert(data != 0);
 
-    data->file = fopen(filename, "w");
+    data->file = fopen(filename, "wb");
     assert(data->file != 0);
 
     data->png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, 0, 0, 0);

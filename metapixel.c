@@ -1211,10 +1211,10 @@ paste_classic (mosaic_t *mosaic, char *input_name, char *output_name, int cheat)
 
     if (!benchmark_rendering)
     {
-	writer = open_image_writing(output_name, out_image_width, out_image_height, 3, out_image_width * 3, IMAGE_FORMAT_PNG);
+	writer = open_image_writing(output_name, out_image_width, out_image_height, 3, out_image_width * 3, IMAGE_FORMAT_AUTO);
 	if (writer == 0)
 	{
-	    fprintf(stderr, "cannot write image `%s'\n", output_name);
+	    fprintf(stderr, "Error: cannot write image `%s'\n", output_name);
 	    exit(1);
 	}
     }

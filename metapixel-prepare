@@ -4,9 +4,8 @@
 
 # Copyright (C) 1999-2004 Mark Probst
 # Copyright (C) 2004 Jake Di Toro
+# Copyright (C) 2006 Stefan Soeffing
 
-# Authors: Mark Probst <schani@complang.tuwien.ac.at>
-#          Jake Di Toro <karrde@viluppo.net>
 # Maintainer: Mark Probst <schani@complang.tuwien.ac.at>
 
 # This program is free software; you can redistribute it and/or modify
@@ -122,8 +121,12 @@ sub process_dir {
 
 	    print "Testing file: $fullname\n" if $DEBUG;
 
-	    # FIXME: we should actually follow the symbolic link here!
-	    if ((-f $fullname && -r $fullname) || -l $fullname) {
+	    while (-l $fullname) {
+		print "Following symlink: $fullname\n" if $DEBUG;
+		$fullname = readlink($fullname);
+	    }
+
+	    if (-f $fullname && -r $fullname) {
 		my ($name, $path, $suffix) = fileparse($fullname);
 
 		print "Processing: $fullname\n" if $DEBUG;

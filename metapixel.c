@@ -1211,7 +1211,7 @@ paste_classic (mosaic_t *mosaic, char *input_name, char *output_name, int cheat)
 
     if (!benchmark_rendering)
     {
-	writer = open_image_writing(output_name, out_image_width, out_image_height, IMAGE_FORMAT_PNG);
+	writer = open_image_writing(output_name, out_image_width, out_image_height, 3, out_image_width * 3, IMAGE_FORMAT_PNG);
 	if (writer == 0)
 	{
 	    fprintf(stderr, "cannot write image `%s'\n", output_name);
@@ -1299,7 +1299,7 @@ pixel_add_collage_position (metapixel_t *pixel, int x, int y)
 static int
 pixel_valid_for_collage_position (void *data, metapixel_t *pixel, int x, int y)
 {
-    int min_distance = (int)data;
+    int min_distance = (int)(unsigned long)data;
     position_t *position;
 
     if (min_distance <= 0)
@@ -1390,7 +1390,7 @@ generate_collage (char *input_name, char *output_name, float scale, int min_dist
 					    x, y, small_width, small_height, metric);
 
 	match = metapixel_nearest_to(&coeffs, metric, x, y, 0, 0,
-				     pixel_valid_for_collage_position, (void*)min_distance);
+				     pixel_valid_for_collage_position, (void*)(unsigned long)min_distance);
 
 	if (match.pixel == 0)
 	{
@@ -1415,7 +1415,7 @@ generate_collage (char *input_name, char *output_name, float scale, int min_dist
 	fflush(stdout);
     }
 
-    write_image(output_name, in_image_width, in_image_height, out_image_data, IMAGE_FORMAT_PNG);
+    write_image(output_name, in_image_width, in_image_height, out_image_data, 3, in_image_width * 3, IMAGE_FORMAT_PNG);
 
     free(bitmap);
     free(out_image_data);
@@ -2242,7 +2242,7 @@ main (int argc, char *argv[])
 				  in_width, in_height, prepare_width, prepare_height);
 	assert(scaled_data != 0);
 
-	write_image(outimage_name, prepare_width, prepare_height, scaled_data, IMAGE_FORMAT_PNG);
+	write_image(outimage_name, prepare_width, prepare_height, scaled_data, 3, prepare_width * 3, IMAGE_FORMAT_PNG);
 
 	generate_metapixel_coefficients(&pixel, scaled_data, highest_coeffs);
 

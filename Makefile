@@ -29,11 +29,9 @@ CC = gcc
 OBJS = main.o bitmap.o color.o metric.o matcher.o tiling.o metapixel.o library.o classic.o collage.o search.o \
 	utils.o error.o avl.o vector.o zoom.o \
 	getopt.o getopt1.o
-CONVERT_OBJS = convert.o getopt.o getopt1.o
 IMAGESIZE_OBJS = imagesize.o
 
 all : metapixel metapixel.1 imagesize
-# convert 
 
 librwimg :
 	$(MAKE) -C rwimg
@@ -46,9 +44,6 @@ metapixel : $(OBJS) librwimg lispreader
 
 metapixel.1 : metapixel.xml
 	xsltproc --nonet $(MANPAGE_XSL) metapixel.xml
-
-convert : $(CONVERT_OBJS)
-	$(CC) $(LDOPTS) -o convert $(CONVERT_OBJS)
 
 imagesize : $(IMAGESIZE_OBJS)
 	$(CC) $(LDOPTS) -o imagesize $(IMAGESIZE_OBJS) rwimg/librwimg.a -lpng -ljpeg -lgif -lm -lz
@@ -69,7 +64,7 @@ install : metapixel metapixel.1
 #	$(INSTALL) sizesort $(BINDIR)
 
 clean :
-	rm -f *.o metapixel convert imagesize *~
+	rm -f *.o metapixel imagesize *~
 	$(MAKE) -C rwimg clean
 	$(MAKE) -C lispreader clean
 

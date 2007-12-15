@@ -3,7 +3,7 @@
  *
  * metapixel
  *
- * Copyright (C) 1997-2004 Mark Probst
+ * Copyright (C) 1997-2007 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -23,7 +23,7 @@
 #ifndef __METAPIXEL_H__
 #define __METAPIXEL_H__
 
-#include "readimage.h"
+#include "rwimg/readimage.h"
 
 #define DEFAULT_WIDTH       64
 #define DEFAULT_HEIGHT      64

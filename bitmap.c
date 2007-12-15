@@ -3,7 +3,7 @@
  *
  * metapixel
  *
- * Copyright (C) 2004 Mark Probst
+ * Copyright (C) 2004-2007 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -24,8 +24,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "readimage.h"
-#include "writeimage.h"
+#include "rwimg/readimage.h"
+#include "rwimg/writeimage.h"
 
 #include "api.h"
 

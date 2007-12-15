@@ -33,8 +33,8 @@
 
 #include "vector.h"
 #include "zoom.h"
-#include "readimage.h"
-#include "writeimage.h"
+#include "rwimg/readimage.h"
+#include "rwimg/writeimage.h"
 #include "lispreader.h"
 
 #include "cmdline.h"

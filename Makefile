@@ -1,11 +1,11 @@
 PREFIX = /usr/local
 INSTALL = install
-MANPAGE_XSL = /sw/share/xml/xsl/docbook-xsl/manpages/docbook.xsl
+MANPAGE_XSL = /usr/share/xml/docbook/stylesheet/nwalsh/manpages/docbook.xsl
 
 BINDIR = $(PREFIX)/bin
 MANDIR = $(PREFIX)/man
 
-VERSION = 0.11
+VERSION = 1.1.0
 
 DEBUG = -g
 #OPTIMIZE = -O2
@@ -21,9 +21,9 @@ CC = gcc
 #LIBFFM = -lffm
 
 LISPREADER_OBJS = lispreader.o pools.o allocator.o
-OBJS = main.o bitmap.o color.o metric.o matcher.o tiling.o metapixel.o library.o classic.o collage.o search.o utils.o error.o \
-       vector.o zoom.o rwpng.o rwjpeg.o readimage.o writeimage.o \
-       $(LISPREADER_OBJS) getopt.o getopt1.o
+OBJS = main.o bitmap.o color.o metric.o matcher.o tiling.o metapixel.o library.o classic.o collage.o search.o \
+	utils.o error.o avl.o vector.o zoom.o rwpng.o rwjpeg.o readimage.o writeimage.o \
+	$(LISPREADER_OBJS) getopt.o getopt1.o
 CONVERT_OBJS = convert.o $(LISPREADER_OBJS) getopt.o getopt1.o
 IMAGESIZE_OBJS = imagesize.o rwpng.o rwjpeg.o readimage.o
 

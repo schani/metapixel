@@ -3,7 +3,7 @@
  *
  * metapixel
  *
- * Copyright (C) 1997-2004 Mark Probst
+ * Copyright (C) 1997-2007 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -122,7 +122,7 @@ static void
 init_metric (metric_t *metric, int kind)
 {
     if (kind == METRIC_SUBPIXEL)
-	metric_init_subpixel(metric, weight_factors);
+	metric_init(metric, METRIC_SUBPIXEL, COLOR_SPACE_YIQ, weight_factors);
     /*
     else if (kind == METRIC_WAVELET)
     {
@@ -147,6 +147,9 @@ generate_collage (char *input_name, char *output_name, float scale, int min_dist
 {
     bitmap_t *in_bitmap, *out_bitmap;
     metric_t metric;
+    collage_mosaic_t *mosaic;
+    unsigned int scaled_small_width = (unsigned int)(small_width / scale);
+    unsigned int scaled_small_height = (unsigned int)(small_height / scale);
 
     in_bitmap = bitmap_read(input_name);
     if (in_bitmap == 0)
@@ -156,10 +159,21 @@ generate_collage (char *input_name, char *output_name, float scale, int min_dist
     }
 
     init_metric(&metric, metric_kind);
-    out_bitmap = collage_make(num_libraries, libraries, in_bitmap, scale,
-			      small_width, small_height,
-			      min_distance, &metric, cheat * 0x10000 / 100);
+    mosaic = collage_generate_from_bitmap(num_libraries, libraries, in_bitmap,
+					  scaled_small_width, scaled_small_height,
+					  scaled_small_width, scaled_small_height,
+					  min_distance, &metric, 0);
+    assert(mosaic != 0);
+
+    out_bitmap = collage_paste_to_bitmap(mosaic,
+					 (unsigned int)(in_bitmap->width * scale),
+					 (unsigned int)(in_bitmap->height * scale),
+					 in_bitmap,
+					 cheat * 0x10000 / 100,
+					 0);
     assert(out_bitmap != 0);
+
+    collage_free(mosaic);
 
     bitmap_free(in_bitmap);
 
@@ -269,7 +283,7 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
 	else
 	    assert(0);
 
-	mosaic = classic_generate(num_libraries, libraries, reader, &matcher, forbid_reconstruction_radius);
+	mosaic = classic_generate(num_libraries, libraries, reader, &matcher, forbid_reconstruction_radius, 0);
 
 	classic_reader_free(reader);
     }
@@ -330,7 +344,7 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
 	writer = classic_writer_new_for_file(out_image_name, metawidth * small_width, metaheight * small_height);
 	assert(writer != 0);
 
-	classic_paste(mosaic, reader, cheat * 0x10000 / 100, writer);
+	classic_paste(mosaic, reader, cheat * 0x10000 / 100, writer, 0);
 
 	classic_writer_free(writer);
 
@@ -705,7 +719,7 @@ main (int argc, char *argv[])
 	    case OPT_VERSION :
 		printf("metapixel " METAPIXEL_VERSION "\n"
 		       "\n"
-		       "Copyright (C) 1997-2004 Mark Probst\n"
+		       "Copyright (C) 1997-2007 Mark Probst\n"
 		       "\n"
 		       "This program is free software; you can redistribute it and/or modify\n"
 		       "it under the terms of the GNU General Public License as published by\n"

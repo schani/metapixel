@@ -39,7 +39,7 @@ librwimg :
 liblispreader :
 	$(MAKE) -C lispreader
 
-metapixel : $(OBJS) librwimg lispreader
+metapixel : $(OBJS) librwimg liblispreader
 	$(CC) $(LDOPTS) -o metapixel $(OBJS) rwimg/librwimg.a lispreader/liblispreader.a -lpng -ljpeg -lgif $(LIBFFM) -lm -lz
 
 metapixel.1 : metapixel.xml

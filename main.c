@@ -21,6 +21,8 @@
  */
 
 #include <sys/time.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -472,6 +474,8 @@ usage (void)
 	   "      print out version number\n"
 	   "  metapixel --help\n"
 	   "      print this help text\n"
+	   "  metapixel --new-library <library-dir>\n"
+	   "      create a new library\n"
 	   "  metapixel [option ...] --prepare <library-dir> <image>\n"
 	   "      add <image> to the library in <library-dir>\n"
 	   "  metapixel [option ...] --metapixel <in> <out>\n"
@@ -511,11 +515,13 @@ usage (void)
 #define OPT_IN                         262
 #define OPT_BENCHMARK_RENDERING        263
 #define OPT_PRINT_PREPARE_SETTINGS     264
+#define OPT_NEW_LIBRARY		       265
 
-#define MODE_NONE       0
-#define MODE_PREPARE    1
-#define MODE_METAPIXEL  2
-#define MODE_BATCH      3
+#define MODE_NONE		0
+#define MODE_NEW_LIBRARY	1
+#define MODE_PREPARE		2
+#define MODE_METAPIXEL		3
+#define MODE_BATCH		4
 
 int
 main (int argc, char *argv[])
@@ -553,6 +559,7 @@ main (int argc, char *argv[])
             {
 		{ "version", no_argument, 0, OPT_VERSION },
 		{ "help", no_argument, 0, OPT_HELP },
+		{ "new-library", no_argument, 0, OPT_NEW_LIBRARY },
 		{ "prepare", no_argument, 0, OPT_PREPARE },
 		{ "metapixel", no_argument, 0, OPT_METAPIXEL },
 		{ "batch", no_argument, 0, OPT_BATCH },
@@ -586,6 +593,10 @@ main (int argc, char *argv[])
 
 	switch (option)
 	{
+	    case OPT_NEW_LIBRARY :
+		mode = MODE_NEW_LIBRARY;
+		break;
+
 	    case OPT_PREPARE :
 		mode = MODE_PREPARE;
 		break;
@@ -798,7 +809,30 @@ main (int argc, char *argv[])
 	}
     }
 
-    if (mode == MODE_PREPARE)
+    if (mode == MODE_NEW_LIBRARY)
+    {
+	char *library_name;
+	library_t *library;
+
+	if (argc - optind != 1)
+	{
+	    usage();
+	    return 1;
+	}
+
+	library_name = argv[optind];
+
+	mkdir(library_name, 0777);
+
+	library = library_new(library_name);
+	if (library == 0)
+	    return 1;
+
+	library_close(library);
+
+	return 0;
+    }
+    else if (mode == MODE_PREPARE)
     {
 	char *inimage_name, *library_name;
 	metapixel_t *pixel;
@@ -818,10 +852,7 @@ main (int argc, char *argv[])
 
 	library = library_open_without_reading(library_name);
 	if (library == 0)
-	{
-	    fprintf(stderr, "Error: could not open library `%s'.\n", library_name);
 	    return 1;
-	}
 
 	bitmap = bitmap_read(inimage_name);
 	if (bitmap == 0)

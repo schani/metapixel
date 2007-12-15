@@ -26,11 +26,10 @@ CCOPTS = $(CFLAGS) -I/usr/X11R6/include -I/usr/X11R6/include/X11 -I. -Wall \
 CC = gcc
 #LIBFFM = -lffm
 
-LISPREADER_OBJS = lispreader.o pools.o allocator.o
 OBJS = main.o bitmap.o color.o metric.o matcher.o tiling.o metapixel.o library.o classic.o collage.o search.o \
 	utils.o error.o avl.o vector.o zoom.o \
-	$(LISPREADER_OBJS) getopt.o getopt1.o
-CONVERT_OBJS = convert.o $(LISPREADER_OBJS) getopt.o getopt1.o
+	getopt.o getopt1.o
+CONVERT_OBJS = convert.o getopt.o getopt1.o
 IMAGESIZE_OBJS = imagesize.o
 
 all : metapixel metapixel.1 imagesize
@@ -39,8 +38,11 @@ all : metapixel metapixel.1 imagesize
 librwimg :
 	$(MAKE) -C rwimg
 
-metapixel : $(OBJS) librwimg
-	$(CC) $(LDOPTS) -o metapixel $(OBJS) rwimg/librwimg.a -lpng -ljpeg -lgif $(LIBFFM) -lm -lz
+liblispreader :
+	$(MAKE) -C lispreader
+
+metapixel : $(OBJS) librwimg lispreader
+	$(CC) $(LDOPTS) -o metapixel $(OBJS) rwimg/librwimg.a lispreader/liblispreader.a -lpng -ljpeg -lgif $(LIBFFM) -lm -lz
 
 metapixel.1 : metapixel.xml
 	xsltproc --nonet $(MANPAGE_XSL) metapixel.xml
@@ -69,6 +71,7 @@ install : metapixel metapixel.1
 clean :
 	rm -f *.o metapixel convert imagesize *~
 	$(MAKE) -C rwimg clean
+	$(MAKE) -C lispreader clean
 
 realclean : clean
 	rm -f metapixel.1

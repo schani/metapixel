@@ -35,7 +35,7 @@
 #include "zoom.h"
 #include "rwimg/readimage.h"
 #include "rwimg/writeimage.h"
-#include "lispreader.h"
+#include "lispreader/lispreader.h"
 
 #include "cmdline.h"
 

@@ -122,7 +122,7 @@ static void
 init_metric (metric_t *metric, int kind)
 {
     if (kind == METRIC_SUBPIXEL)
-	metric_init_subpixel(metric, weight_factors);
+	metric_init(metric, METRIC_SUBPIXEL, weight_factors);
     /*
     else if (kind == METRIC_WAVELET)
     {

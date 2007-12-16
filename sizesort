@@ -2,11 +2,11 @@
 
 # sizesort --- sort images to directories according to size.
 
-# Copyright (C) 2003-2004 Mark Probst
+# Copyright (C) 2003-2005 Mark Probst
 
 # Author: Mark Probst <schani@complang.tuwien.ac.at>
 # Maintainer: Mark Probst <schani@complang.tuwien.ac.at>
-# Version: 0.2
+# Version: 0.3
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -30,23 +30,26 @@ use Getopt::Long;
 sub usage {
     print STDERR "Usage: $0 [OPTION]... <srcdir> <destdir>
 
-Moves all images in <srcdir> to subdirectories of <destdir> (which are
+Symlink all images in <srcdir> to subdirectories of <destdir> (which are
 created on the fly) bearing the name of the respective image's size or
 aspect ratio.
 
   --help              display this help and exit
   --size              sort by size
   --ratio=ACCURACY    sort by aspect ratio to ACCURACY decimal places
+  --move              move instead of symlink
 ";
     exit(1);
 }
 
 my $sort_size;
 my $sort_ratio;
+my $move;
 
 if (!GetOptions("help", \&usage,
 		"size", \$sort_size,
-		"ratio=i", \$sort_ratio)) {
+		"ratio=i", \$sort_ratio,
+		"move", \$move)) {
     usage();
 }
 
@@ -79,18 +82,26 @@ if (! -d $destdir ) {
 foreach my $filename (glob("$srcdir/*")) {
     if (-f $filename && -r $filename) {
 	my ($w, $h) = split /\s+/, `imagesize $filename 2>/dev/null`;
-	die "error running imagesize" if ($? != 0);
-	my $dir;
-	if ($sort_size) {
-	    $dir = sprintf "$destdir/size_%dx%d", $w, $h;
-	    print "$filename $w $h\n";
+	if ($w == 0 || $h == 0) {
+	    print "$filename has zero size\n";
 	} else {
-	    my $ratio = sprintf "%.${sort_ratio}f", ($w / $h);
-	    print "$filename $w $h $ratio\n";
-	    $dir = sprintf "$destdir/ratio_%s", $ratio;
-	}
+	    die "error running imagesize" if ($? != 0);
+	    my $dir;
+	    if ($sort_size) {
+		$dir = sprintf "$destdir/size_%dx%d", $w, $h;
+		print "$filename $w $h\n";
+	    } else {
+		my $ratio = sprintf "%.${sort_ratio}f", ($w / $h);
+		print "$filename $w $h $ratio\n";
+		$dir = sprintf "$destdir/ratio_%s", $ratio;
+	    }
 
-	`mkdir $dir` if (!-d $dir);
-	`mv $filename $dir`;
+	    `mkdir $dir` if (!-d $dir);
+	    if ($move) {
+		`mv $filename $dir`;
+	    } else {
+		`ln -s $filename $dir/`;
+	    }
+	}
     }
 }

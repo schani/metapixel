@@ -26,8 +26,9 @@ OBJS = main.o bitmap.o metric.o matcher.o tiling.o metapixel.o library.o classic
        $(LISPREADER_OBJS) getopt.o getopt1.o
 CONVERT_OBJS = convert.o $(LISPREADER_OBJS) getopt.o getopt1.o
 IMAGESIZE_OBJS = imagesize.o rwpng.o rwjpeg.o readimage.o
+BOREDOM_OBJS = boredom.o rwpng.o rwjpeg.o readimage.o
 
-all : metapixel metapixel.1 imagesize
+all : metapixel metapixel.1 imagesize boredom
 # convert 
 
 metapixel : $(OBJS)
@@ -41,6 +42,9 @@ convert : $(CONVERT_OBJS)
 
 imagesize : $(IMAGESIZE_OBJS)
 	$(CC) $(LDOPTS) -o imagesize $(IMAGESIZE_OBJS) -lpng -ljpeg -lm -lz
+
+boredom : $(BOREDOM_OBJS)
+	$(CC) $(LDOPTS) -o boredom $(BOREDOM_OBJS) -lpng -ljpeg -lm -lz
 
 zoom : zoom.c rwjpeg.c rwpng.c readimage.c writeimage.c
 	$(CC) -o zoom $(OPTIMIZE) $(PROFILE) $(MACOS_CCOPTS) -DTEST_ZOOM -DRWIMG_JPEG -DRWIMG_PNG \

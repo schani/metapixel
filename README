@@ -370,8 +370,9 @@ where the small images are) and do
 Licence and Availability
 ------------------------
 
-Metapixel is free software distributed under the terms of the GPL.
-The file `COPYING' contains the text of the license.
+Metapixel is free software distributed under the terms of the GNU
+General Public License.  The file `COPYING' contains the text of the
+license.
 
 The source of Metapixel is available at the Metapixel homepage at
 

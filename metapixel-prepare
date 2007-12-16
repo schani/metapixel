@@ -2,11 +2,10 @@
 
 # metapixel-prepare --- prepare images for metapixeling.
 
-# Copyright (C) 1999-2004 Mark Probst
+# Copyright (C) 1999-2007 Mark Probst
 # Copyright (C) 2004 Jake Di Toro
+# Copyright (C) 2006 Stefan Soeffing
 
-# Authors: Mark Probst <schani@complang.tuwien.ac.at>
-#          Jake Di Toro <karrde@viluppo.net>
 # Maintainer: Mark Probst <schani@complang.tuwien.ac.at>
 
 # This program is free software; you can redistribute it and/or modify
@@ -31,7 +30,7 @@ use File::Basename;
 use IO::Handle;
 
 sub usage {
-    print STDERR "Usage: $0 [OPTION]... <srcdir> <destdir>
+    print STDERR "Usage: $0 [OPTION]... <srcdir> [<destdir>]
 
 Prepares all images in <srcdir> for use as small images in
 photomosaics. The scaled versions and the table file are
@@ -59,13 +58,6 @@ if (!GetOptions("help", \&usage,
     usage();
 }
 
-if (!$width || $width <= 0 || !$height || $height <= 0) {
-    print "$0: Width and height of the prepared images must be specified.\n";
-    exit(1);
-}
-
-my $opts = "--width=$width --height=$height";
-
 if ($#ARGV != 0 && $#ARGV != 1) {
     usage();
 }
@@ -83,12 +75,21 @@ unless ($destdir) {
     print "$0: A destination directory must be specified.\n";
     exit(1);
 }
-if (! -d $destdir) {
-    print "$0: Destination directory $destdir does not exist.\n";
+
+if (!$width || $width <= 0 || !$height || $height <= 0) {
+    print "$0: Width and height of the prepared images must be specified.\n";
     exit(1);
 }
 
-`touch "$destdir/tables.mxt"`;
+my $opts = "--width=$width --height=$height";
+
+if (! -f "$destdir/tables.mxt") {
+    `metapixel --new-library "$destdir"`;
+    if ($? != 0) {
+	print "Could not create library $destdir.\n";
+	exit(1);
+    }
+}
 
 STDOUT->autoflush(1);
 
@@ -109,6 +110,11 @@ sub process_dir {
 
 	    print "Testing file: $fullname\n" if $DEBUG;
 
+	    while (-l $fullname) {
+		print "Following symlink: $fullname\n" if $DEBUG;
+		$fullname = readlink($fullname);
+	    }
+
 	    if (-f $fullname && -r $fullname) {
 		my ($name, $path, $suffix) = fileparse($fullname);
 
@@ -116,8 +122,8 @@ sub process_dir {
 
 		`metapixel $opts --prepare "$destdir" "$fullname"`;
 		if ($? != 0) {
-		    print "Error running metapixel - skipping file $fullname\n"
-		    }
+		    print "Error running metapixel - skipping file $fullname\n";
+		}
 		else
 		{
 		    print "." if !$DEBUG;

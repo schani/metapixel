@@ -3,7 +3,7 @@
  *
  * metapixel
  *
- * Copyright (C) 2005 Mark Probst
+ * Copyright (C) 2005-2007 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -25,7 +25,7 @@
 #include <assert.h>
 #include <string.h>
 
-#include "readimage.h"
+#include "rwimg/readimage.h"
 
 #define SQR(x)       ((x) * (x))
 

@@ -3,7 +3,7 @@
  *
  * metapixel
  *
- * Copyright (C) 2004 Mark Probst
+ * Copyright (C) 2004-2007 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -24,8 +24,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "readimage.h"
-#include "writeimage.h"
+#include "rwimg/readimage.h"
+#include "rwimg/writeimage.h"
 
 #include "api.h"
 
@@ -40,8 +40,11 @@ color_channels (int color)
 static void
 ref_bitmap (bitmap_t *bitmap)
 {
-    assert(bitmap->refcount > 0);
-    ++bitmap->refcount;
+    assert(bitmap->refcount != 0);
+    if (bitmap->refcount > 0)
+	++bitmap->refcount;
+    else
+	--bitmap->refcount;
 }
 
 bitmap_t*
@@ -54,7 +57,7 @@ bitmap_new (int color, unsigned int width, unsigned int height,
 
     assert(color == COLOR_RGB_8);
     assert(width > 0 && height > 0);
-    assert(pixel_stride == color_channels(color));
+    assert(pixel_stride >= color_channels(color));
     assert(row_stride >= pixel_stride * width);
     assert(data != 0);
 
@@ -84,6 +87,19 @@ bitmap_new_copying (int color, unsigned int width, unsigned int height,
 }
 
 bitmap_t*
+bitmap_new_dont_possess (int color, unsigned int width, unsigned int height,
+			 unsigned int pixel_stride, unsigned int row_stride, unsigned char *data)
+{
+    bitmap_t *bitmap = bitmap_new(color, width, height, pixel_stride, row_stride, data);
+
+    assert(bitmap != 0);
+
+    bitmap->refcount = -1;
+
+    return bitmap;
+}
+
+bitmap_t*
 bitmap_new_packed (int color, unsigned int width, unsigned int height,
 		   unsigned char *data)
 {
@@ -108,17 +124,29 @@ bitmap_new_empty (int color, unsigned int width, unsigned int height)
 void
 bitmap_free (bitmap_t *bitmap)
 {
-    assert(bitmap->refcount > 0);
+    assert(bitmap->refcount != 0);
 
-    --bitmap->refcount;
-
-    if (bitmap->refcount == 0)
+    if (bitmap->refcount > 0)
     {
-	if (bitmap->super != 0)
-	    bitmap_free(bitmap->super);
-	else
-	    free(bitmap->data);
-	free(bitmap);
+	--bitmap->refcount;
+
+	if (bitmap->refcount == 0)
+	{
+	    if (bitmap->super != 0)
+		bitmap_free(bitmap->super);
+	    else
+		free(bitmap->data);
+	    free(bitmap);
+	}
+    }
+    else
+    {
+	++bitmap->refcount;
+
+	assert(bitmap->super == 0);
+
+	if (bitmap->refcount == 0)
+	    free(bitmap);
     }
 }
 
@@ -160,14 +188,12 @@ bitmap_scale (bitmap_t *src, unsigned int scaled_width, unsigned int scaled_heig
     if (filter == 0)
 	return 0;
 
-    assert(src->pixel_stride == num_channels);
-
     bitmap = bitmap_new_empty(src->color, scaled_width, scaled_height);
     assert(bitmap != 0);
 
     zoom_image(bitmap->data, src->data, filter, num_channels,
-	       scaled_width, scaled_height, bitmap->row_stride,
-	       src->width, src->height, src->row_stride);
+	       scaled_width, scaled_height, bitmap->pixel_stride, bitmap->row_stride,
+	       src->width, src->height, src->pixel_stride, src->row_stride);
 
     return bitmap;
 }
@@ -240,7 +266,8 @@ bitmap_write (bitmap_t *bitmap, const char *filename)
     assert(bitmap->pixel_stride == 3);
 
     /* FIXME: implement error reporting in write_image */
-    write_image(filename, bitmap->width, bitmap->height, bitmap->data, bitmap->row_stride, IMAGE_FORMAT_PNG);
+    write_image(filename, bitmap->width, bitmap->height, bitmap->data,
+		bitmap->pixel_stride, bitmap->row_stride, IMAGE_FORMAT_PNG);
 
     return 1;
 }

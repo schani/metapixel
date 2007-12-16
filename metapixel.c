@@ -25,49 +25,24 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include "vector.h"
-
 #include "api.h"
 
 void
-transform_rgb_to_yiq (float *image, int num_pixels)
+metapixel_complete_subpixel (metapixel_t *pixel)
 {
-    const static Matrix3D conversion_matrix =
-    {
-	{ 0.299, 0.587, 0.114 },
-	{ 0.596, -0.275, -0.321 },
-	{ 0.212, -0.528, 0.311 }
-    };
-
-    int i;
-
-    for (i = 0; i < num_pixels; ++i)
-    {
-	Vector3D rgb_vec, yiq_vec;
-
-	InitVector3D(&rgb_vec,
-		     image[NUM_CHANNELS * i + 0],
-		     image[NUM_CHANNELS * i + 1],
-		     image[NUM_CHANNELS * i + 2]);
-	MultMatrixVector3D(&yiq_vec, &conversion_matrix, &rgb_vec);
-	image[NUM_CHANNELS * i + 0] = yiq_vec.x;
-	image[NUM_CHANNELS * i + 1] = yiq_vec.y / 1.192 + 127.5;
-	image[NUM_CHANNELS * i + 2] = yiq_vec.z / 1.051 + 128.106565176;
-    }
+    color_convert_rgb_pixels(pixel->subpixels_hsv, pixel->subpixels_rgb, NUM_SUBPIXELS, COLOR_SPACE_HSV);
+    color_convert_rgb_pixels(pixel->subpixels_yiq, pixel->subpixels_rgb, NUM_SUBPIXELS, COLOR_SPACE_YIQ);
 }
 
 static void
 generate_coefficients (metapixel_t *pixel)
 {
-    /* FIXME: this is not reentrant! */
-    static float float_image[NUM_CHANNELS * WAVELET_IMAGE_PIXELS];
     /*
     static float sums[NUM_COEFFS];
     static coefficient_with_index_t raw_coeffs[NUM_COEFFS];
     */
 
     bitmap_t *scaled_bitmap;
-    int i, channel;
 
     /* generate wavelet coefficients */
     /*
@@ -111,14 +86,12 @@ generate_coefficients (metapixel_t *pixel)
 
     assert(NUM_SUBPIXELS <= WAVELET_IMAGE_PIXELS);
 
-    for (i = 0; i < NUM_SUBPIXELS * NUM_CHANNELS; ++i)
-	float_image[i] = scaled_bitmap->data[i];
+    assert(scaled_bitmap->color == COLOR_RGB_8);
+    assert(scaled_bitmap->pixel_stride == NUM_CHANNELS);
+    assert(scaled_bitmap->row_stride == NUM_SUBPIXEL_ROWS_COLS * NUM_CHANNELS);
 
-    transform_rgb_to_yiq(float_image, NUM_SUBPIXELS);
-
-    for (channel = 0; channel < NUM_CHANNELS; ++channel)
-	for (i = 0; i < NUM_SUBPIXELS; ++i)
-	    pixel->subpixels[channel * NUM_SUBPIXELS + i] = (int)float_image[i * NUM_CHANNELS + channel];
+    memcpy(pixel->subpixels_rgb, scaled_bitmap->data, NUM_SUBPIXELS * 3);
+    metapixel_complete_subpixel(pixel);
 
     bitmap_free(scaled_bitmap);
 }
@@ -246,4 +219,26 @@ void
 metapixel_set_enabled (metapixel_t *metapixel, int enabled)
 {
     /* FIXME: implement */
+}
+
+metapixel_t*
+metapixel_find_in_libraries (int num_libraries, library_t **libraries,
+			     const char *library_path, const char *filename,
+			     int *num_new_libraries, library_t ***new_libraries)
+{
+    library_t *library = library_find_or_open(num_libraries, libraries,
+					      library_path,
+					      num_new_libraries, new_libraries);
+    metapixel_t *pixel;
+
+    if (library == 0)
+	return 0;
+
+    for (pixel = library->metapixels; pixel != 0; pixel = pixel->next)
+	if (strcmp(pixel->filename, filename) == 0)
+	    return pixel;
+
+    error_report(ERROR_METAPIXEL_NOT_FOUND, error_make_string_info(filename));
+
+    return 0;
 }

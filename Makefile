@@ -1,50 +1,56 @@
 PREFIX = /usr/local
 INSTALL = install
-MANPAGE_XSL = /sw/share/xml/xsl/docbook-xsl/manpages/docbook.xsl
+MANPAGE_XSL = /usr/share/xml/docbook/stylesheet/nwalsh/manpages/docbook.xsl
 
 BINDIR = $(PREFIX)/bin
 MANDIR = $(PREFIX)/man
 
-VERSION = 0.11
+VERSION = 1.1.0
 
 DEBUG = -g
 #OPTIMIZE = -O2
 #PROFILE = -pg
 
 MACOS_LDOPTS = -L/sw/lib
-MACOS_CCOPTS = -I/sw/include
+MACOS_CFLAGS = -I/sw/include
+
+CC = gcc
+CFLAGS = $(MACOS_CFLAGS) $(OPTIMIZE) $(DEBUG) $(PROFILE)
+FORMATDEFS = -DRWIMG_JPEG -DRWIMG_PNG -DRWIMG_GIF
+
+export CFLAGS CC FORMATDEFS
 
 LDOPTS = $(MACOS_LDOPTS) -L/usr/X11R6/lib $(PROFILE) $(DEBUG)
-CCOPTS = $(MACOS_CCOPTS) -I/usr/X11R6/include -I/usr/X11R6/include/X11 -I. -Wall $(OPTIMIZE) $(DEBUG) $(PROFILE) \
-	 -DMETAPIXEL_VERSION=\"$(VERSION)\" -DRWIMG_JPEG -DRWIMG_PNG -DCONSOLE_OUTPUT
+CCOPTS = $(CFLAGS) -I/usr/X11R6/include -I/usr/X11R6/include/X11 -I. -Wall \
+	 -DMETAPIXEL_VERSION=\"$(VERSION)\" $(FORMATDEFS) -DCONSOLE_OUTPUT
 CC = gcc
 #LIBFFM = -lffm
 
-LISPREADER_OBJS = lispreader.o pools.o allocator.o
-OBJS = main.o bitmap.o metric.o matcher.o tiling.o metapixel.o library.o classic.o collage.o search.o utils.o error.o \
-       vector.o zoom.o rwpng.o rwjpeg.o readimage.o writeimage.o \
-       $(LISPREADER_OBJS) getopt.o getopt1.o
-CONVERT_OBJS = convert.o $(LISPREADER_OBJS) getopt.o getopt1.o
-IMAGESIZE_OBJS = imagesize.o rwpng.o rwjpeg.o readimage.o
-BOREDOM_OBJS = boredom.o rwpng.o rwjpeg.o readimage.o
+OBJS = main.o bitmap.o color.o metric.o matcher.o tiling.o metapixel.o library.o classic.o collage.o search.o \
+	utils.o error.o avl.o vector.o zoom.o \
+	getopt.o getopt1.o
+IMAGESIZE_OBJS = imagesize.o
+BOREDOM_OBJS = boredom.o
 
 all : metapixel metapixel.1 imagesize boredom
-# convert 
 
-metapixel : $(OBJS)
-	$(CC) $(LDOPTS) -o metapixel $(OBJS) -lpng -ljpeg $(LIBFFM) -lm -lz
+librwimg :
+	$(MAKE) -C rwimg
+
+liblispreader :
+	$(MAKE) -C lispreader
+
+metapixel : $(OBJS) librwimg liblispreader
+	$(CC) $(LDOPTS) -o metapixel $(OBJS) rwimg/librwimg.a lispreader/liblispreader.a -lpng -ljpeg -lgif $(LIBFFM) -lm -lz
 
 metapixel.1 : metapixel.xml
 	xsltproc --nonet $(MANPAGE_XSL) metapixel.xml
 
-convert : $(CONVERT_OBJS)
-	$(CC) $(LDOPTS) -o convert $(CONVERT_OBJS)
-
 imagesize : $(IMAGESIZE_OBJS)
-	$(CC) $(LDOPTS) -o imagesize $(IMAGESIZE_OBJS) -lpng -ljpeg -lm -lz
+	$(CC) $(LDOPTS) -o imagesize $(IMAGESIZE_OBJS) rwimg/librwimg.a -lpng -ljpeg -lgif -lm -lz
 
 boredom : $(BOREDOM_OBJS)
-	$(CC) $(LDOPTS) -o boredom $(BOREDOM_OBJS) -lpng -ljpeg -lm -lz
+	$(CC) $(LDOPTS) -o boredom $(BOREDOM_OBJS) rwimg/librwimg.a -lpng -ljpeg -lgif -lm -lz
 
 zoom : zoom.c rwjpeg.c rwpng.c readimage.c writeimage.c
 	$(CC) -o zoom $(OPTIMIZE) $(PROFILE) $(MACOS_CCOPTS) -DTEST_ZOOM -DRWIMG_JPEG -DRWIMG_PNG \
@@ -62,7 +68,9 @@ install : metapixel metapixel.1
 #	$(INSTALL) sizesort $(BINDIR)
 
 clean :
-	rm -f *.o metapixel convert imagesize *~
+	rm -f *.o metapixel imagesize *~
+	$(MAKE) -C rwimg clean
+	$(MAKE) -C lispreader clean
 
 realclean : clean
 	rm -f metapixel.1

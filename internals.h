@@ -3,7 +3,7 @@
  *
  * metapixel
  *
- * Copyright (C) 1997-2004 Mark Probst
+ * Copyright (C) 1997-2007 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -25,8 +25,8 @@
 
 #include <stdarg.h>
 
-#include "readimage.h"
-#include "writeimage.h"
+#include "rwimg/readimage.h"
+#include "rwimg/writeimage.h"
 
 #include "api.h"
 
@@ -106,6 +106,7 @@ typedef union
 struct _metric_t
 {
     int kind;
+    int color_space;
     float weights[NUM_CHANNELS];
 };
 
@@ -166,11 +167,24 @@ typedef struct
 
 unsigned int library_count_metapixels (int num_libraries, library_t **libraries);
 
+/* num_new_libraries and new_libraries have very peculiar semantics! */
+library_t* library_find_or_open (int num_libraries, library_t **libraries,
+				 const char *library_path,
+				 int *num_new_libraries, library_t ***new_libraries);
+
 /* Does not initialize coefficients! */
 metapixel_t* metapixel_new (const char *name, unsigned int scaled_width, unsigned int scaled_height,
 			    float aspect_ratio);
 int metapixel_paste (metapixel_t *pixel, bitmap_t *image, unsigned int x, unsigned int y,
 		     unsigned int small_width, unsigned int small_height, unsigned int orientation);
+
+/* Converts the RGB subpixel data to HSV and YIQ */
+void metapixel_complete_subpixel (metapixel_t *pixel);
+
+/* num_new_libraries and new_libraries have very peculiar semantics! */
+metapixel_t* metapixel_find_in_libraries (int num_libraries, library_t **libraries,
+					  const char *library_path, const char *filename,
+					  int *num_new_libraries, library_t ***new_libraries);
 
 void wavelet_decompose_image (float *image);
 void wavelet_find_highest_coeffs (float *image, coefficient_with_index_t highest_coeffs[NUM_WAVELET_COEFFS]);
@@ -181,7 +195,7 @@ void wavelet_generate_coeffs (wavelet_coefficients_t *search_coeffs, float sums[
 void init_wavelet (void);
 
 typedef float (*compare_func_t) (coeffs_union_t *coeffs, metapixel_t *pixel,
-				 float best_score, float weights[]);
+				 float best_score, int color_space, float weights[]);
 
 typedef struct
 {
@@ -219,8 +233,9 @@ void classic_reader_free (classic_reader_t *reader);
 int utils_manhattan_distance (int x1, int y1, int x2, int y2);
 int utils_flip_multiplier (unsigned int flips);
 
-/* FIXME: this must go! (must be a static function in some module) */
-void transform_rgb_to_yiq (float *image, int num_pixels);
+void color_rgb_to_yiq (unsigned char *yiq, unsigned char *rgb);
+void color_rgb_to_hsv (unsigned char *hsv, unsigned char *rgb);
+void color_convert_rgb_pixels (unsigned char *dst, unsigned char *rgb, unsigned int num_pixels, int color_space);
 
 #define FOR_EACH_METAPIXEL(p,i) { unsigned int library_index; \
                                   unsigned int i = 0; \
@@ -228,5 +243,14 @@ void transform_rgb_to_yiq (float *image, int num_pixels);
                                       metapixel_t *p; \
                                       for (p = libraries[library_index]->metapixels; p != 0; ++i, p = p->next)
 #define END_FOR_EACH_METAPIXEL  } }
+
+#define PROGRESS_REPORT_GRANULARITY   0.01
+#define PROGRESS_DECLS          float last_report = 0.0
+#define START_PROGRESS          if (report_func != 0) report_func(0.0)
+#define REPORT_PROGRESS(p)      if (report_func != 0) { \
+                                    float progress = (p); \
+                                    if (progress - last_report >= PROGRESS_REPORT_GRANULARITY) { \
+                                        report_func(progress); \
+                                        last_report = progress; } }
 
 #endif

@@ -27,9 +27,12 @@
 #include "api.h"
 
 metric_t*
-metric_init_subpixel (metric_t *metric, float weights[])
+metric_init (metric_t *metric, int kind, int color_space, float weights[])
 {
-    metric->kind = METRIC_SUBPIXEL;
+    assert(kind == METRIC_SUBPIXEL);
+
+    metric->kind = kind;
+    metric->color_space = color_space;
     memcpy(metric->weights, weights, sizeof(float) * NUM_CHANNELS);
 
     return metric;
@@ -39,9 +42,6 @@ void
 metric_generate_coeffs_for_subimage (coeffs_union_t *coeffs, bitmap_t *bitmap,
 				     int x, int y, int width, int height, metric_t *metric)
 {
-    /* FIXME: not reentrant */
-    static float *float_image = 0;
-
     if (metric->kind == METRIC_WAVELET)
     {
 	/*
@@ -87,12 +87,6 @@ metric_generate_coeffs_for_subimage (coeffs_union_t *coeffs, bitmap_t *bitmap,
     else if (metric->kind == METRIC_SUBPIXEL)
     {
 	bitmap_t *sub_bitmap, *scaled_bitmap;
-	int i;
-	int channel;
-
-	if (float_image == 0)
-	    float_image = (float*)malloc(sizeof(float) * NUM_SUBPIXELS * NUM_CHANNELS);
-	assert(float_image != 0);
 
 	sub_bitmap = bitmap_sub(bitmap, x, y, width, height);
 	assert(sub_bitmap != 0);
@@ -110,16 +104,10 @@ metric_generate_coeffs_for_subimage (coeffs_union_t *coeffs, bitmap_t *bitmap,
 	assert(scaled_bitmap->pixel_stride == NUM_CHANNELS);
 	assert(scaled_bitmap->row_stride == NUM_SUBPIXEL_ROWS_COLS * NUM_CHANNELS);
 
-	for (i = 0; i < NUM_SUBPIXELS * NUM_CHANNELS; ++i)
-	    float_image[i] = scaled_bitmap->data[i];
+	color_convert_rgb_pixels(coeffs->subpixel.subpixels, scaled_bitmap->data,
+				 NUM_SUBPIXELS, metric->color_space);
 
 	bitmap_free(scaled_bitmap);
-
-	transform_rgb_to_yiq(float_image, NUM_SUBPIXELS);
-
-	for (channel = 0; channel < NUM_CHANNELS; ++channel)
-	    for (i = 0; i < NUM_SUBPIXELS; ++i)
-		coeffs->subpixel.subpixels[channel * NUM_SUBPIXELS + i] = float_image[i * NUM_CHANNELS + channel];
     }
     else if (metric->kind == METRIC_MIPMAP)
     {
@@ -167,6 +155,22 @@ wavelet_compare (coeffs_t *coeffs, metapixel_t *pixel, float best_score)
     return score;
 }
 */
+
+static unsigned char*
+subpixels_for_color_space (metapixel_t *pixel, int color_space)
+{
+    switch (color_space)
+    {
+	case COLOR_SPACE_RGB :
+	    return pixel->subpixels_rgb;
+	case COLOR_SPACE_HSV :
+	    return pixel->subpixels_hsv;
+	case COLOR_SPACE_YIQ :
+	    return pixel->subpixels_yiq;
+	default :
+	    assert(0);
+    }
+}
 
 #define COMPARE_FUNC_NAME   subpixel_compare_no_flip
 #define FLIP_X(x)           ((x))

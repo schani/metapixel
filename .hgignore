@@ -1,2 +1,7 @@
 syntax: glob
 .svn
+*~
+*.o
+imagesize
+metapixel
+metapixel.1

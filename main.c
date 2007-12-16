@@ -3,7 +3,7 @@
  *
  * metapixel
  *
- * Copyright (C) 1997-2004 Mark Probst
+ * Copyright (C) 1997-2007 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -21,6 +21,8 @@
  */
 
 #include <sys/time.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -33,9 +35,9 @@
 
 #include "vector.h"
 #include "zoom.h"
-#include "readimage.h"
-#include "writeimage.h"
-#include "lispreader.h"
+#include "rwimg/readimage.h"
+#include "rwimg/writeimage.h"
+#include "lispreader/lispreader.h"
 
 #include "cmdline.h"
 
@@ -123,7 +125,7 @@ static void
 init_metric (metric_t *metric, int kind)
 {
     if (kind == METRIC_SUBPIXEL)
-	metric_init_subpixel(metric, weight_factors);
+	metric_init(metric, METRIC_SUBPIXEL, COLOR_SPACE_YIQ, weight_factors);
     /*
     else if (kind == METRIC_WAVELET)
     {
@@ -149,6 +151,9 @@ generate_collage (char *input_name, char *output_name, float scale, int min_dist
 {
     bitmap_t *in_bitmap, *out_bitmap;
     metric_t metric;
+    collage_mosaic_t *mosaic;
+    unsigned int scaled_small_width = (unsigned int)(small_width / scale);
+    unsigned int scaled_small_height = (unsigned int)(small_height / scale);
 
     in_bitmap = bitmap_read(input_name);
     if (in_bitmap == 0)
@@ -158,11 +163,21 @@ generate_collage (char *input_name, char *output_name, float scale, int min_dist
     }
 
     init_metric(&metric, metric_kind);
-    out_bitmap = collage_make(num_libraries, libraries, in_bitmap, scale,
-			      small_width, small_height,
-			      min_distance, &metric, cheat * 0x10000 / 100,
-			      allowed_flips);
+    mosaic = collage_generate_from_bitmap(num_libraries, libraries, in_bitmap,
+					  scaled_small_width, scaled_small_height,
+					  scaled_small_width, scaled_small_height,
+					  min_distance, &metric, allowed_flips, 0);
+    assert(mosaic != 0);
+
+    out_bitmap = collage_paste_to_bitmap(mosaic,
+					 (unsigned int)(in_bitmap->width * scale),
+					 (unsigned int)(in_bitmap->height * scale),
+					 in_bitmap,
+					 cheat * 0x10000 / 100,
+					 0);
     assert(out_bitmap != 0);
+
+    collage_free(mosaic);
 
     bitmap_free(in_bitmap);
 
@@ -272,7 +287,7 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
 	else
 	    assert(0);
 
-	mosaic = classic_generate(num_libraries, libraries, reader, &matcher, forbid_reconstruction_radius, flip);
+	mosaic = classic_generate(num_libraries, libraries, reader, &matcher, forbid_reconstruction_radius, flip, 0);
 
 	classic_reader_free(reader);
     }
@@ -333,7 +348,7 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
 	writer = classic_writer_new_for_file(out_image_name, metawidth * small_width, metaheight * small_height);
 	assert(writer != 0);
 
-	classic_paste(mosaic, reader, cheat * 0x10000 / 100, writer);
+	classic_paste(mosaic, reader, cheat * 0x10000 / 100, writer, 0);
 
 	classic_writer_free(writer);
 
@@ -477,6 +492,8 @@ usage (void)
 	   "      print out version number\n"
 	   "  metapixel --help\n"
 	   "      print this help text\n"
+	   "  metapixel --new-library <library-dir>\n"
+	   "      create a new library\n"
 	   "  metapixel [option ...] --prepare <library-dir> <image>\n"
 	   "      add <image> to the library in <library-dir>\n"
 	   "  metapixel [option ...] --metapixel <in> <out>\n"
@@ -519,11 +536,13 @@ usage (void)
 #define OPT_BENCHMARK_RENDERING        263
 #define OPT_PRINT_PREPARE_SETTINGS     264
 #define OPT_FLIP                       265
+#define OPT_NEW_LIBRARY		       266
 
-#define MODE_NONE       0
-#define MODE_PREPARE    1
-#define MODE_METAPIXEL  2
-#define MODE_BATCH      3
+#define MODE_NONE		0
+#define MODE_NEW_LIBRARY	1
+#define MODE_PREPARE		2
+#define MODE_METAPIXEL		3
+#define MODE_BATCH		4
 
 int
 main (int argc, char *argv[])
@@ -562,6 +581,7 @@ main (int argc, char *argv[])
             {
 		{ "version", no_argument, 0, OPT_VERSION },
 		{ "help", no_argument, 0, OPT_HELP },
+		{ "new-library", no_argument, 0, OPT_NEW_LIBRARY },
 		{ "prepare", no_argument, 0, OPT_PREPARE },
 		{ "metapixel", no_argument, 0, OPT_METAPIXEL },
 		{ "batch", no_argument, 0, OPT_BATCH },
@@ -596,6 +616,10 @@ main (int argc, char *argv[])
 
 	switch (option)
 	{
+	    case OPT_NEW_LIBRARY :
+		mode = MODE_NEW_LIBRARY;
+		break;
+
 	    case OPT_PREPARE :
 		mode = MODE_PREPARE;
 		break;
@@ -737,7 +761,7 @@ main (int argc, char *argv[])
 	    case OPT_VERSION :
 		printf("metapixel " METAPIXEL_VERSION "\n"
 		       "\n"
-		       "Copyright (C) 1997-2004 Mark Probst\n"
+		       "Copyright (C) 1997-2007 Mark Probst\n"
 		       "\n"
 		       "This program is free software; you can redistribute it and/or modify\n"
 		       "it under the terms of the GNU General Public License as published by\n"
@@ -824,7 +848,30 @@ main (int argc, char *argv[])
 	}
     }
 
-    if (mode == MODE_PREPARE)
+    if (mode == MODE_NEW_LIBRARY)
+    {
+	char *library_name;
+	library_t *library;
+
+	if (argc - optind != 1)
+	{
+	    usage();
+	    return 1;
+	}
+
+	library_name = argv[optind];
+
+	mkdir(library_name, 0777);
+
+	library = library_new(library_name);
+	if (library == 0)
+	    return 1;
+
+	library_close(library);
+
+	return 0;
+    }
+    else if (mode == MODE_PREPARE)
     {
 	char *inimage_name, *library_name;
 	metapixel_t *pixel;
@@ -844,10 +891,7 @@ main (int argc, char *argv[])
 
 	library = library_open_without_reading(library_name);
 	if (library == 0)
-	{
-	    fprintf(stderr, "Error: could not open library `%s'.\n", library_name);
 	    return 1;
-	}
 
 	bitmap = bitmap_read(inimage_name);
 	if (bitmap == 0)

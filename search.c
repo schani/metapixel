@@ -61,7 +61,7 @@ search_metapixel_nearest_to (int num_libraries, library_t **libraries,
 	    if (allowed == 0)
 		return;
 
-	    score = compare_func(coeffs, pixel, best_score, metric->weights);
+	    score = compare_func(coeffs, pixel, best_score, metric->color_space, metric->weights);
 
 	    if (score < best_score)
 	    {
@@ -124,7 +124,8 @@ search_n_metapixel_nearest_to (int num_libraries, library_t **libraries,
     void check_orientation (metapixel_t *pixel, unsigned int pixel_index,
 			    compare_func_t compare_func, unsigned int orientation)
 	{
-	    float score = compare_func(coeffs, pixel, (i < n) ? 1e99 : matches[n - 1].match.score, metric->weights);
+	    float score = compare_func(coeffs, pixel, (i < n) ? 1e99 : matches[n - 1].match.score,
+				       metric->color_space, metric->weights);
 
 	    if (i < n || score < matches[n - 1].match.score)
 	    {

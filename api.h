@@ -25,8 +25,8 @@
 
 #include <stdio.h>
 
+#include "avl.h"
 #include "error.h"
-
 #include "zoom.h"
 
 typedef struct _library_t library_t;
@@ -69,7 +69,9 @@ struct _bitmap_t
 
     unsigned char *data;
 
-    int refcount;
+    int refcount;		/* if negative, the data doesn't
+				   belong to the bitmap and must not
+				   be freed */
     bitmap_t *super;
 };
 
@@ -80,6 +82,11 @@ bitmap_t* bitmap_new (int color, unsigned int width, unsigned int height,
 /* bitmap_new_copying doesn't take possession of data. */
 bitmap_t* bitmap_new_copying (int color, unsigned int width, unsigned int height,
 			      unsigned int pixel_stride, unsigned int row_stride, unsigned char *data);
+/* bitmap_new_dont_possess doesn't take possession of data, but
+   doesn't copy it either, hence the bitmap must be freed before the
+   data is. */
+bitmap_t* bitmap_new_dont_possess (int color, unsigned int width, unsigned int height,
+				   unsigned int pixel_stride, unsigned int row_stride, unsigned char *data);
 /* This is the same as bitmap_new, only that pixel_stride and
    row_stride are assumed to take on their minimal values. */
 bitmap_t* bitmap_new_packed (int color, unsigned int width, unsigned int height,
@@ -107,10 +114,6 @@ void bitmap_paste (bitmap_t *dst, bitmap_t *src, unsigned int x, unsigned int y)
 /* Opacity is 0 for full transparency and 0x10000 (65536) for full opacity. */
 void bitmap_alpha_compose (bitmap_t *dst, bitmap_t *src, unsigned int opacity);
 
-#define COLOR_SPACE_RGB        1
-#define COLOR_SPACE_HSV        2
-#define COLOR_SPACE_YIQ        3
-
 struct _metapixel_t
 {
     library_t *library;
@@ -119,6 +122,9 @@ struct _metapixel_t
 
     /* Only used internally.  Can be zero (for mem libraries). */
     char *filename;
+
+    unsigned long file_len;
+    unsigned long file_checksum; /* only used if file_len > 0 */
 
     unsigned int width;
     unsigned int height;
@@ -142,7 +148,9 @@ struct _metapixel_t
     wavelet_coefficients_t coeffs;
     float means[NUM_CHANNELS];
     */
-    unsigned char subpixels[NUM_SUBPIXELS * NUM_CHANNELS];
+    unsigned char subpixels_rgb[NUM_SUBPIXELS * NUM_CHANNELS];
+    unsigned char subpixels_hsv[NUM_SUBPIXELS * NUM_CHANNELS];
+    unsigned char subpixels_yiq[NUM_SUBPIXELS * NUM_CHANNELS];
 
     /* This is != 0 iff library == 0 || filename == 0, i.e., for
        metapixels which are not in a library or only in a mem
@@ -158,6 +166,9 @@ struct _library_t
 
     metapixel_t *metapixels;
     unsigned int num_metapixels;
+
+    avltree_t *checksum_tree;	/* can be 0, in which case checksums
+				   will not be checked */
 };
 
 typedef struct
@@ -165,6 +176,27 @@ typedef struct
     tiling_t tiling;
     metapixel_match_t *matches;
 } classic_mosaic_t;
+
+typedef struct
+{
+    unsigned int x;
+    unsigned int y;
+    unsigned int width;
+    unsigned int height;
+    metapixel_match_t match;
+} collage_match_t;
+
+typedef struct
+{
+    unsigned int in_image_width;
+    unsigned int in_image_height;
+
+    unsigned int num_matches;
+    collage_match_t *matches;
+} collage_mosaic_t;
+
+/* value will be in the range 0.0 to 1.0 */
+typedef void (*progress_report_func_t) (float value);
 
 /* library_new and library_open return 0 on failure. */
 /* library_new will not create the directory! */
@@ -212,8 +244,12 @@ void tiling_get_metapixel_coords (tiling_t *tiling, unsigned int image_width, un
 #define METRIC_SUBPIXEL  2
 #define METRIC_MIPMAP    3
 
+#define COLOR_SPACE_RGB        1
+#define COLOR_SPACE_HSV        2
+#define COLOR_SPACE_YIQ        3
+
 /* These do not allocate memory for the metric. */
-metric_t* metric_init_subpixel (metric_t *metric, float weights[]);
+metric_t* metric_init (metric_t *metric, int kind, int color_space, float weights[]);
 
 /* These do not allocate memory for the matcher. */
 matcher_t* matcher_init_local (matcher_t *matcher, metric_t *metric, unsigned int min_distance);
@@ -233,11 +269,20 @@ void classic_writer_free (classic_writer_t *writer);
 classic_mosaic_t* classic_generate (int num_libraries, library_t **libraries,
 				    classic_reader_t *reader, matcher_t *matcher,
 				    unsigned int forbid_reconstruction_radius,
-				    unsigned int allowed_flips);
+				    unsigned int allowed_flips,
+				    progress_report_func_t report_func);
 classic_mosaic_t* classic_generate_from_bitmap (int num_libraries, library_t **libraries,
 						bitmap_t *in_image, tiling_t *tiling, matcher_t *matcher,
 						unsigned int forbid_reconstruction_radius,
-						unsigned int allowed_flips);
+						unsigned int allowed_flips,
+						progress_report_func_t report_func);
+collage_mosaic_t* collage_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_t *in_bitmap,
+						unsigned int min_small_width, unsigned int min_small_height,
+						unsigned int max_small_width, unsigned int max_small_height,
+						unsigned int min_distance, metric_t *metric,
+						unsigned int allowed_flips,
+						progress_report_func_t report_func);
+
 /* If some metapixel in the mosaic isn't in one of the supplied
    libraries, classic_read tries to open the library.  If
    *num_new_libraries is >0 after classic_read returns, then each
@@ -246,25 +291,26 @@ classic_mosaic_t* classic_generate_from_bitmap (int num_libraries, library_t **l
    the array with free. */
 classic_mosaic_t* classic_read (int num_libraries, library_t **libraries, const char *filename,
 				int *num_new_libraries, library_t ***new_libraries);
+collage_mosaic_t* collage_read (int num_libraries, library_t **libraries, const char *filename,
+				int *num_new_libraries, library_t ***new_libraries);
 
 /* Each metapixel in the mosaic must be in a (saved) library.  Returns
    0 on failure. */
 int classic_write (classic_mosaic_t *mosaic, FILE *out);
+int collage_write (collage_mosaic_t *mosaic, FILE *out);
 
 void classic_free (classic_mosaic_t *mosaic);
+void collage_free (collage_mosaic_t *mosaic);
 
 /* cheat must be in the range from 0 (full transparency, i.e., no
    cheating) to 0x10000 (full opacity).  If cheat == 0, then
    reader/in_image can be 0. */
 int classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int cheat,
-		   classic_writer_t *writer);
+		   classic_writer_t *writer, progress_report_func_t report_func);
 /* width and height are the width and height of the resulting bitmap. */
 bitmap_t* classic_paste_to_bitmap (classic_mosaic_t *mosaic, unsigned int width, unsigned int height,
-				   bitmap_t *in_image, unsigned int cheat);
-
-bitmap_t* collage_make (int num_libraries, library_t **libraries, bitmap_t *in_image, float in_image_scale,
-			unsigned int small_width, unsigned int small_height,
-			int min_distance, metric_t *metric, unsigned int cheat,
-			unsigned int allowed_flips);
+				   bitmap_t *in_image, unsigned int cheat, progress_report_func_t report_func);
+bitmap_t* collage_paste_to_bitmap (collage_mosaic_t *mosaic, unsigned int width, unsigned int height,
+				   bitmap_t *in_image, unsigned int cheat, progress_report_func_t report_func);
 
 #endif

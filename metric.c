@@ -167,39 +167,56 @@ wavelet_compare (coeffs_t *coeffs, metapixel_t *pixel, float best_score)
 }
 */
 
-static float
-subpixel_compare (coeffs_t *coeffs, metapixel_t *pixel, float best_score, float weight_factors[NUM_CHANNELS])
-{
-    int channel;
-    float score = 0.0;
+#define COMPARE_FUNC_NAME   subpixel_compare_no_flip
+#define FLIP_X(x)           ((x))
+#define FLIP_Y(y)           ((y))
+#include "subpixel_compare.h"
+#undef COMPARE_FUNC_NAME
+#undef FLIP_X
+#undef FLIP_Y
 
-    for (channel = 0; channel < NUM_CHANNELS; ++channel)
-    {
-	int i;
+#define COMPARE_FUNC_NAME   subpixel_compare_hor_flip
+#define FLIP_X(x)           (NUM_SUBPIXEL_ROWS_COLS - 1 - (x))
+#define FLIP_Y(y)           ((y))
+#include "subpixel_compare.h"
+#undef COMPARE_FUNC_NAME
+#undef FLIP_X
+#undef FLIP_Y
 
-	for (i = 0; i < NUM_SUBPIXELS; ++i)
-	{
-	    float dist = (int)coeffs->subpixel.subpixels[channel * NUM_SUBPIXELS + i]
-		- (int)pixel->subpixels[channel * NUM_SUBPIXELS + i];
+#define COMPARE_FUNC_NAME   subpixel_compare_ver_flip
+#define FLIP_X(x)           ((x))
+#define FLIP_Y(y)           (NUM_SUBPIXEL_ROWS_COLS - 1 - (y))
+#include "subpixel_compare.h"
+#undef COMPARE_FUNC_NAME
+#undef FLIP_X
+#undef FLIP_Y
 
-	    score += dist * dist * weight_factors[channel];
+#define COMPARE_FUNC_NAME   subpixel_compare_hor_ver_flip
+#define FLIP_X(x)           (NUM_SUBPIXEL_ROWS_COLS - 1 - (x))
+#define FLIP_Y(y)           (NUM_SUBPIXEL_ROWS_COLS - 1 - (y))
+#include "subpixel_compare.h"
+#undef COMPARE_FUNC_NAME
+#undef FLIP_X
+#undef FLIP_Y
 
-	    if (score >= best_score)
-		return 1e99;
-	}
-    }
-
-    return score;
-}
-
-compare_func_t
-metric_compare_func_for_metric (metric_t *metric)
+compare_func_set_t*
+metric_compare_func_set_for_metric (metric_t *metric)
 {
     if (metric->kind == METRIC_WAVELET)
 	//return wavelet_compare;
 	assert(0);
     else if (metric->kind == METRIC_SUBPIXEL)
-	return subpixel_compare;
+    {
+	static compare_func_set_t set =
+	    {
+		subpixel_compare_no_flip,
+		subpixel_compare_hor_flip,
+		subpixel_compare_ver_flip,
+		subpixel_compare_hor_ver_flip
+	    };
+
+	return &set;
+    }
     else
 	assert(0);
     return 0;

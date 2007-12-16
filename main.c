@@ -57,6 +57,7 @@ static int default_classic_min_distance = DEFAULT_CLASSIC_MIN_DISTANCE;
 static int default_collage_min_distance = DEFAULT_COLLAGE_MIN_DISTANCE;
 static int default_cheat_amount = 0;
 static int default_forbid_reconstruction_radius = 0;
+static unsigned int default_metapixel_flip = FLIP_HOR | FLIP_VER, default_prepare_flip = FLIP_HOR;
 
 /* actual settings */
 
@@ -143,7 +144,8 @@ print_current_time (void)
 }
 
 static void
-generate_collage (char *input_name, char *output_name, float scale, int min_distance, int metric_kind, int cheat)
+generate_collage (char *input_name, char *output_name, float scale, int min_distance, int metric_kind, int cheat,
+		  unsigned int allowed_flips)
 {
     bitmap_t *in_bitmap, *out_bitmap;
     metric_t metric;
@@ -158,7 +160,8 @@ generate_collage (char *input_name, char *output_name, float scale, int min_dist
     init_metric(&metric, metric_kind);
     out_bitmap = collage_make(num_libraries, libraries, in_bitmap, scale,
 			      small_width, small_height,
-			      min_distance, &metric, cheat * 0x10000 / 100);
+			      min_distance, &metric, cheat * 0x10000 / 100,
+			      allowed_flips);
     assert(out_bitmap != 0);
 
     bitmap_free(in_bitmap);
@@ -219,9 +222,9 @@ make_classic_reader (const char *in_image_name, float in_image_scale)
     return reader;
 }
 
-int
+static int
 make_classic_mosaic (char *in_image_name, char *out_image_name,
-		     int metric_kind, float scale, int search, int min_distance, int cheat,
+		     int metric_kind, float scale, int search, int min_distance, int cheat, unsigned int flip,
 		     char *in_protocol_name, char *out_protocol_name)
 {
     classic_mosaic_t *mosaic;
@@ -269,7 +272,7 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
 	else
 	    assert(0);
 
-	mosaic = classic_generate(num_libraries, libraries, reader, &matcher, forbid_reconstruction_radius);
+	mosaic = classic_generate(num_libraries, libraries, reader, &matcher, forbid_reconstruction_radius, flip);
 
 	classic_reader_free(reader);
     }
@@ -427,6 +430,22 @@ read_rc_file (void)
 			default_cheat_amount = lisp_integer(vars[0]);
 		    else if (lisp_match_string("(forbid-reconstruction-distance #?(integer))", obj, vars))
 			default_forbid_reconstruction_radius = lisp_integer(vars[0]);
+		    else if (lisp_match_string("(prepare-flip #?(boolean) #?(boolean))", obj, vars))
+		    {
+			default_prepare_flip = 0;
+			if (lisp_boolean(vars[0]))
+			    default_prepare_flip |= FLIP_HOR;
+			if (lisp_boolean(vars[1]))
+			    default_prepare_flip |= FLIP_VER;
+		    }
+		    else if (lisp_match_string("(metapixel-flip #?(boolean) #?(boolean))", obj, vars))
+		    {
+			default_metapixel_flip = 0;
+			if (lisp_boolean(vars[0]))
+			    default_metapixel_flip |= FLIP_HOR;
+			if (lisp_boolean(vars[1]))
+			    default_metapixel_flip |= FLIP_VER;
+		    }
 		    else
 		    {
 			fprintf(stderr, "Warning: unknown rc file option ");
@@ -482,6 +501,8 @@ usage (void)
 	   "  -f, --forbid-reconstruction=DIST\n"
 	   "                               forbid placing antimosaic images on their\n"
 	   "                               original locations or locations around it\n"
+	   "  --flip=DIRECTIONS            specify along which axis images may be\n"
+	   "                               flipped (no, x, y, xy)\n"
 	   "  --out=FILE                   write protocol to file\n"
 	   "  --in=FILE                    read protocol from file and use it\n"
 	   "\n"
@@ -497,6 +518,7 @@ usage (void)
 #define OPT_IN                         262
 #define OPT_BENCHMARK_RENDERING        263
 #define OPT_PRINT_PREPARE_SETTINGS     264
+#define OPT_FLIP                       265
 
 #define MODE_NONE       0
 #define MODE_PREPARE    1
@@ -518,6 +540,7 @@ main (int argc, char *argv[])
     char *antimosaic_filename = 0;
     string_list_t *library_directories = 0;
     int prepare_width = 0, prepare_height = 0;
+    unsigned int flip = 0xdeadbeef;
 
     read_rc_file();
 
@@ -546,6 +569,7 @@ main (int argc, char *argv[])
 		{ "in", required_argument, 0, OPT_IN },
 		{ "benchmark-rendering", no_argument, 0, OPT_BENCHMARK_RENDERING },
 		{ "print-prepare-settings", no_argument, 0, OPT_PRINT_PREPARE_SETTINGS },
+		{ "flip", required_argument, 0, OPT_FLIP },
 		{ "library", required_argument, 0, 'l' },
 		{ "width", required_argument, 0, 'w' },
 		{ "height", required_argument, 0, 'h' },
@@ -614,6 +638,14 @@ main (int argc, char *argv[])
 		exit(0);
 		break;
 
+	    case OPT_FLIP :
+		flip = 0;
+		if (strchr(optarg, 'x'))
+		    flip |= FLIP_HOR;
+		if (strchr(optarg, 'y'))
+		    flip |= FLIP_VER;
+		break;
+
 	    case 'm' :
 		if (strcmp(optarg, "wavelet") == 0)
 		    metric = METRIC_WAVELET;
@@ -677,7 +709,7 @@ main (int argc, char *argv[])
 	    case 'l' :
 		if (antimosaic_filename != 0)
 		{
-		    fprintf(stderr, "Error: --tables and --antimosaic cannot be used together.\n");
+		    fprintf(stderr, "Error: --library and --antimosaic cannot be used together.\n");
 		    return 1;
 		}
 
@@ -729,6 +761,14 @@ main (int argc, char *argv[])
 	    default :
 		assert(0);
 	}
+    }
+
+    if (flip == 0xdeadbeef)
+    {
+	if (mode == MODE_METAPIXEL || mode == MODE_BATCH)
+	    flip = default_metapixel_flip;
+	else
+	    flip = default_prepare_flip;
     }
 
     /* check settings for soundness */
@@ -821,6 +861,8 @@ main (int argc, char *argv[])
 
 	bitmap_free(bitmap);
 
+	pixel->flip = flip;
+
 	if (!library_add_metapixel(library, pixel))
 	{
 	    fprintf(stderr, "Error: could not add metapixel to library.\n");
@@ -910,7 +952,7 @@ main (int argc, char *argv[])
 	}
 	else
 	{
-	    fprintf(stderr, "Error: you must give one of the option --tables and --antimosaic.\n");
+	    fprintf(stderr, "Error: you must give one of the option --library and --antimosaic.\n");
 	    return 1;
 	}
 
@@ -918,10 +960,10 @@ main (int argc, char *argv[])
 	{
 	    if (collage)
 		generate_collage(argv[optind], argv[optind + 1], scale, collage_min_distance,
-				 metric, cheat);
+				 metric, cheat, flip);
 	    else
 		make_classic_mosaic(argv[optind], argv[optind + 1],
-				    metric, scale, search, classic_min_distance, cheat,
+				    metric, scale, search, classic_min_distance, cheat, flip,
 				    in_filename, out_filename);
 	}
 	else if (mode == MODE_BATCH)
@@ -1027,7 +1069,7 @@ main (int argc, char *argv[])
 			}
 
 			make_classic_mosaic(this_image_in_filename, this_image_out_filename,
-					    this_metric, this_scale, this_search, this_min_distance, this_cheat,
+					    this_metric, this_scale, this_search, this_min_distance, this_cheat, 0,
 					    this_prot_in_filename, this_prot_out_filename);
 		    }
 		    else

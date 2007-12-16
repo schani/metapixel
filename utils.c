@@ -29,3 +29,16 @@ utils_manhattan_distance (int x1, int y1, int x2, int y2)
 {
     return abs(x1 - x2) + abs(y1 - y2);
 }
+
+int
+utils_flip_multiplier (unsigned int flips)
+{
+    int multiplier = 1;
+
+    if (flips & FLIP_HOR)
+	multiplier *= 2;
+    if (flips & FLIP_VER)
+	multiplier *= 2;
+
+    return multiplier;
+}

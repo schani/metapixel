@@ -274,8 +274,8 @@ generate_search_coeffs_for_classic_subimage (classic_reader_t *reader, int x, co
 }
 
 static classic_mosaic_t*
-generate_local (int num_libraries, library_t **libraries, classic_reader_t *reader, int min_distance, metric_t *metric,
-		unsigned int forbid_reconstruction_radius)
+generate_local (int num_libraries, library_t **libraries, classic_reader_t *reader, int min_distance,
+		metric_t *metric, unsigned int forbid_reconstruction_radius, unsigned int allowed_flips)
 {
     classic_mosaic_t *mosaic = init_mosaic_from_reader(reader);
     int metawidth = reader->tiling.metawidth, metaheight = reader->tiling.metaheight;
@@ -317,7 +317,7 @@ generate_local (int num_libraries, library_t **libraries, classic_reader_t *read
 
 	    match = search_metapixel_nearest_to(num_libraries, libraries,
 						&coeffs, metric, x, y, neighborhood, neighborhood_size,
-						forbid_reconstruction_radius, 0, 0);
+						forbid_reconstruction_radius, allowed_flips, 0, 0);
 
 	    if (match.pixel == 0)
 	    {
@@ -360,18 +360,20 @@ compare_global_matches (const void *_m1, const void *_m2)
 
 static classic_mosaic_t*
 generate_global (int num_libraries, library_t **libraries, classic_reader_t *reader, metric_t *metric,
-		 unsigned int forbid_reconstruction_radius)
+		 unsigned int forbid_reconstruction_radius, unsigned int allowed_flips)
 {
     classic_mosaic_t *mosaic;
     int metawidth = reader->tiling.metawidth, metaheight = reader->tiling.metaheight;
     int x, y;
     global_match_t *matches, *m;
-    /* FIXME: this will overflow if metawidth and/or metaheight are large! */
-    int num_matches = (metawidth * metaheight) * (metawidth * metaheight);
     int i, ignore_forbidden;
     int num_locations_filled;
     unsigned int num_metapixels = library_count_metapixels(num_libraries, libraries);
     char *flags;
+    int multiplier = utils_flip_multiplier(allowed_flips);
+    int matches_per_metapixel = metawidth * metaheight * multiplier;
+    /* FIXME: this will overflow if metawidth and/or metaheight are large! */
+    int num_matches = (metawidth * metaheight) * matches_per_metapixel;
 
     if (library_count_metapixels(num_libraries, libraries) < metawidth * metaheight)
     {
@@ -396,19 +398,21 @@ generate_global (int num_libraries, library_t **libraries, classic_reader_t *rea
 
 	    generate_search_coeffs_for_classic_subimage(reader, x, &coeffs, metric);
 	    
-	    search_n_metapixel_nearest_to(num_libraries, libraries, metawidth * metaheight, m, &coeffs, metric);
-	    for (i = 0; i < metawidth * metaheight; ++i)
+ 	    search_n_metapixel_nearest_to(num_libraries, libraries, matches_per_metapixel, m,
+ 					  &coeffs, metric, allowed_flips);
+ 	    for (i = 0; i < metawidth * metaheight * multiplier; ++i)
 	    {
 		int j;
 
-		for (j = i + 1; j < metawidth * metaheight; ++j)
-		    assert(m[i].match.pixel != m[j].match.pixel);
+ 		for (j = i + 1; j < matches_per_metapixel; ++j)
+ 		    assert(m[i].match.pixel != m[j].match.pixel
+ 			   || m[i].match.orientation != m[j].match.orientation);
 
 		m[i].x = x;
 		m[i].y = y;
 	    }
 
-	    m += metawidth * metaheight;
+ 	    m += matches_per_metapixel;
 
 #ifdef CONSOLE_OUTPUT
 	    printf(".");
@@ -479,15 +483,17 @@ generate_global (int num_libraries, library_t **libraries, classic_reader_t *rea
 classic_mosaic_t*
 classic_generate (int num_libraries, library_t **libraries,
 		  classic_reader_t *reader, matcher_t *matcher,
-		  unsigned int forbid_reconstruction_radius)
+		  unsigned int forbid_reconstruction_radius,
+		  unsigned int allowed_flips)
 {
     classic_mosaic_t *mosaic;
 
     if (matcher->kind == MATCHER_LOCAL)
 	mosaic = generate_local(num_libraries, libraries, reader, matcher->v.local.min_distance, &matcher->metric,
-				forbid_reconstruction_radius);
+				forbid_reconstruction_radius, allowed_flips);
     else if (matcher->kind == MATCHER_GLOBAL)
-	mosaic = generate_global(num_libraries, libraries, reader, &matcher->metric, forbid_reconstruction_radius);
+	mosaic = generate_global(num_libraries, libraries, reader, &matcher->metric,
+				 forbid_reconstruction_radius, allowed_flips);
     else
 	assert(0);
 
@@ -498,14 +504,16 @@ classic_generate (int num_libraries, library_t **libraries,
 classic_mosaic_t*
 classic_generate_from_bitmap (int num_libraries, library_t **libraries,
 			      bitmap_t *in_image, tiling_t *tiling, matcher_t *matcher,
-			      unsigned int forbid_reconstruction_radius)
+			      unsigned int forbid_reconstruction_radius,
+			      unsigned int allowed_flips)
 {
     classic_reader_t *reader = classic_reader_new_from_bitmap(in_image, tiling);
     classic_mosaic_t *mosaic;
 
     assert(reader != 0);
 
-    mosaic = classic_generate(num_libraries, libraries, reader, matcher, forbid_reconstruction_radius);
+    mosaic = classic_generate(num_libraries, libraries, reader, matcher,
+			      forbid_reconstruction_radius, allowed_flips);
 
     classic_reader_free(reader);
 
@@ -557,9 +565,11 @@ classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int 
 	    */
 	    unsigned int column_x = tiling_get_rectangular_x(&mosaic->tiling, out_image_width, x);
 	    unsigned int column_width = tiling_get_rectangular_width(&mosaic->tiling, out_image_width, x);
+	    int index = y * mosaic->tiling.metawidth + x;
 
-	    if (!metapixel_paste(mosaic->matches[y * mosaic->tiling.metawidth + x].pixel,
-				 out_bitmap, column_x, 0, column_width, row_height))
+	    if (!metapixel_paste(mosaic->matches[index].pixel,
+				 out_bitmap, column_x, 0, column_width, row_height,
+				 mosaic->matches[index].orientation))
 	    {
 		/* FIXME: free stuff */
 
@@ -734,7 +744,10 @@ classic_read (int num_libraries, library_t **libraries, const char *filename,
 	    mosaic->matches = (metapixel_match_t*)malloc(sizeof(metapixel_match_t) * num_pixels);
 
 	    for (i = 0; i < num_pixels; ++i)
+	    {
 		mosaic->matches[i].pixel = 0;
+		mosaic->matches[i].orientation = 0;
+	    }
 
 	    if (lisp_list_length(vars[2]) != num_pixels)
 	    {
@@ -747,15 +760,16 @@ classic_read (int num_libraries, library_t **libraries, const char *filename,
 	    lst = vars[2];
 	    for (i = 0; i < num_pixels; ++i)
 	    {
-		lisp_object_t *vars[6];
+		lisp_object_t *vars[8];
 
-		if (lisp_match_string("(#?(integer) #?(integer) #?(integer) #?(integer) #?(string) #?(string))",
+		if (lisp_match_string("(#?(integer) #?(integer) #?(integer) #?(integer) #?(string) #?(string) #?(boolean) #?(boolean))",
 				      lisp_car(lst), vars))
 		{
 		    int x = lisp_integer(vars[0]);
 		    int y = lisp_integer(vars[1]);
 		    int width = lisp_integer(vars[2]);
 		    int height = lisp_integer(vars[3]);
+		    int index = y * mosaic->tiling.metawidth + x;
 		    metapixel_t *pixel;
 
 		    if (width != 1 || height != 1)
@@ -766,7 +780,7 @@ classic_read (int num_libraries, library_t **libraries, const char *filename,
 			return 0;
 		    }
 
-		    if (mosaic->matches[y * mosaic->tiling.metawidth + x].pixel != 0)
+		    if (mosaic->matches[index].pixel != 0)
 		    {
 			/* FIXME: free stuff */
 
@@ -784,7 +798,11 @@ classic_read (int num_libraries, library_t **libraries, const char *filename,
 			return 0;
 		    }
 
-		    mosaic->matches[y * mosaic->tiling.metawidth + x].pixel = pixel;
+		    mosaic->matches[index].pixel = pixel;
+		    if (lisp_boolean(vars[6]))
+			mosaic->matches[index].orientation |= FLIP_HOR;
+		    if (lisp_boolean(vars[7]))
+			mosaic->matches[index].orientation |= FLIP_VER;
 		}
 		else
 		{
@@ -851,7 +869,10 @@ classic_write (classic_mosaic_t *mosaic, FILE *out)
 	    lisp_dump(library_obj, out);
 	    fprintf(out, " ");
 	    lisp_dump(filename_obj, out);
-	    fprintf(out, ") ; %f\n", match->score);
+	    fprintf(out, " #%c #%c) ; %f\n",
+		    (match->orientation & FLIP_HOR) ? 't' : 'f',
+		    (match->orientation & FLIP_VER) ? 't' : 'f',
+		    match->score);
 
 	    lisp_free(library_obj);
 	    lisp_free(filename_obj);

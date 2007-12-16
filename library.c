@@ -109,8 +109,10 @@ write_metapixel_metadata (metapixel_t *metapixel, FILE *tables_file)
     lisp_dump(obj, tables_file);
     lisp_free(obj);
 
-    fprintf(tables_file, " (size %d %d %f) (wavelet (means %f %f %f) (coeffs",
+    fprintf(tables_file, " (size %d %d %f) (flip #%c #%c) (wavelet (means %f %f %f) (coeffs",
 	    metapixel->width, metapixel->height, metapixel->aspect_ratio,
+	    (metapixel->flip & FLIP_HOR) ? 't' : 'f',
+	    (metapixel->flip & FLIP_VER) ? 't' : 'f',
 	    // pixel.means[0], pixel.means[1], pixel.means[2]
 	    0.0, 0.0, 0.0
 	    );
@@ -128,7 +130,7 @@ write_metapixel_metadata (metapixel_t *metapixel, FILE *tables_file)
 
 	fprintf(tables_file, " (%s", channel_names[channel]);
 	for (i = 0; i < NUM_SUBPIXELS; ++i)
-	    fprintf(tables_file, " %d", (int)metapixel->subpixels[channel * NUM_SUBPIXELS + i]);
+	    fprintf(tables_file, " %d", (int)metapixel->subpixels[i * NUM_CHANNELS + channel]);
 	fprintf(tables_file, ")");
     }
     fprintf(tables_file, ") (anti %d %d))\n", metapixel->anti_x, metapixel->anti_y);
@@ -163,6 +165,7 @@ read_tables (const char *library_dir, library_t *library)
     free(tables_name);
 
     pattern = lisp_read_from_string("(small-image #?(string) #?(string) (size #?(integer) #?(integer) #?(real))"
+				    "  (flip #?(boolean) #?(boolean))"
 				    "  (wavelet (means #?(real) #?(real) #?(real)) (coeffs . #?(list)))"
 				    "  (subpixel (y . #?(list)) (i . #?(list)) (q . #?(list)))"
 				    "  (anti #?(integer) #?(integer)))");
@@ -170,7 +173,7 @@ read_tables (const char *library_dir, library_t *library)
 	   && lisp_type(pattern) != LISP_TYPE_EOF
 	   && lisp_type(pattern) != LISP_TYPE_PARSE_ERROR);
     assert(lisp_compile_pattern(&pattern, &num_subs));
-    assert(num_subs == 14);
+    assert(num_subs == 16);
 
     init_pools(&pools);
     init_pools_allocator(&allocator, &pools);
@@ -184,7 +187,7 @@ read_tables (const char *library_dir, library_t *library)
         type = lisp_type(obj);
         if (type != LISP_TYPE_EOF && type != LISP_TYPE_PARSE_ERROR)
         {
-            lisp_object_t *vars[14];
+            lisp_object_t *vars[16];
 
             if (lisp_match_pattern(pattern, obj, vars, num_subs))
 	    {
@@ -200,8 +203,13 @@ read_tables (const char *library_dir, library_t *library)
 		pixel->filename = strdup(lisp_string(vars[1]));
 		assert(pixel->filename != 0);
 
-		pixel->anti_x = lisp_integer(vars[12]);
-		pixel->anti_y = lisp_integer(vars[13]);
+		pixel->anti_x = lisp_integer(vars[14]);
+		pixel->anti_y = lisp_integer(vars[15]);
+
+		if (lisp_boolean(vars[5]))
+		    pixel->flip |= FLIP_HOR;
+		if (lisp_boolean(vars[6]))
+		    pixel->flip |= FLIP_VER;
 
 		pixel->library = library;
 
@@ -238,7 +246,7 @@ read_tables (const char *library_dir, library_t *library)
 
 		for (channel = 0; channel < NUM_CHANNELS; ++channel)
 		{
-		    lst = vars[9 + channel];
+		    lst = vars[11 + channel];
 
 		    if (lisp_list_length(lst) != NUM_SUBPIXELS)
 		    {
@@ -254,7 +262,7 @@ read_tables (const char *library_dir, library_t *library)
 		    else
 			for (i = 0; i < NUM_SUBPIXELS; ++i)
 			{
-			    pixel->subpixels[channel * NUM_SUBPIXELS + i] = lisp_integer(lisp_car(lst));
+			    pixel->subpixels[i * NUM_CHANNELS + channel] = lisp_integer(lisp_car(lst));
 			    lst = lisp_cdr(lst);
 			}
 		}

@@ -85,7 +85,7 @@ free_positions (position_t *positions)
 bitmap_t*
 collage_make (int num_libraries, library_t **libraries, bitmap_t *in_bitmap, float in_image_scale,
 	      unsigned int small_width, unsigned int small_height,
-	      int min_distance, metric_t *metric, unsigned int cheat)
+	      int min_distance, metric_t *metric, unsigned int cheat, unsigned int allowed_flips)
 {
     bitmap_t *out_bitmap;
     char *bitmap;
@@ -173,7 +173,7 @@ collage_make (int num_libraries, library_t **libraries, bitmap_t *in_bitmap, flo
 	metric_generate_coeffs_for_subimage(&coeffs, in_bitmap, x, y, small_width, small_height, metric);
 
 	match = search_metapixel_nearest_to(num_libraries, libraries, &coeffs, metric, x, y,
-					    0, 0, 0,
+					    0, 0, 0, allowed_flips,
 					    pixel_valid_for_collage_position, &valid_data);
 	if (match.pixel == 0)
 	{
@@ -183,7 +183,7 @@ collage_make (int num_libraries, library_t **libraries, bitmap_t *in_bitmap, flo
 
 	    return 0;
 	}
-	if (!metapixel_paste(match.pixel, out_bitmap, x, y, small_width, small_height))
+	if (!metapixel_paste(match.pixel, out_bitmap, x, y, small_width, small_height, match.orientation))
 	{
 	    /* FIXME: free stuff */
 

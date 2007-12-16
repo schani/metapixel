@@ -40,39 +40,74 @@ metapixel_match_t
 search_metapixel_nearest_to (int num_libraries, library_t **libraries,
 			     coeffs_t *coeffs, metric_t *metric, int x, int y,
 			     metapixel_t **forbidden, int num_forbidden,
-			     unsigned int forbid_reconstruction_radius,
+			     unsigned int forbid_reconstruction_radius, unsigned int allowed_flips,
 			     int (*validity_func) (void*, metapixel_t*, unsigned int, int, int),
 			     void *validity_func_data)
 {
     float best_score = 1e99;
     metapixel_t *best_fit = 0;
     unsigned int best_index = (unsigned int)-1;
-    compare_func_t compare_func = metric_compare_func_for_metric(metric);
+    unsigned int best_orientation = 0;
+    compare_func_set_t *compare_func_set = metric_compare_func_set_for_metric(metric);
     metapixel_match_t match;
+    /* allowed < 0 means we don't know.  0 means not allowed, >0 means allowed.  */
+    int allowed;
+
+    void check_orientation (metapixel_t *pixel, unsigned int pixel_index,
+			    compare_func_t compare_func, unsigned int orientation)
+	{
+	    float score;
+
+	    if (allowed == 0)
+		return;
+
+	    score = compare_func(coeffs, pixel, best_score, metric->weights);
+
+	    if (score < best_score)
+	    {
+		if (allowed < 0)
+		    allowed = (!metapixel_in_array(pixel, forbidden, num_forbidden)
+			       && (validity_func == 0
+				   || validity_func(validity_func_data, pixel, pixel_index, x, y)))
+			? 1 : 0;
+
+		assert(allowed >= 0);
+
+		if (allowed)
+		{
+		    best_score = score;
+		    best_fit = pixel;
+		    best_index = pixel_index;
+		    best_orientation = orientation;
+		}
+	    }
+	}
 
     FOR_EACH_METAPIXEL(pixel, pixel_index)
     {
-	float score;
+	allowed = -1;
 
 	if (pixel->anti_x >= 0 && pixel->anti_y >= 0
 	    && (utils_manhattan_distance(x, y, pixel->anti_x, pixel->anti_y)
 		< forbid_reconstruction_radius))
 	    continue;
 
-	score = compare_func(coeffs, pixel, best_score, metric->weights);
+	check_orientation(pixel, pixel_index, compare_func_set->compare_no_flip, 0);
 
-	if (score < best_score && !metapixel_in_array(pixel, forbidden, num_forbidden)
-	    && (validity_func == 0 || validity_func(validity_func_data, pixel, pixel_index, x, y)))
+	if (pixel->flip & FLIP_HOR & allowed_flips)
 	{
-	    best_score = score;
-	    best_fit = pixel;
-	    best_index = pixel_index;
+	    check_orientation(pixel, pixel_index, compare_func_set->compare_hor_flip, FLIP_HOR);
+	    if (pixel->flip & FLIP_VER & allowed_flips)
+		check_orientation(pixel, pixel_index, compare_func_set->compare_hor_ver_flip, FLIP_HOR | FLIP_VER);
 	}
+	if (pixel->flip & FLIP_VER & allowed_flips)
+	    check_orientation(pixel, pixel_index, compare_func_set->compare_ver_flip, FLIP_VER);
     }
     END_FOR_EACH_METAPIXEL
 
     match.pixel = best_fit;
     match.pixel_index = best_index;
+    match.orientation = best_orientation;
     match.score = best_score;
 
     return match;
@@ -80,39 +115,59 @@ search_metapixel_nearest_to (int num_libraries, library_t **libraries,
 
 void
 search_n_metapixel_nearest_to (int num_libraries, library_t **libraries,
-			       int n, global_match_t *matches, coeffs_t *coeffs, metric_t *metric)
+			       int n, global_match_t *matches, coeffs_t *coeffs, metric_t *metric,
+			       unsigned int allowed_flips)
 {
-    compare_func_t compare_func = metric_compare_func_for_metric(metric);
-    unsigned int num_metapixels = library_count_metapixels(num_libraries, libraries);
+    compare_func_set_t* compare_func_set = metric_compare_func_set_for_metric(metric);
     int i;
 
-    assert(num_metapixels >= n);
+    void check_orientation (metapixel_t *pixel, unsigned int pixel_index,
+			    compare_func_t compare_func, unsigned int orientation)
+	{
+	    float score = compare_func(coeffs, pixel, (i < n) ? 1e99 : matches[n - 1].match.score, metric->weights);
+
+	    if (i < n || score < matches[n - 1].match.score)
+	    {
+		int j, m;
+
+		m = MIN(i, n);
+
+		for (j = 0; j < m; ++j)
+		    if (matches[j].match.score > score)
+			break;
+
+		assert(j <= m && j < n);
+
+		memmove(matches + j + 1, matches + j, sizeof(global_match_t) * (MIN(n, m + 1) - (j + 1)));
+
+		matches[j].match.pixel = pixel;
+		matches[j].match.orientation = orientation;
+		matches[j].match.pixel_index = pixel_index;
+		matches[j].match.score = score;
+	    }
+	}
 
     i = 0;
     FOR_EACH_METAPIXEL(pixel, pixel_index)
     {
-	float score = compare_func(coeffs, pixel, (i < n) ? 1e99 : matches[n - 1].match.score, metric->weights);
-
-	if (i < n || score < matches[n - 1].match.score)
-	{
-	    int j, m;
-
-	    m = MIN(i, n);
-
-	    for (j = 0; j < m; ++j)
-		if (matches[j].match.score > score)
-		    break;
-
-	    assert(j <= m && j < n);
-
-	    memmove(matches + j + 1, matches + j, sizeof(global_match_t) * (MIN(n, m + 1) - (j + 1)));
-
-	    matches[j].match.pixel = pixel;
-	    matches[j].match.pixel_index = pixel_index;
-	    matches[j].match.score = score;
-	}
-
+	check_orientation(pixel, pixel_index, compare_func_set->compare_no_flip, 0);
 	++i;
+
+	if (pixel->flip & FLIP_HOR & allowed_flips)
+	{
+	    check_orientation(pixel, pixel_index, compare_func_set->compare_hor_flip, FLIP_HOR);
+	    ++i;
+	    if (pixel->flip & FLIP_VER & allowed_flips)
+	    {
+		check_orientation(pixel, pixel_index, compare_func_set->compare_hor_ver_flip, FLIP_HOR | FLIP_VER);
+		++i;
+	    }
+	}
+	if (pixel->flip & FLIP_VER & allowed_flips)
+	{
+	    check_orientation(pixel, pixel_index, compare_func_set->compare_ver_flip, FLIP_VER);
+	    ++i;
+	}
     }
     END_FOR_EACH_METAPIXEL
 

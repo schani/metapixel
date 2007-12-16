@@ -142,6 +142,8 @@ metapixel_new (const char *name, unsigned int scaled_width, unsigned int scaled_
     metapixel->enabled = 1;
     metapixel->anti_x = metapixel->anti_y = -1;
 
+    metapixel->flip = 0;
+
     return metapixel;
 }
 
@@ -212,9 +214,9 @@ metapixel_get_bitmap (metapixel_t *metapixel)
 
 int
 metapixel_paste (metapixel_t *pixel, bitmap_t *image, unsigned int x, unsigned int y,
-		 unsigned int small_width, unsigned int small_height)
+		 unsigned int small_width, unsigned int small_height, unsigned int orientation)
 {
-    bitmap_t *bitmap;
+    bitmap_t *bitmap, *flipped;
 
     bitmap = metapixel_get_bitmap(pixel);
     if (bitmap == 0)
@@ -230,9 +232,12 @@ metapixel_paste (metapixel_t *pixel, bitmap_t *image, unsigned int x, unsigned i
 	bitmap = scaled_bitmap;
     }
 
-    bitmap_paste(image, bitmap, x, y);
-
+    flipped = bitmap_flip(bitmap, orientation);
     bitmap_free(bitmap);
+
+    bitmap_paste(image, flipped, x, y);
+
+    bitmap_free(flipped);
 
     return 1;
 }

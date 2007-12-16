@@ -42,6 +42,7 @@ typedef struct _tiling_t tiling_t;
 typedef struct
 {
     metapixel_t *pixel;
+    unsigned int orientation;	/* FLIP_* flags */
     unsigned int pixel_index;	/* used internally */
     float score;
 } metapixel_match_t;
@@ -121,6 +122,9 @@ struct _metapixel_t
 
     unsigned int width;
     unsigned int height;
+
+    /* How are we allowed to flip this metapixel? */
+    unsigned int flip;
 
     /* Aspect ratio of the original (unscaled) image, given by
        width/height */
@@ -228,10 +232,12 @@ void classic_writer_free (classic_writer_t *writer);
    0. */
 classic_mosaic_t* classic_generate (int num_libraries, library_t **libraries,
 				    classic_reader_t *reader, matcher_t *matcher,
-				    unsigned int forbid_reconstruction_radius);
+				    unsigned int forbid_reconstruction_radius,
+				    unsigned int allowed_flips);
 classic_mosaic_t* classic_generate_from_bitmap (int num_libraries, library_t **libraries,
 						bitmap_t *in_image, tiling_t *tiling, matcher_t *matcher,
-						unsigned int forbid_reconstruction_radius);
+						unsigned int forbid_reconstruction_radius,
+						unsigned int allowed_flips);
 /* If some metapixel in the mosaic isn't in one of the supplied
    libraries, classic_read tries to open the library.  If
    *num_new_libraries is >0 after classic_read returns, then each
@@ -258,6 +264,7 @@ bitmap_t* classic_paste_to_bitmap (classic_mosaic_t *mosaic, unsigned int width,
 
 bitmap_t* collage_make (int num_libraries, library_t **libraries, bitmap_t *in_image, float in_image_scale,
 			unsigned int small_width, unsigned int small_height,
-			int min_distance, metric_t *metric, unsigned int cheat);
+			int min_distance, metric_t *metric, unsigned int cheat,
+			unsigned int allowed_flips);
 
 #endif

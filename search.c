@@ -38,7 +38,7 @@ metapixel_in_array (metapixel_t *pixel, metapixel_t **array, int size)
 
 metapixel_match_t
 search_metapixel_nearest_to (int num_libraries, library_t **libraries,
-			     coeffs_t *coeffs, metric_t *metric, int x, int y,
+			     coeffs_union_t *coeffs, metric_t *metric, int x, int y,
 			     metapixel_t **forbidden, int num_forbidden,
 			     unsigned int forbid_reconstruction_radius, unsigned int allowed_flips,
 			     int (*validity_func) (void*, metapixel_t*, unsigned int, int, int),
@@ -115,7 +115,7 @@ search_metapixel_nearest_to (int num_libraries, library_t **libraries,
 
 void
 search_n_metapixel_nearest_to (int num_libraries, library_t **libraries,
-			       int n, global_match_t *matches, coeffs_t *coeffs, metric_t *metric,
+			       int n, global_match_t *matches, coeffs_union_t *coeffs, metric_t *metric,
 			       unsigned int allowed_flips)
 {
     compare_func_set_t* compare_func_set = metric_compare_func_set_for_metric(metric);

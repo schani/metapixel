@@ -213,7 +213,7 @@ void tiling_get_metapixel_coords (tiling_t *tiling, unsigned int image_width, un
 #define METRIC_MIPMAP    3
 
 /* These do not allocate memory for the metric. */
-metric_t* metric_init (metric_t *metric, int kind, float weights[]);
+metric_t* metric_init_subpixel (metric_t *metric, float weights[]);
 
 /* These do not allocate memory for the matcher. */
 matcher_t* matcher_init_local (matcher_t *matcher, metric_t *metric, unsigned int min_distance);

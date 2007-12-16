@@ -27,18 +27,16 @@
 #include "api.h"
 
 metric_t*
-metric_init (metric_t *metric, int kind, float weights[])
+metric_init_subpixel (metric_t *metric, float weights[])
 {
-    assert(kind == METRIC_SUBPIXEL);
-
-    metric->kind = kind;
+    metric->kind = METRIC_SUBPIXEL;
     memcpy(metric->weights, weights, sizeof(float) * NUM_CHANNELS);
 
     return metric;
 }
 
 void
-metric_generate_coeffs_for_subimage (coeffs_t *coeffs, bitmap_t *bitmap,
+metric_generate_coeffs_for_subimage (coeffs_union_t *coeffs, bitmap_t *bitmap,
 				     int x, int y, int width, int height, metric_t *metric)
 {
     /* FIXME: not reentrant */
@@ -122,6 +120,9 @@ metric_generate_coeffs_for_subimage (coeffs_t *coeffs, bitmap_t *bitmap,
 	for (channel = 0; channel < NUM_CHANNELS; ++channel)
 	    for (i = 0; i < NUM_SUBPIXELS; ++i)
 		coeffs->subpixel.subpixels[channel * NUM_SUBPIXELS + i] = float_image[i * NUM_CHANNELS + channel];
+    }
+    else if (metric->kind == METRIC_MIPMAP)
+    {
     }
     else
 	assert(0);

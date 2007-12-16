@@ -144,7 +144,7 @@ collage_make (int num_libraries, library_t **libraries, bitmap_t *in_bitmap, flo
     {
 	int i, j;
 	int x, y;
-	coeffs_t coeffs;
+	coeffs_union_t coeffs;
 	metapixel_match_t match;
 	collage_position_valid_data_t valid_data = { min_distance, collage_positions };
 

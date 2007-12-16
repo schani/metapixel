@@ -61,6 +61,10 @@
 #define NUM_SUBPIXEL_ROWS_COLS       5
 #define NUM_SUBPIXELS                (NUM_SUBPIXEL_ROWS_COLS * NUM_SUBPIXEL_ROWS_COLS)
 
+/* Mipmap parameters */
+#define MIPMAP_DEPTH                 3
+#define NUM_MIPMAP_PIXELS            (1 + 4 + 16)
+
 typedef struct
 {
     int index;
@@ -74,21 +78,30 @@ typedef struct
     index_t coeffs[NUM_WAVELET_COEFFS];
 } wavelet_coefficients_t;
 
+typedef struct
+{
+    unsigned char subpixels[NUM_SUBPIXELS * NUM_CHANNELS];
+} subpixel_coefficients_t;
+
+typedef struct
+{
+    unsigned char mipmap_pixels[NUM_MIPMAP_PIXELS * NUM_CHANNELS];
+} mipmap_coefficients_t;
+
 typedef union
 {
+	/*
     struct
     {
-	/*
 	wavelet_coefficients_t coeffs;
 	float means[NUM_CHANNELS];
 	float sums[NUM_COEFFS];
-	*/
     } wavelet;
-    struct
-    {
-	unsigned char subpixels[NUM_SUBPIXELS * NUM_CHANNELS];
-    } subpixel;
-} coeffs_t;
+	*/
+
+    subpixel_coefficients_t subpixel;
+    mipmap_coefficients_t mipmap;
+} coeffs_union_t;
 
 struct _metric_t
 {
@@ -167,7 +180,7 @@ void wavelet_generate_coeffs (wavelet_coefficients_t *search_coeffs, float sums[
 /* Must be called before using any wavelet functions. */
 void init_wavelet (void);
 
-typedef float (*compare_func_t) (coeffs_t *coeffs, metapixel_t *pixel,
+typedef float (*compare_func_t) (coeffs_union_t *coeffs, metapixel_t *pixel,
 				 float best_score, float weights[]);
 
 typedef struct
@@ -178,20 +191,20 @@ typedef struct
     compare_func_t compare_hor_ver_flip;
 } compare_func_set_t;
 
-void metric_generate_coeffs_for_subimage (coeffs_t *coeffs, bitmap_t *bitmap,
+void metric_generate_coeffs_for_subimage (coeffs_union_t *coeffs, bitmap_t *bitmap,
 					  int x, int y, int width, int height, metric_t *metric);
 /* the returned struct (pointed to) is static and must not be altered.  */
 compare_func_set_t* metric_compare_func_set_for_metric (metric_t *metric);
 
 metapixel_match_t search_metapixel_nearest_to (int num_libraries, library_t **libraries,
-					       coeffs_t *coeffs, metric_t *metric, int x, int y,
+					       coeffs_union_t *coeffs, metric_t *metric, int x, int y,
 					       metapixel_t **forbidden, int num_forbidden,
 					       unsigned int forbid_reconstruction_radius,
 					       unsigned int allowed_flips,
 					       int (*validity_func) (void*, metapixel_t*, unsigned int, int, int),
 					       void *validity_func_data);
 void search_n_metapixel_nearest_to (int num_libraries, library_t **libraries,
-				    int n, global_match_t *matches, coeffs_t *coeffs, metric_t *metric,
+				    int n, global_match_t *matches, coeffs_union_t *coeffs, metric_t *metric,
 				    unsigned int allowed_flips);
 
 unsigned int tiling_get_rectangular_x (tiling_t *tiling, unsigned int image_width, unsigned int metapixel_x);

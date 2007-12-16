@@ -1,5 +1,5 @@
 static float
-COMPARE_FUNC_NAME (coeffs_t *coeffs, metapixel_t *pixel, float best_score,
+COMPARE_FUNC_NAME (coeffs_union_t *coeffs, metapixel_t *pixel, float best_score,
 		  float weight_factors[NUM_CHANNELS])
 {
     int channel;

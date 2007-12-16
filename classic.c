@@ -264,7 +264,8 @@ compute_classic_column_coords (classic_reader_t *reader, int x, int *left_x, int
 }
 
 static void
-generate_search_coeffs_for_classic_subimage (classic_reader_t *reader, int x, coeffs_t *coeffs, metric_t *metric)
+generate_search_coeffs_for_classic_subimage (classic_reader_t *reader, int x, coeffs_union_t *coeffs,
+					     metric_t *metric)
 {
     int left_x, width;
 
@@ -300,7 +301,7 @@ generate_local (int num_libraries, library_t **libraries, classic_reader_t *read
 	{
 	    metapixel_match_t match;
 	    int i;
-	    coeffs_t coeffs;
+	    coeffs_union_t coeffs;
 
 	    for (i = 0; i < neighborhood_size; ++i)
 	    {
@@ -394,25 +395,25 @@ generate_global (int num_libraries, library_t **libraries, classic_reader_t *rea
 
 	for (x = 0; x < metawidth; ++x)
 	{
-	    coeffs_t coeffs;
+	    coeffs_union_t coeffs;
 
 	    generate_search_coeffs_for_classic_subimage(reader, x, &coeffs, metric);
 	    
- 	    search_n_metapixel_nearest_to(num_libraries, libraries, matches_per_metapixel, m,
- 					  &coeffs, metric, allowed_flips);
- 	    for (i = 0; i < metawidth * metaheight * multiplier; ++i)
+	    search_n_metapixel_nearest_to(num_libraries, libraries, matches_per_metapixel, m,
+					  &coeffs, metric, allowed_flips);
+	    for (i = 0; i < metawidth * metaheight * multiplier; ++i)
 	    {
 		int j;
 
- 		for (j = i + 1; j < matches_per_metapixel; ++j)
- 		    assert(m[i].match.pixel != m[j].match.pixel
- 			   || m[i].match.orientation != m[j].match.orientation);
+		for (j = i + 1; j < matches_per_metapixel; ++j)
+		    assert(m[i].match.pixel != m[j].match.pixel
+			   || m[i].match.orientation != m[j].match.orientation);
 
 		m[i].x = x;
 		m[i].y = y;
 	    }
 
- 	    m += matches_per_metapixel;
+	    m += matches_per_metapixel;
 
 #ifdef CONSOLE_OUTPUT
 	    printf(".");

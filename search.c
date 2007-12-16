@@ -91,25 +91,25 @@ search_n_metapixel_nearest_to (int num_libraries, library_t **libraries,
     i = 0;
     FOR_EACH_METAPIXEL(pixel, pixel_index)
     {
-	float score = compare_func(coeffs, pixel, (i < n) ? 1e99 : matches[n - 1].score, metric->weights);
+	float score = compare_func(coeffs, pixel, (i < n) ? 1e99 : matches[n - 1].match.score, metric->weights);
 
-	if (i < n || score < matches[n - 1].score)
+	if (i < n || score < matches[n - 1].match.score)
 	{
 	    int j, m;
 
 	    m = MIN(i, n);
 
 	    for (j = 0; j < m; ++j)
-		if (matches[j].score > score)
+		if (matches[j].match.score > score)
 		    break;
 
 	    assert(j <= m && j < n);
 
 	    memmove(matches + j + 1, matches + j, sizeof(global_match_t) * (MIN(n, m + 1) - (j + 1)));
 
-	    matches[j].pixel = pixel;
-	    matches[j].pixel_index = pixel_index;
-	    matches[j].score = score;
+	    matches[j].match.pixel = pixel;
+	    matches[j].match.pixel_index = pixel_index;
+	    matches[j].match.score = score;
 	}
 
 	++i;

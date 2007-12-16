@@ -351,9 +351,9 @@ compare_global_matches (const void *_m1, const void *_m2)
     global_match_t *m1 = (global_match_t*)_m1;
     global_match_t *m2 = (global_match_t*)_m2;
 
-    if (m1->score < m2->score)
+    if (m1->match.score < m2->match.score)
 	return -1;
-    if (m1->score > m2->score)
+    if (m1->match.score > m2->match.score)
 	return 1;
     return 0;
 }
@@ -402,7 +402,7 @@ generate_global (int num_libraries, library_t **libraries, classic_reader_t *rea
 		int j;
 
 		for (j = i + 1; j < metawidth * metaheight; ++j)
-		    assert(m[i].pixel != m[j].pixel);
+		    assert(m[i].match.pixel != m[j].match.pixel);
 
 		m[i].x = x;
 		m[i].y = y;
@@ -432,14 +432,14 @@ generate_global (int num_libraries, library_t **libraries, classic_reader_t *rea
 	    int index = matches[i].y * metawidth + matches[i].x;
 
 	    if (!ignore_forbidden
-		&& matches[i].pixel->anti_x >= 0 && matches[i].pixel->anti_y >= 0
+		&& matches[i].match.pixel->anti_x >= 0 && matches[i].match.pixel->anti_y >= 0
 		&& (utils_manhattan_distance(matches[i].x, matches[i].y,
-					     matches[i].pixel->anti_x,
-					     matches[i].pixel->anti_y)
+					     matches[i].match.pixel->anti_x,
+					     matches[i].match.pixel->anti_y)
 		    < forbid_reconstruction_radius))
 		continue;
 
-	    if (flags[matches[i].pixel_index])
+	    if (flags[matches[i].match.pixel_index])
 		continue;
 
 	    if (num_locations_filled >= metawidth * metaheight)
@@ -454,10 +454,9 @@ generate_global (int num_libraries, library_t **libraries, classic_reader_t *rea
 		    fflush(stdout);
 #endif
 		}
-		mosaic->matches[index].pixel = matches[i].pixel;
-		mosaic->matches[index].score = matches[i].score;
+		mosaic->matches[index] = matches[i].match;
 
-		flags[matches[i].pixel_index] = 1;
+		flags[matches[i].match.pixel_index] = 1;
 
 		++num_locations_filled;
 	    }

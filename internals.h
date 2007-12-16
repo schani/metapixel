@@ -111,9 +111,7 @@ struct _matcher_t
 
 typedef struct
 {
-    metapixel_t *pixel;
-    unsigned int pixel_index;
-    float score;
+    metapixel_match_t match;
     int x;
     int y;
 } global_match_t;

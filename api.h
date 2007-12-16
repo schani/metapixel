@@ -36,6 +36,9 @@ typedef struct _metric_t metric_t;
 typedef struct _matcher_t matcher_t;
 typedef struct _tiling_t tiling_t;
 
+#define FLIP_HOR               1
+#define FLIP_VER               2
+
 typedef struct
 {
     metapixel_t *pixel;
@@ -80,7 +83,7 @@ bitmap_t* bitmap_new_copying (int color, unsigned int width, unsigned int height
    row_stride are assumed to take on their minimal values. */
 bitmap_t* bitmap_new_packed (int color, unsigned int width, unsigned int height,
 			     unsigned char *data);
-/* This allocated the bitmap data itself, which will be
+/* This allocates the bitmap data itself, which will be
    uninitialized. */
 bitmap_t* bitmap_new_empty (int color, unsigned int width, unsigned int height);
 
@@ -93,6 +96,7 @@ bitmap_t* bitmap_sub (bitmap_t *super, unsigned int x, unsigned int y,
 		      unsigned int width, unsigned int height);
 bitmap_t* bitmap_scale (bitmap_t *orig, unsigned int scaled_width, unsigned int scaled_height,
 			int filter);
+bitmap_t* bitmap_flip (bitmap_t *orig, unsigned int flip);
 
 void bitmap_free (bitmap_t *bitmap);
 

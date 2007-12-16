@@ -173,6 +173,41 @@ bitmap_scale (bitmap_t *src, unsigned int scaled_width, unsigned int scaled_heig
 }
 
 bitmap_t*
+bitmap_flip (bitmap_t *orig, unsigned int flip)
+{
+    bitmap_t *flipped;
+    unsigned int orig_y;
+
+    if (flip == 0)
+	return bitmap_copy(orig);
+
+    flipped = bitmap_new_empty(orig->color, orig->width, orig->height);
+
+    assert(flipped->pixel_stride == orig->pixel_stride);
+
+    for (orig_y = 0; orig_y < orig->height; ++orig_y)
+    {
+	unsigned char *orig_row = orig->data + orig_y * orig->row_stride;
+	unsigned int flipped_y = ((flip & FLIP_VER) ? (orig->height - 1 - orig_y) : orig_y);
+	unsigned char *flipped_row = flipped->data + flipped_y * flipped->row_stride;
+
+	if (flip & FLIP_HOR)
+	{
+	    unsigned int orig_x;
+
+	    for (orig_x = 0; orig_x < orig->width; ++orig_x)
+		memcpy(flipped_row + (orig->width - 1 - orig_x) * flipped->pixel_stride,
+		       orig_row + orig_x * orig->pixel_stride,
+		       orig->pixel_stride);
+	}
+	else
+	    memcpy(flipped_row, orig_row, orig->pixel_stride * orig->width);
+    }
+
+    return flipped;
+}
+
+bitmap_t*
 bitmap_copy (bitmap_t *bitmap)
 {
     ref_bitmap(bitmap);

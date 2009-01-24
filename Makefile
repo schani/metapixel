@@ -11,8 +11,8 @@ DEBUG = -g
 #OPTIMIZE = -O2
 #PROFILE = -pg
 
-MACOS_LDOPTS = -L/sw/lib
-MACOS_CFLAGS = -I/sw/include
+#MACOS_LDOPTS = -L/sw/lib
+#MACOS_CFLAGS = -I/sw/include
 
 CC = gcc
 CFLAGS = $(MACOS_CFLAGS) $(OPTIMIZE) $(DEBUG) $(PROFILE)
@@ -20,7 +20,7 @@ FORMATDEFS = -DRWIMG_JPEG -DRWIMG_PNG -DRWIMG_GIF
 
 export CFLAGS CC FORMATDEFS
 
-LDOPTS = $(MACOS_LDOPTS) -L/usr/X11R6/lib $(PROFILE) $(DEBUG)
+LDOPTS = $(MACOS_LDOPTS) -L/usr/X11R6/lib $(PROFILE) $(DEBUG) `pkg-config --libs glib-2.0`
 CCOPTS = $(CFLAGS) -I/usr/X11R6/include -I/usr/X11R6/include/X11 -I. -Wall \
 	 -DMETAPIXEL_VERSION=\"$(VERSION)\" $(FORMATDEFS) -DCONSOLE_OUTPUT
 CC = gcc
@@ -68,7 +68,7 @@ install : metapixel metapixel.1
 #	$(INSTALL) sizesort $(BINDIR)
 
 clean :
-	rm -f *.o metapixel imagesize *~
+	rm -f *.o metapixel imagesize boredom *~
 	$(MAKE) -C rwimg clean
 	$(MAKE) -C lispreader clean
 

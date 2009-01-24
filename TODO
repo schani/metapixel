@@ -1,3 +1,5 @@
+make wavelet work again
+
 honor image orientation in JPEGs (does PNG have that, too?)
 
 flipping in metapixel-prepare

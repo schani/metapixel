@@ -1,14 +1,31 @@
 make wavelet work again
 
-honor image orientation in JPEGs (does PNG have that, too?)
+test suite
+
+use multiple threads for mosaic creation (create thread library to
+unify with mathmap)
+
+make zoom multi-threaded, too
+
+use multiple threads/processes for preparation - give multiple image
+arguments to metapixel --prepare
+
+filter for small images based on aspect ratio (and do all other
+filtering there, too).  for generating mosaics as well as for adding
+images to libraries.
+
+filter for adding images to libraries based on similarity to other
+images.
+
+honor image orientation in EXIF data (esp in JPEGs) - use libexif
+  http://www.impulseadventure.com/photo/exif-orientation.html
+  http://sylvana.net/jpegcrop/exif_orientation.html
 
 flipping in metapixel-prepare
 
-JPEG writing
+JPEG writing (already implemented in rwimg)
 
 check all asserts
-
-AppleScript GUI: http://members.aol.com/akseidel/MetapixelController/
 
 Document flipping
 
@@ -47,18 +64,5 @@ the output image is garbage !!!!!!!!!!!!
 
 metapixel-prepare should check if it can really run metapixel (if it's
 in path).
-
-garble input image, i.e. take small images directly from input image.
-make sure that no small image takes the place it had in the original
-image.
-
-metapixel should be able to process files with spaces.  (cannot read
-tables file).
-
-better (and much slower) image generation: for each metapixel
-location, compute score of each small image.  then, do the following
-until all locations have metapixels: search for the highest score of
-an unused image in a location not yet given away, and use that image
-in that location.
 
 allow more than one tables file

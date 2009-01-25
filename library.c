@@ -118,48 +118,76 @@ free_metapixels (metapixel_t *metapixel)
 }
 
 static void
-write_metapixel_metadata (metapixel_t *metapixel, FILE *tables_file)
+write_metapixel_metadata (metapixel_t *metapixel, FILE *out)
 {
-    lisp_object_t *obj;
     int channel;
 
     /* FIXME: handle write errors */
 
-    fprintf(tables_file, "(small-image ");
-    obj = lisp_make_string(metapixel->name);
-    lisp_dump(obj, tables_file);
-    lisp_free(obj);
-    fprintf(tables_file, " ");
-    obj = lisp_make_string(metapixel->filename);
-    lisp_dump(obj, tables_file);
-    lisp_free(obj);
+    lisp_print_open_paren(out);
+        lisp_print_symbol("small-image", out);
+	lisp_print_string(metapixel->name, out);
+	lisp_print_string(metapixel->filename, out);
 
-    fprintf(tables_file, " (checksum %lu %lu) (size %d %d %f) (flip #%c #%c) (wavelet (means %f %f %f) (coeffs",
-	    metapixel->file_len, metapixel->file_checksum,
-	    metapixel->width, metapixel->height, metapixel->aspect_ratio,
-	    (metapixel->flip & FLIP_HOR) ? 't' : 'f',
-	    (metapixel->flip & FLIP_VER) ? 't' : 'f',
-	    // pixel.means[0], pixel.means[1], pixel.means[2]
-	    0.0, 0.0, 0.0
-	    );
-    /*
-    for (i = 0; i < NUM_COEFFS; ++i)
-	fprintf(tables_file, " %d", highest_coeffs[i].index);
-    */
+	lisp_print_open_paren(out);
+	    lisp_print_symbol("checksum", out);
+	    lisp_print_integer(metapixel->file_len, out);
+	    lisp_print_integer(metapixel->file_checksum, out);
+	lisp_print_close_paren(out);
 
-    fprintf(tables_file, ")) (subpixel");
-    for (channel = 0; channel < NUM_CHANNELS; ++channel)
-    {
-	static char *channel_names[] = { "r", "g", "b" };
+	lisp_print_open_paren(out);
+	    lisp_print_symbol("size", out);
+	    lisp_print_integer(metapixel->width, out);
+	    lisp_print_integer(metapixel->height, out);
+	    lisp_print_real(metapixel->aspect_ratio, out);
+	lisp_print_close_paren(out);
 
-	int i;
+	lisp_print_open_paren(out);
+	    lisp_print_symbol("flip", out);
+	    lisp_print_boolean(metapixel->flip & FLIP_HOR, out);
+	    lisp_print_boolean(metapixel->flip & FLIP_VER, out);
+	lisp_print_close_paren(out);
 
-	fprintf(tables_file, " (%s", channel_names[channel]);
-	for (i = 0; i < NUM_SUBPIXELS; ++i)
-	    fprintf(tables_file, " %d", (int)metapixel->subpixels_rgb[channel * NUM_SUBPIXELS + i]);
-	fprintf(tables_file, ")");
-    }
-    fprintf(tables_file, ") (anti %d %d))\n", metapixel->anti_x, metapixel->anti_y);
+	lisp_print_open_paren(out);
+	    lisp_print_symbol("wavelet", out);
+	    lisp_print_open_paren(out);
+	        lisp_print_symbol("means", out);
+		lisp_print_real(/*pixel.means[0]*/ 0.0, out);
+		lisp_print_real(/*pixel.means[1]*/ 0.0, out);
+		lisp_print_real(/*pixel.means[2]*/ 0.0, out);
+	    lisp_print_close_paren(out);
+	    lisp_print_open_paren(out);
+	        lisp_print_symbol("coeffs", out);
+		/*
+		  for (i = 0; i < NUM_COEFFS; ++i)
+		  fprintf(tables_file, " %d", highest_coeffs[i].index);
+		*/
+	    lisp_print_close_paren(out);
+	lisp_print_close_paren(out);
+
+	lisp_print_open_paren(out);
+	    lisp_print_symbol("subpixel", out);
+	    for (channel = 0; channel < NUM_CHANNELS; ++channel)
+	    {
+		static char *channel_names[] = { "r", "g", "b" };
+
+		int i;
+
+		lisp_print_open_paren(out);
+		    lisp_print_symbol(channel_names[channel], out);
+		    for (i = 0; i < NUM_SUBPIXELS; ++i)
+			lisp_print_integer((int)metapixel->subpixels_rgb[channel * NUM_SUBPIXELS + i], out);
+		lisp_print_close_paren(out);
+	    }
+	lisp_print_close_paren(out);
+
+	lisp_print_open_paren(out);
+	    lisp_print_symbol("anti", out);
+	    lisp_print_integer(metapixel->anti_x, out);
+	    lisp_print_integer(metapixel->anti_y, out);
+	lisp_print_close_paren(out);
+    lisp_print_close_paren(out);
+    fputs("\n", out);
 }
 
 static int

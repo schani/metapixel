@@ -3,7 +3,7 @@
  *
  * metapixel
  *
- * Copyright (C) 1997-2004 Mark Probst
+ * Copyright (C) 1997-2009 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -37,38 +37,7 @@ metapixel_complete_subpixel (metapixel_t *pixel)
 static void
 generate_coefficients (metapixel_t *pixel)
 {
-    /*
-    static float sums[NUM_COEFFS];
-    static coefficient_with_index_t raw_coeffs[NUM_COEFFS];
-    */
-
     bitmap_t *scaled_bitmap;
-
-    /* generate wavelet coefficients */
-    /*
-    if (pixel->width != WAVELET_IMAGE_SIZE || pixel->height != WAVELET_IMAGE_SIZE)
-    {
-	scaled_bitmap = bitmap_scale(pixel->bitmap, WAVELET_IMAGE_SIZE, WAVELET_IMAGE_SIZE, FILTER_MITCHELL);
-	assert(scaled_bitmap != 0);
-    }
-    else
-	scaled_bitmap = pixel->bitmap;
-
-    for (i = 0; i < WAVELET_IMAGE_PIXELS * NUM_CHANNELS; ++i)
-	float_image[i] = scaled_bitmap->data[i];
-
-    if (scaled_bitmap != pixel->bitmap)
-	bitmap_free(scaled_bitmap);
-
-    transform_rgb_to_yiq(float_image, WAVELET_IMAGE_PIXELS);
-
-    wavelet_decompose_image(float_image);
-    wavelet_find_highest_coeffs(float_image, raw_coeffs);
-    wavelet_generate_coeffs(&pixel->coeffs, sums, raw_coeffs);
-
-    for (i = 0; i < NUM_CHANNELS; ++i)
-	pixel->means[i] = float_image[i];
-    */
 
     /* generate subpixel coefficients */
     if (pixel->width != NUM_SUBPIXEL_ROWS_COLS || pixel->height != NUM_SUBPIXEL_ROWS_COLS)
@@ -83,8 +52,6 @@ generate_coefficients (metapixel_t *pixel)
     }
 
     //bitmap_write(scaled_bitmap, "/tmp/debug.png");
-
-    assert(NUM_SUBPIXELS <= WAVELET_IMAGE_PIXELS);
 
     assert(scaled_bitmap->color == COLOR_RGB_8);
     assert(scaled_bitmap->pixel_stride == NUM_CHANNELS);

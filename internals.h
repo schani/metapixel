@@ -48,15 +48,6 @@
 
 #define TILING_RECTANGULAR    1
 
-/* Wavelet parameters */
-#define WAVELET_IMAGE_SIZE           64
-#define SQRT_OF_WAVELET_IMAGE_SIZE   8.0
-#define WAVELET_IMAGE_PIXELS         (WAVELET_IMAGE_SIZE * WAVELET_IMAGE_SIZE)
-#define WAVELET_ROW_LENGTH           (WAVELET_IMAGE_SIZE * NUM_CHANNELS)
-#define SIGNIFICANT_WAVELET_COEFFS   40
-#define NUM_WAVELET_COEFFS           (NUM_CHANNELS * SIGNIFICANT_WAVELET_COEFFS)
-#define NUM_WAVELET_INDEXES          (WAVELET_IMAGE_SIZE * WAVELET_IMAGE_SIZE * NUM_CHANNELS * 2)
-
 /* Subpixel parameters */
 #define NUM_SUBPIXEL_ROWS_COLS       5
 #define NUM_SUBPIXELS                (NUM_SUBPIXEL_ROWS_COLS * NUM_SUBPIXEL_ROWS_COLS)
@@ -71,25 +62,11 @@ typedef unsigned short index_t;
 
 typedef struct
 {
-    index_t coeffs[NUM_WAVELET_COEFFS];
-} wavelet_coefficients_t;
-
-typedef struct
-{
     unsigned char subpixels[NUM_SUBPIXELS * NUM_CHANNELS];
 } subpixel_coefficients_t;
 
 typedef union
 {
-	/*
-    struct
-    {
-	wavelet_coefficients_t coeffs;
-	float means[NUM_CHANNELS];
-	float sums[NUM_COEFFS];
-    } wavelet;
-	*/
-
     subpixel_coefficients_t subpixel;
 } coeffs_union_t;
 
@@ -175,14 +152,6 @@ void metapixel_complete_subpixel (metapixel_t *pixel);
 metapixel_t* metapixel_find_in_libraries (int num_libraries, library_t **libraries,
 					  const char *library_path, const char *filename,
 					  int *num_new_libraries, library_t ***new_libraries);
-
-void wavelet_decompose_image (float *image);
-void wavelet_find_highest_coeffs (float *image, coefficient_with_index_t highest_coeffs[NUM_WAVELET_COEFFS]);
-void wavelet_generate_coeffs (wavelet_coefficients_t *search_coeffs, float sums[NUM_WAVELET_COEFFS],
-			      coefficient_with_index_t raw_coeffs[NUM_WAVELET_COEFFS]);
-
-/* Must be called before using any wavelet functions. */
-void init_wavelet (void);
 
 typedef float (*compare_func_t) (coeffs_union_t *coeffs, metapixel_t *pixel,
 				 float best_score, int color_space, float weights[]);

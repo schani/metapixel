@@ -3,7 +3,7 @@
  *
  * metapixel
  *
- * Copyright (C) 1997-2004 Mark Probst
+ * Copyright (C) 1997-2009 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -42,49 +42,7 @@ void
 metric_generate_coeffs_for_subimage (coeffs_union_t *coeffs, bitmap_t *bitmap,
 				     int x, int y, int width, int height, metric_t *metric)
 {
-    if (metric->kind == METRIC_WAVELET)
-    {
-	/*
-	coefficient_with_index_t raw_coeffs[NUM_COEFFS];
-	int i;
-
-	if (float_image == 0)
-	    float_image = (float*)malloc(sizeof(float) * IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS);
-
-	if (width != IMAGE_SIZE || height != IMAGE_SIZE)
-	{
-	    unsigned char *scaled_data;
-
-	    scaled_data = scale_image(image_data, image_width, image_height, x, y, width, height, IMAGE_SIZE, IMAGE_SIZE);
-	    assert(scaled_data != 0);
-
-	    for (i = 0; i < IMAGE_SIZE * IMAGE_SIZE * NUM_CHANNELS; ++i)
-		float_image[i] = scaled_data[i];
-
-	    free(scaled_data);
-	}
-	else
-	{
-	    int j, channel;
-
-	    for (j = 0; j < IMAGE_SIZE; ++j)
-		for (i = 0; i < IMAGE_SIZE; ++i)
-		    for (channel = 0; channel < NUM_CHANNELS; ++channel)
-			float_image[(j * IMAGE_SIZE + i) * NUM_CHANNELS + channel] =
-			    image_data[((y + j) * image_width + (x + i)) * NUM_CHANNELS + channel];
-	}
-
-	transform_rgb_to_yiq(float_image, IMAGE_SIZE * IMAGE_SIZE);
-	decompose_image(float_image);
-	find_highest_coefficients(float_image, raw_coeffs);
-
-	generate_search_coeffs(&coeffs->wavelet.coeffs, coeffs->wavelet.sums, raw_coeffs);
-
-	for (i = 0; i < NUM_CHANNELS; ++i)
-	    coeffs->wavelet.means[i] = float_image[i];
-	*/
-    }
-    else if (metric->kind == METRIC_SUBPIXEL)
+    if (metric->kind == METRIC_SUBPIXEL)
     {
 	bitmap_t *sub_bitmap, *scaled_bitmap;
 
@@ -112,46 +70,6 @@ metric_generate_coeffs_for_subimage (coeffs_union_t *coeffs, bitmap_t *bitmap,
     else
 	assert(0);
 }
-
-/*
-static float
-wavelet_compare (coeffs_t *coeffs, metapixel_t *pixel, float best_score)
-{
-    search_coefficients_t *query = &coeffs->wavelet.coeffs;
-    float *query_means = coeffs->wavelet.means;
-    float *sums = coeffs->wavelet.sums;
-    search_coefficients_t *target = &pixel->coeffs;
-    float *target_means = pixel->means;
-    float score = 0.0;
-    int i;
-    int j;
-    int channel;
-
-    for (channel = 0; channel < NUM_CHANNELS; ++channel)
-	score += index_weights[compute_index(0, channel, 0)]
-	    * fabs(query_means[channel] - target_means[channel]) * 0.05;
-
-    j = 0;
-    for (i = 0; i < NUM_COEFFS; ++i)
-    {
-	if (score - sums[i] > best_score)
-	    return 1e99;
-
-	while (target->coeffs[j] < query->coeffs[i] && j < NUM_COEFFS)
-	    ++j;
-
-	if (j >= NUM_COEFFS)
-	    break;
-
-	if (target->coeffs[j] > query->coeffs[i])
-	    continue;
-
-	score -= index_weights[weight_ordered_index_to_index[target->coeffs[j]]];
-    }
-
-    return score;
-}
-*/
 
 static unsigned char*
 subpixels_for_color_space (metapixel_t *pixel, int color_space)
@@ -204,10 +122,7 @@ subpixels_for_color_space (metapixel_t *pixel, int color_space)
 compare_func_set_t*
 metric_compare_func_set_for_metric (metric_t *metric)
 {
-    if (metric->kind == METRIC_WAVELET)
-	//return wavelet_compare;
-	assert(0);
-    else if (metric->kind == METRIC_SUBPIXEL)
+    if (metric->kind == METRIC_SUBPIXEL)
     {
 	static compare_func_set_t set =
 	    {

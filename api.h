@@ -140,10 +140,6 @@ struct _metapixel_t
     int enabled;		/* Always true in this release */
 
     /* these three are very internal */
-    /*
-    wavelet_coefficients_t coeffs;
-    float means[NUM_CHANNELS];
-    */
     unsigned char subpixels_rgb[NUM_SUBPIXELS * NUM_CHANNELS];
     unsigned char subpixels_hsv[NUM_SUBPIXELS * NUM_CHANNELS];
     unsigned char subpixels_yiq[NUM_SUBPIXELS * NUM_CHANNELS];
@@ -233,8 +229,7 @@ void tiling_get_metapixel_coords (tiling_t *tiling, unsigned int image_width, un
 				  unsigned int metapixel_x, unsigned int metapixel_y,
 				  unsigned int *x, unsigned int *y, unsigned int *width, unsigned int *height);
 
-#define METRIC_WAVELET   1
-#define METRIC_SUBPIXEL  2
+#define METRIC_SUBPIXEL  1
 
 #define COLOR_SPACE_RGB        1
 #define COLOR_SPACE_HSV        2

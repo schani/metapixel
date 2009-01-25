@@ -126,11 +126,6 @@ init_metric (metric_t *metric, int kind)
 {
     if (kind == METRIC_SUBPIXEL)
 	metric_init(metric, METRIC_SUBPIXEL, COLOR_SPACE_YIQ, weight_factors);
-    /*
-    else if (kind == METRIC_WAVELET)
-    {
-    }
-    */
     else
 	assert(0);
 }
@@ -423,11 +418,9 @@ read_rc_file (void)
 			for (i = 0; i < 3; ++i)
 			    default_weight_factors[i] = lisp_real(vars[i]);
 		    }
-		    else if (lisp_match_string("(metric #?(or wavelet subpixel))", obj, vars))
+		    else if (lisp_match_string("(metric #?(or subpixel))", obj, vars))
 		    {
-			if (strcmp(lisp_symbol(vars[0]), "wavelet") == 0)
-			    default_metric = METRIC_WAVELET;
-			else
+			if (strcmp(lisp_symbol(vars[0]), "subpixel") == 0)
 			    default_metric = METRIC_SUBPIXEL;
 		    }
 		    else if (lisp_match_string("(search-method #?(or local global))", obj, vars))
@@ -509,7 +502,7 @@ usage (void)
 	   "  -i, --i-weight=WEIGHT        assign relative weight for the I-channel\n"
 	   "  -q, --q-weight=WEIGHT        assign relative weight for the Q-channel\n"
 	   "  -s  --scale=SCALE            scale input image by specified factor\n"
-	   "  -m, --metric=METRIC          choose metric (subpixel or wavelet)\n"
+	   "  -m, --metric=METRIC          choose metric (only subpixel is valid)\n"
 	   "  -e, --search=SEARCH          choose search method (local or global)\n"
 	   "  -c, --collage                collage mode\n"
 	   "  -d, --distance=DIST          minimum distance between two instances of\n"
@@ -671,13 +664,11 @@ main (int argc, char *argv[])
 		break;
 
 	    case 'm' :
-		if (strcmp(optarg, "wavelet") == 0)
-		    metric = METRIC_WAVELET;
-		else if (strcmp(optarg, "subpixel") == 0)
+		if (strcmp(optarg, "subpixel") == 0)
 		    metric = METRIC_SUBPIXEL;
 		else
 		{
-		    fprintf(stderr, "metric must either be subpixel or wavelet\n");
+		    fprintf(stderr, "metric must either be subpixel\n");
 		    return 1;
 		}
 		break;
@@ -1093,13 +1084,11 @@ main (int argc, char *argv[])
 				    this_cheat = val;
 				    
 			    }
-			    else if (lisp_match_string("(metric #?(or subpixel wavelet))",
+			    else if (lisp_match_string("(metric #?(or subpixel))",
 						       lisp_car(lst), &var))
 			    {
 				if (strcmp(lisp_symbol(var), "subpixel") == 0)
 				    this_metric = METRIC_SUBPIXEL;
-				else
-				    this_metric = METRIC_WAVELET;
 			    }
 			    else if (lisp_match_string("(protocol #?(string))",
 						       lisp_car(lst), &var))

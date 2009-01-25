@@ -2,17 +2,11 @@
 
 * 1.1.0
 
-make wavelet work again
-
 test suite
 
 give command line access to color spaces
 
 is file format compatible with 1.0?
-
-don't store all color space coeffs in metapixel - compute them like
-the wavelet coeffs in a pass before the mosaic creation and store them
-in an array
 
 check all asserts
 
@@ -23,6 +17,12 @@ C# bindings
 api docs
 
 * later
+
+don't store all color space coeffs in metapixel - compute them in a
+pass before the mosaic creation and store them in an array
+
+make wavelet work again.  problem: the coeffs would have to be saved
+for each color space separately.
 
 use multiple threads for mosaic creation (create thread library to
 unify with mathmap)

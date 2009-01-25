@@ -118,23 +118,6 @@ write_metapixel_metadata (metapixel_t *metapixel, FILE *out)
 	lisp_print_close_paren(out);
 
 	lisp_print_open_paren(out);
-	    lisp_print_symbol("wavelet", out);
-	    lisp_print_open_paren(out);
-	        lisp_print_symbol("means", out);
-		lisp_print_real(/*pixel.means[0]*/ 0.0, out);
-		lisp_print_real(/*pixel.means[1]*/ 0.0, out);
-		lisp_print_real(/*pixel.means[2]*/ 0.0, out);
-	    lisp_print_close_paren(out);
-	    lisp_print_open_paren(out);
-	        lisp_print_symbol("coeffs", out);
-		/*
-		  for (i = 0; i < NUM_COEFFS; ++i)
-		  fprintf(tables_file, " %d", highest_coeffs[i].index);
-		*/
-	    lisp_print_close_paren(out);
-	lisp_print_close_paren(out);
-
-	lisp_print_open_paren(out);
 	    lisp_print_symbol("subpixel", out);
 	    for (channel = 0; channel < NUM_CHANNELS; ++channel)
 	    {
@@ -190,14 +173,13 @@ read_tables (const char *library_dir, library_t *library)
     pattern = lisp_read_from_string("(small-image #?(string) #?(string)"
 				    "  (size #?(integer) #?(integer) #?(real))"
 				    "  (flip #?(boolean) #?(boolean))"
-				    "  (wavelet (means #?(real) #?(real) #?(real)) (coeffs . #?(list)))"
 				    "  (subpixel (r . #?(list)) (g . #?(list)) (b . #?(list)))"
 				    "  (anti #?(integer) #?(integer)))");
     assert(pattern != 0
 	   && lisp_type(pattern) != LISP_TYPE_EOF
 	   && lisp_type(pattern) != LISP_TYPE_PARSE_ERROR);
     assert(lisp_compile_pattern(&pattern, &num_subs));
-    assert(num_subs == 16);
+    assert(num_subs == 12);
 
     init_pools(&pools);
     init_pools_allocator(&allocator, &pools);
@@ -211,12 +193,11 @@ read_tables (const char *library_dir, library_t *library)
         type = lisp_type(obj);
         if (type != LISP_TYPE_EOF && type != LISP_TYPE_PARSE_ERROR)
         {
-            lisp_object_t *vars[16];
+            lisp_object_t *vars[12];
 
             if (lisp_match_pattern(pattern, obj, vars, num_subs))
 	    {
 		metapixel_t *pixel;
-		// coefficient_with_index_t coeffs[NUM_WAVELET_COEFFS];
 		lisp_object_t *lst;
 		int channel, i;
 
@@ -227,8 +208,8 @@ read_tables (const char *library_dir, library_t *library)
 		pixel->filename = strdup(lisp_string(vars[1]));
 		assert(pixel->filename != 0);
 
-		pixel->anti_x = lisp_integer(vars[14]);
-		pixel->anti_y = lisp_integer(vars[15]);
+		pixel->anti_x = lisp_integer(vars[10]);
+		pixel->anti_y = lisp_integer(vars[11]);
 
 		if (lisp_boolean(vars[5]))
 		    pixel->flip |= FLIP_HOR;
@@ -242,35 +223,9 @@ read_tables (const char *library_dir, library_t *library)
 
 		++library->num_metapixels;
 
-		/*
-		for (channel = 0; channel < NUM_CHANNELS; ++channel)
-		    pixel->means[channel] = lisp_real(vars[9 + channel]);
-
-		if (lisp_list_length(vars[12]) != NUM_WAVELET_COEFFS)
-		{
-		    fprintf(stderr, "Error: wrong number of wavelet coefficients in `%s'\n", pixel->filename);
-
-		    retval = 0;
-		    goto done;
-		}
-		else
-		{
-		    static float sums[NUM_WAVELET_COEFFS];
-
-		    lst = vars[12];
-		    for (i = 0; i < NUM_WAVELET_COEFFS; ++i)
-		    {
-			coeffs[i].index = lisp_integer(lisp_car(lst));
-			lst = lisp_cdr(lst);
-		    }
-
-		    wavelet_generate_coeffs(&pixel->coeffs, sums, coeffs);
-		}
-		*/
-
 		for (channel = 0; channel < NUM_CHANNELS; ++channel)
 		{
-		    lst = vars[11 + channel];
+		    lst = vars[7 + channel];
 
 		    if (lisp_list_length(lst) != NUM_SUBPIXELS)
 		    {

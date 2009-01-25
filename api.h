@@ -25,7 +25,6 @@
 
 #include <stdio.h>
 
-#include "avl.h"
 #include "error.h"
 #include "zoom.h"
 
@@ -123,9 +122,6 @@ struct _metapixel_t
     /* Only used internally.  Can be zero (for mem libraries). */
     char *filename;
 
-    unsigned long file_len;
-    unsigned long file_checksum; /* only used if file_len > 0 */
-
     unsigned int width;
     unsigned int height;
 
@@ -166,9 +162,6 @@ struct _library_t
 
     metapixel_t *metapixels;
     unsigned int num_metapixels;
-
-    avltree_t *checksum_tree;	/* can be 0, in which case checksums
-				   will not be checked */
 };
 
 typedef struct

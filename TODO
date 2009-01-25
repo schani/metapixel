@@ -6,6 +6,16 @@ make wavelet work again
 
 test suite
 
+give command line access to color spaces
+
+is file format compatible with 1.0?
+
+don't store all color space coeffs in metapixel - compute them like
+the wavelet coeffs in a pass before the mosaic creation and store them
+in an array
+
+check all asserts
+
 * 1.1.1
 
 C# bindings
@@ -26,16 +36,14 @@ filter for small images based on aspect ratio (and do all other
 filtering there, too).  for generating mosaics as well as for adding
 images to libraries.
 
-filter for adding images to libraries based on similarity to other
-images.
+filter for adding images to libraries based on checksum as well as
+similarity to other images.
 
 honor image orientation in EXIF data (esp in JPEGs) - use libexif
   http://www.impulseadventure.com/photo/exif-orientation.html
   http://sylvana.net/jpegcrop/exif_orientation.html
 
 flipping in metapixel-prepare
-
-check all asserts
 
 Document flipping (?)
 

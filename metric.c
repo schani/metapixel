@@ -109,9 +109,6 @@ metric_generate_coeffs_for_subimage (coeffs_union_t *coeffs, bitmap_t *bitmap,
 
 	bitmap_free(scaled_bitmap);
     }
-    else if (metric->kind == METRIC_MIPMAP)
-    {
-    }
     else
 	assert(0);
 }

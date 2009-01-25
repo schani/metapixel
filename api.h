@@ -3,7 +3,7 @@
  *
  * metapixel
  *
- * Copyright (C) 2004 Mark Probst
+ * Copyright (C) 2004-2009 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -242,7 +242,6 @@ void tiling_get_metapixel_coords (tiling_t *tiling, unsigned int image_width, un
 
 #define METRIC_WAVELET   1
 #define METRIC_SUBPIXEL  2
-#define METRIC_MIPMAP    3
 
 #define COLOR_SPACE_RGB        1
 #define COLOR_SPACE_HSV        2

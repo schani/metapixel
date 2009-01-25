@@ -3,7 +3,7 @@
  *
  * metapixel
  *
- * Copyright (C) 1997-2007 Mark Probst
+ * Copyright (C) 1997-2009 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -61,10 +61,6 @@
 #define NUM_SUBPIXEL_ROWS_COLS       5
 #define NUM_SUBPIXELS                (NUM_SUBPIXEL_ROWS_COLS * NUM_SUBPIXEL_ROWS_COLS)
 
-/* Mipmap parameters */
-#define MIPMAP_DEPTH                 3
-#define NUM_MIPMAP_PIXELS            (1 + 4 + 16)
-
 typedef struct
 {
     int index;
@@ -83,11 +79,6 @@ typedef struct
     unsigned char subpixels[NUM_SUBPIXELS * NUM_CHANNELS];
 } subpixel_coefficients_t;
 
-typedef struct
-{
-    unsigned char mipmap_pixels[NUM_MIPMAP_PIXELS * NUM_CHANNELS];
-} mipmap_coefficients_t;
-
 typedef union
 {
 	/*
@@ -100,7 +91,6 @@ typedef union
 	*/
 
     subpixel_coefficients_t subpixel;
-    mipmap_coefficients_t mipmap;
 } coeffs_union_t;
 
 struct _metric_t

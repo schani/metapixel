@@ -1,12 +1,18 @@
 -*- outline -*-
 
-* 1.2.0
+* 1.1.0
 
 make wavelet work again
 
 test suite
 
-* 1.2.1
+* 1.1.1
+
+C# bindings
+
+api docs
+
+* later
 
 use multiple threads for mosaic creation (create thread library to
 unify with mathmap)

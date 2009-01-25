@@ -157,7 +157,7 @@ classic_writer_new_for_file (const char *filename, unsigned int width, unsigned 
     image_writer_t *image_writer;
     classic_writer_t *writer;
 
-    image_writer = open_image_writing(filename, width, height, 3, width * 3, IMAGE_FORMAT_PNG);
+    image_writer = open_image_writing(filename, width, height, 3, width * 3, IMAGE_FORMAT_AUTO);
     if (image_writer == 0)
     {
 	error_report(ERROR_CANNOT_WRITE_OUTPUT_IMAGE, error_make_string_info(filename));

@@ -267,7 +267,7 @@ bitmap_write (bitmap_t *bitmap, const char *filename)
 
     /* FIXME: implement error reporting in write_image */
     write_image(filename, bitmap->width, bitmap->height, bitmap->data,
-		bitmap->pixel_stride, bitmap->row_stride, IMAGE_FORMAT_PNG);
+		bitmap->pixel_stride, bitmap->row_stride, IMAGE_FORMAT_AUTO);
 
     return 1;
 }

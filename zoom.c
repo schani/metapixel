@@ -335,9 +335,8 @@ main (int argc, char *argv[])
 	       dst_width, dst_height, 3, dst_width * 3,
 	       src_width, src_height, 3, src_width * 3);
 
-    write_image(argv[4], dst_width, dst_height, dst, dst_width * 3, IMAGE_FORMAT_PNG);
+    write_image(argv[4], dst_width, dst_height, dst, dst_width * 3, IMAGE_FORMAT_AUTO);
 
     return 0;
-    
 }
 #endif

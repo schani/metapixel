@@ -1,6 +1,12 @@
+-*- outline -*-
+
+* 1.2.0
+
 make wavelet work again
 
 test suite
+
+* 1.2.1
 
 use multiple threads for mosaic creation (create thread library to
 unify with mathmap)
@@ -23,13 +29,9 @@ honor image orientation in EXIF data (esp in JPEGs) - use libexif
 
 flipping in metapixel-prepare
 
-JPEG writing (already implemented in rwimg)
-
 check all asserts
 
-Document flipping
-
-***
+Document flipping (?)
 
 Fix the FIXMEs
 

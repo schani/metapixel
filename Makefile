@@ -59,6 +59,9 @@ zoom : zoom.c rwjpeg.c rwpng.c readimage.c writeimage.c
 %.o : %.c
 	$(CC) $(CCOPTS) -c $<
 
+TAGS :
+	etags `find . -name '*.c' -o -name '*.h'`
+
 install : metapixel metapixel.1
 	$(INSTALL) -d $(BINDIR)
 	$(INSTALL) metapixel $(BINDIR)

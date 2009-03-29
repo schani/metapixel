@@ -35,7 +35,6 @@
 
 #include "getopt.h"
 
-#include "vector.h"
 #include "zoom.h"
 #include "rwimg/readimage.h"
 #include "rwimg/writeimage.h"

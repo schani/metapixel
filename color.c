@@ -3,7 +3,7 @@
  *
  * metapixel
  *
- * Copyright (C) 1997-2004 Mark Probst
+ * Copyright (C) 1997-2009 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -23,27 +23,25 @@
 #include <assert.h>
 #include <string.h>
 
-#include "vector.h"
-
 #include "api.h"
 
 void
 color_rgb_to_yiq (unsigned char *yiq, unsigned char *rgb)
 {
-    const static Matrix3D conversion_matrix =
-    {
-	{ 0.299, 0.587, 0.114 },
-	{ 0.596, -0.275, -0.321 },
-	{ 0.212, -0.528, 0.311 }
-    };
+    float rgbf[3];
+    float yiqf[3];
 
-    Vector3D rgb_vec, yiq_vec;
+    rgbf[0] = (float)rgb[0];
+    rgbf[1] = (float)rgb[1];
+    rgbf[2] = (float)rgb[2];
 
-    InitVector3D(&rgb_vec, (float)rgb[0] / 255.0, (float)rgb[1] / 255.0, (float)rgb[2] / 255.0);
-    MultMatrixVector3D(&yiq_vec, &conversion_matrix, &rgb_vec);
-    yiq[0] = yiq_vec.x * 255.0;
-    yiq[1] = MAX(0.0, MIN(yiq_vec.y, 1.0)) * 255.0;
-    yiq[2] = MAX(0.0, MIN(yiq_vec.z, 1.0)) * 255.0;
+    yiqf[0] = rgbf[0] * 0.299 + rgbf[1] * 0.596 + rgbf[2] * 0.212;
+    yiqf[1] = rgbf[0] * 0.587 + rgbf[1] * -0.275 + rgbf[2] * -0.528;
+    yiqf[2] = rgbf[0] * 0.114 + rgbf[1] * -0.321 + rgbf[2] * 0.311;
+
+    yiq[0] = (unsigned char)yiqf[0];
+    yiq[1] = (unsigned char)MAX(0.0, MIN(yiqf[1], 255.0));
+    yiq[2] = (unsigned char)MAX(0.0, MIN(yiqf[2], 255.0));
 }
 
 void

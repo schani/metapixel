@@ -34,6 +34,8 @@ document: library format not compatible, metapixel.xml, batch files
 
 check doc updates in 1.0 branch
 
+b/w matching either with "-Chsv -W0,0,1" or "-Cyiq -W1,0,0"
+
 ** packaging
 
 spec from 1.0 branch

@@ -17,10 +17,6 @@ put matching score properly into protocol (i.e. not as comment)
 make flipping option available to metapixel-prepare and document the
 default (seems to be x, but none is probably better)
 
-** cosmetics
-
-print final newline in metapixel-prepare
-
 ** antimosaics
 
 implement antimosaics or remove them

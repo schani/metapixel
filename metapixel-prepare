@@ -144,3 +144,4 @@ sub process_dir {
 }
 
 process_dir($srcdir, $do_recurse);
+print "\n" if !$DEBUG;

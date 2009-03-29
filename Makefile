@@ -22,7 +22,7 @@ export CFLAGS CC FORMATDEFS
 
 LDOPTS = $(MACOS_LDOPTS) -L/usr/X11R6/lib $(PROFILE) $(DEBUG) `pkg-config --libs glib-2.0`
 CCOPTS = $(CFLAGS) -I/usr/X11R6/include -I/usr/X11R6/include/X11 -I. -Wall \
-	 -DMETAPIXEL_VERSION=\"$(VERSION)\" $(FORMATDEFS) -DCONSOLE_OUTPUT
+	 -DMETAPIXEL_VERSION=\"$(VERSION)\" $(FORMATDEFS) -DCONSOLE_OUTPUT `pkg-config --cflags glib-2.0`
 CC = gcc
 #LIBFFM = -lffm
 

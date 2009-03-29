@@ -57,7 +57,7 @@ generate_coefficients (metapixel_t *pixel)
     assert(scaled_bitmap->pixel_stride == NUM_CHANNELS);
     assert(scaled_bitmap->row_stride == NUM_SUBPIXEL_ROWS_COLS * NUM_CHANNELS);
 
-    memcpy(pixel->subpixels_rgb, scaled_bitmap->data, NUM_SUBPIXELS * 3);
+    memcpy(pixel->subpixels_rgb, scaled_bitmap->data, NUM_SUBPIXELS * NUM_CHANNELS);
     metapixel_complete_subpixel(pixel);
 
     bitmap_free(scaled_bitmap);

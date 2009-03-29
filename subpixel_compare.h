@@ -17,8 +17,8 @@ COMPARE_FUNC_NAME (coeffs_union_t *coeffs, metapixel_t *pixel, float best_score,
 		int pixel_idx = FLIP_Y(y) * NUM_SUBPIXEL_ROWS_COLS + FLIP_X(x);
 		unsigned char *subpixels = subpixels_for_color_space(pixel, color_space);
 
-		float dist = (int)coeffs->subpixel.subpixels[channel * NUM_SUBPIXELS + coeffs_idx]
-		    - (int)subpixels[channel * NUM_SUBPIXELS + pixel_idx];
+		float dist = (int)coeffs->subpixel.subpixels[coeffs_idx * NUM_CHANNELS + channel]
+		    - (int)subpixels[pixel_idx * NUM_CHANNELS + channel];
 
 		score += dist * dist * weight_factors[channel];
 

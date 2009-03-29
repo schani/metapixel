@@ -3,7 +3,7 @@
  *
  * metapixel
  *
- * Copyright (C) 1997-2007 Mark Probst
+ * Copyright (C) 1997-2009 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -31,6 +31,8 @@
 #include <math.h>
 #include <errno.h>
 
+#include <glib.h>
+
 #include "getopt.h"
 
 #include "vector.h"
@@ -52,6 +54,7 @@ static char *default_prepare_directory = 0;
 static int default_prepare_width = DEFAULT_PREPARE_WIDTH, default_prepare_height = DEFAULT_PREPARE_HEIGHT;
 static string_list_t *default_library_directories = 0;
 static int default_small_width = DEFAULT_WIDTH, default_small_height = DEFAULT_HEIGHT;
+static int default_color_space = COLOR_SPACE_HSV;
 static float default_weight_factors[NUM_CHANNELS] = { 1.0, 1.0, 1.0 };
 static int default_metric = METRIC_SUBPIXEL;
 static int default_search = SEARCH_LOCAL;
@@ -64,6 +67,7 @@ static unsigned int default_metapixel_flip = FLIP_HOR | FLIP_VER, default_prepar
 /* actual settings */
 
 static int small_width, small_height;
+static int color_space;
 static float weight_factors[NUM_CHANNELS];
 static int forbid_reconstruction_radius;
 
@@ -125,7 +129,7 @@ static void
 init_metric (metric_t *metric, int kind)
 {
     if (kind == METRIC_SUBPIXEL)
-	metric_init(metric, METRIC_SUBPIXEL, COLOR_SPACE_YIQ, weight_factors);
+	metric_init(metric, METRIC_SUBPIXEL, color_space, weight_factors);
     else
 	assert(0);
 }
@@ -498,9 +502,9 @@ usage (void)
 	   "  -x, --antimosaic=PIC         use PIC as an antimosaic\n"
 	   "  -w, --width=WIDTH            set width for small images\n"
 	   "  -h, --height=HEIGHT          set height for small images\n"
-	   "  -y, --y-weight=WEIGHT        assign relative weight for the Y-channel\n"
-	   "  -i, --i-weight=WEIGHT        assign relative weight for the I-channel\n"
-	   "  -q, --q-weight=WEIGHT        assign relative weight for the Q-channel\n"
+	   "  -C, --color-space=SPACE      select color space (hsv, rgb, yiq)\n"
+	   "                               default is hsv\n"
+	   "  -W, --weights=A,B,C          assign relative weights to color channels\n"
 	   "  -s  --scale=SCALE            scale input image by specified factor\n"
 	   "  -m, --metric=METRIC          choose metric (only subpixel is valid)\n"
 	   "  -e, --search=SEARCH          choose search method (local or global)\n"
@@ -560,6 +564,7 @@ main (int argc, char *argv[])
     small_height = default_small_height;
     prepare_width = default_prepare_width;
     prepare_height = default_prepare_height;
+    color_space = default_color_space;
     memcpy(weight_factors, default_weight_factors, sizeof(weight_factors));
     metric = default_metric;
     search = default_search;
@@ -586,9 +591,8 @@ main (int argc, char *argv[])
 		{ "library", required_argument, 0, 'l' },
 		{ "width", required_argument, 0, 'w' },
 		{ "height", required_argument, 0, 'h' },
-		{ "y-weight", required_argument, 0, 'y' },
-		{ "i-weight", required_argument, 0, 'i' },
-		{ "q-weight", required_argument, 0, 'q' },
+		{ "color-space", required_argument, 0, 'C' },
+		{ "weights", required_argument, 0, 'W' },
 		{ "scale", required_argument, 0, 's' },
 		{ "collage", no_argument, 0, 'c' },
 		{ "distance", required_argument, 0, 'd' },
@@ -602,7 +606,7 @@ main (int argc, char *argv[])
 
 	int option, option_index;
 
-	option = getopt_long(argc, argv, "l:m:e:w:h:y:i:q:s:cd:a:x:f:", long_options, &option_index);
+	option = getopt_long(argc, argv, "l:m:e:w:h:C:W:s:cd:a:x:f:", long_options, &option_index);
 
 	if (option == -1)
 	    break;
@@ -680,7 +684,7 @@ main (int argc, char *argv[])
 		    search = SEARCH_GLOBAL;
 		else
 		{
-		    fprintf(stderr, "search method must either be local or global\n");
+		    fprintf(stderr, "Error: Search method must either be local or global.\n");
 		    return 1;
 		}
 		break;
@@ -693,16 +697,37 @@ main (int argc, char *argv[])
 		small_height = prepare_height = atoi(optarg);
 		break;
 
-	    case 'y' :
-		weight_factors[0] = atof(optarg);
+	    case 'W' :
+		{
+		    char **strs = g_strsplit(optarg, ",", 3);
+		    int i;
+
+		    if (!(strs[0] && strs[1] && strs[2] && !strs[3]))
+		    {
+			fprintf(stderr, "Error: Weights must be of the form `A,B,C' where A, B and C are numbers.\n");
+			return 1;
+		    }
+
+		    for (i = 0; i < 3; ++i)
+			weight_factors[i] = (float)g_ascii_strtod(strs[i], NULL);
+
+		    g_strfreev(strs);
+		}
 		break;
 
-	    case 'i' :
-		weight_factors[1] = atof(optarg);
-		break;
-
-	    case 'q' :
-		weight_factors[2] = atof(optarg);
+	    case 'C' :
+		if (strcmp(optarg, "rgb") == 0)
+		    color_space = COLOR_SPACE_RGB;
+		else if (strcmp(optarg, "hsv") == 0)
+		    color_space = COLOR_SPACE_HSV;
+		else if (strcmp(optarg, "yiq") == 0)
+		    color_space = COLOR_SPACE_YIQ;
+		else
+		{
+		    fprintf(stderr, "Error: Unknown color space `%s'.  Valid choices are `rgb', `hsv' and `yiq'.\n",
+			    optarg);
+		    return 1;
+		}
 		break;
 
 	    case 's':
@@ -829,12 +854,12 @@ main (int argc, char *argv[])
     {
 	if (mode != MODE_METAPIXEL)
 	{
-	    fprintf(stderr, "the --in and --out options can only be used in metapixel mode\n");
+	    fprintf(stderr, "Error: The --in and --out options can only be used in metapixel mode\n");
 	    return 1;
 	}
 	if (collage)
 	{
-	    fprintf(stderr, "the --in and --out options can only be used for classic mosaics\n");
+	    fprintf(stderr, "Error: The --in and --out options can only be used for classic mosaics\n");
 	    return 1;
 	}
     }
@@ -1082,7 +1107,6 @@ main (int argc, char *argv[])
 				    fprintf(stderr, "cheat must be between 0 and 100, inclusively\n");
 				else
 				    this_cheat = val;
-				    
 			    }
 			    else if (lisp_match_string("(metric #?(or subpixel))",
 						       lisp_car(lst), &var))

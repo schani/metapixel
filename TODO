@@ -2,21 +2,49 @@
 
 * 1.1.0
 
+backport bugfixes from 1.0 branch
+
 test suite
-
-give command line access to color spaces
-
-is file format compatible with 1.0?
 
 check all asserts
 
+document: library format not compatible, metapixel.xml, batch files
+
+** feature access
+
+color spaces in rc and batch files
+
+put matching score properly into protocol (i.e. not as comment)
+
+make flipping option available to metapixel-prepare and document the
+default (seems to be x, but none is probably better)
+
+** cosmetics
+
+print final newline in metapixel-prepare
+
+** antimosaics
+
+implement antimosaics or remove them
+
+for antimosaics: allow result image meta-size to be different than
+deconstructing size.
+
 * 1.1.1
+
+scaling doesn't seem to round correctly - 255 becomes 252 or 251
 
 C# bindings
 
 api docs
 
+utility for working with protocols, like merging two protocols into
+one, taking N best matches from protocol A and the rest from B
+
 * later
+
+compare channels in the order of their weights, i.e. if third channel
+has largest weight, compare it first
 
 don't store all color space coeffs in metapixel - compute them in a
 pass before the mosaic creation and store them in an array

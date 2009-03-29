@@ -777,7 +777,7 @@ main (int argc, char *argv[])
 	    case OPT_VERSION :
 		printf("metapixel " METAPIXEL_VERSION "\n"
 		       "\n"
-		       "Copyright (C) 1997-2007 Mark Probst\n"
+		       "Copyright (C) 1997-2009 Mark Probst\n"
 		       "\n"
 		       "This program is free software; you can redistribute it and/or modify\n"
 		       "it under the terms of the GNU General Public License as published by\n"

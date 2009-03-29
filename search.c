@@ -3,7 +3,7 @@
  *
  * metapixel
  *
- * Copyright (C) 1997-2004 Mark Probst
+ * Copyright (C) 1997-2009 Mark Probst
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -22,6 +22,7 @@
 
 #include <assert.h>
 #include <string.h>
+#include <float.h>
 
 #include "api.h"
 
@@ -44,7 +45,7 @@ search_metapixel_nearest_to (int num_libraries, library_t **libraries,
 			     int (*validity_func) (void*, metapixel_t*, unsigned int, int, int),
 			     void *validity_func_data)
 {
-    float best_score = 1e99;
+    float best_score = FLT_MAX;
     metapixel_t *best_fit = 0;
     unsigned int best_index = (unsigned int)-1;
     unsigned int best_orientation = 0;
@@ -124,7 +125,7 @@ search_n_metapixel_nearest_to (int num_libraries, library_t **libraries,
     void check_orientation (metapixel_t *pixel, unsigned int pixel_index,
 			    compare_func_t compare_func, unsigned int orientation)
 	{
-	    float score = compare_func(coeffs, pixel, (i < n) ? 1e99 : matches[n - 1].match.score,
+	    float score = compare_func(coeffs, pixel, (i < n) ? FLT_MAX : matches[n - 1].match.score,
 				       metric->color_space, metric->weights);
 
 	    if (i < n || score < matches[n - 1].match.score)

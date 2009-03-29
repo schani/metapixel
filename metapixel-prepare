@@ -115,6 +115,11 @@ sub process_dir {
 		$fullname = readlink($fullname);
 	    }
 
+	    while (-l $fullname) {
+		print "Following symlink: $fullname\n" if $DEBUG;
+		$fullname = readlink($fullname);
+	    }
+
 	    if (-f $fullname && -r $fullname) {
 		my ($name, $path, $suffix) = fileparse($fullname);
 

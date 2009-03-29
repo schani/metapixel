@@ -2,13 +2,11 @@
 
 * 1.1.0
 
-backport bugfixes from 1.0 branch
+open files binary in rwimg
 
 test suite
 
 check all asserts
-
-document: library format not compatible, metapixel.xml, batch files
 
 ** feature access
 
@@ -29,6 +27,16 @@ implement antimosaics or remove them
 
 for antimosaics: allow result image meta-size to be different than
 deconstructing size.
+
+** documentation
+
+document: library format not compatible, metapixel.xml, batch files
+
+check doc updates in 1.0 branch
+
+** packaging
+
+spec from 1.0 branch
 
 * 1.1.1
 

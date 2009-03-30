@@ -1,0 +1,6 @@
+[submodule "rwimg"]
+	path = rwimg
+	url = git://github.com/schani/rwimg.git
+[submodule "lispreader"]
+	path = lispreader
+	url = git://github.com/schani/lispreader.git

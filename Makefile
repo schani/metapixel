@@ -1,6 +1,6 @@
 PREFIX = /usr/local
 INSTALL = install
-MANPAGE_XSL = /sw/share/xml/xsl/docbook-xsl/manpages/docbook.xsl
+MANPAGE_XSL = /usr/share/xml/docbook/stylesheet/nwalsh/current/manpages/docbook.xsl
 
 BINDIR = $(PREFIX)/bin
 MANDIR = $(PREFIX)/share/man

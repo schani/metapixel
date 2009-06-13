@@ -212,4 +212,11 @@ void color_convert_rgb_pixels (unsigned char *dst, unsigned char *rgb, unsigned 
                                         report_func(progress); \
                                         last_report = progress; } }
 
+typedef struct
+{
+    int row;
+    int col;
+    metapixel_t *metapixel;
+} pixel_assignment_t;
+
 #endif

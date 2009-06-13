@@ -45,13 +45,6 @@ typedef struct _pixel_list_t
 
 typedef struct
 {
-    int row;
-    int col;
-    metapixel_t *metapixel;
-} pixel_assignment_t;
-
-typedef struct
-{
     pixel_list_t *big_pixels;
     pixel_list_t *small_pixels;
 } subcube_t;
@@ -415,22 +408,18 @@ make_pixel_from_image_pixel (pools_t *pools, unsigned char *color, pixel_assignm
     return pixel;
 }
 
-bitmap_t*
-millions_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_t *in_image)
+void
+millions_generate_from_pixel_assignments (int num_libraries, library_t **libraries, bitmap_t *in_image,
+					  int num_pixel_assignments, pixel_assignment_t **pixel_assignments)
 {
     pools_t pools;
     subcube_t cube;
-    int i, row;
-    pixel_assignment_t *pixel_assignments;
-    bitmap_t *out_image;
-    GTimer *timer;
+    int i;
 
     cube.big_pixels = NULL;
     cube.small_pixels = NULL;
 
     init_pools(&pools);
-
-    timer = g_timer_new();
 
     /* add small pixels */
     for (i = 0; i < num_libraries; ++i)
@@ -441,28 +430,16 @@ millions_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_
 	    subcube_add_pixel(&cube, make_pixel_from_metapixel(&pools, metapixel), FALSE);
     }
 
-    g_print("small pixels added: %f s\n", g_timer_elapsed(timer, NULL));
-
     /* add big pixels */
-    pixel_assignments = g_new(pixel_assignment_t, in_image->width * in_image->height);
-    for (row = 0; row < in_image->height; ++row)
+    for (i = 0; i < num_pixel_assignments; ++i)
     {
-	unsigned char *p = in_image->data + row * in_image->row_stride;
-	int col;
+	pixel_assignment_t *assignment = pixel_assignments[i];
+	unsigned char *p = in_image->data
+	    + assignment->row * in_image->row_stride
+	    + assignment->col * in_image->pixel_stride;
 
-	for (col = 0; col < in_image->width; ++col)
-	{
-	    pixel_assignment_t *assignment = &pixel_assignments[row * in_image->width + col];
-
-	    assignment->row = row;
-	    assignment->col = col;
-	    assignment->metapixel = NULL;
-
-	    subcube_add_pixel(&cube, make_pixel_from_image_pixel(&pools, p + col * in_image->pixel_stride, assignment), TRUE);
-	}
+	subcube_add_pixel(&cube, make_pixel_from_image_pixel(&pools, p, assignment), TRUE);
     }
-
-    g_print("big pixels added: %f s\n", g_timer_elapsed(timer, NULL));
 
 #ifdef DEBUG_OUTPUT
     g_print("have %d small and %d big pixels\n", num_pixels(cube.small_pixels), num_pixels(cube.big_pixels));
@@ -471,6 +448,39 @@ millions_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_
     process_cube(&cube, 0, 6, 3, 0, 256, 0, 256, 0, 256);
 
     free_pools(&pools);
+}
+
+bitmap_t*
+millions_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_t *in_image)
+{
+    int num_pixel_assignments = in_image->width * in_image->height;
+    pixel_assignment_t *pixel_assignments;
+    pixel_assignment_t **pixel_assignment_ptrs;
+    GTimer *timer = g_timer_new();
+    int row, col;
+    bitmap_t *out_image;
+
+    /* generate pixel assignments */
+    pixel_assignments = g_new(pixel_assignment_t, num_pixel_assignments);
+    pixel_assignment_ptrs = g_new(pixel_assignment_t*, num_pixel_assignments);
+    for (row = 0; row < in_image->height; ++row)
+	for (col = 0; col < in_image->width; ++col)
+	{
+	    int index = row * in_image->width + col;
+	    pixel_assignment_t *assignment = &pixel_assignments[index];
+
+	    assignment->row = row;
+	    assignment->col = col;
+	    assignment->metapixel = NULL;
+
+	    pixel_assignment_ptrs[index] = assignment;
+	}
+
+    g_print("pixel assignments generated: %f s\n", g_timer_elapsed(timer, NULL));
+
+    millions_generate_from_pixel_assignments(num_libraries, libraries, in_image,
+					     num_pixel_assignments, pixel_assignment_ptrs);
+    g_free(pixel_assignment_ptrs);
 
     g_print("processed: %f s\n", g_timer_elapsed(timer, NULL));
 

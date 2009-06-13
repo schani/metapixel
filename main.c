@@ -184,6 +184,38 @@ generate_collage (char *input_name, char *output_name, float scale, int min_dist
     bitmap_free(out_bitmap);
 }
 
+static void
+generate_millions (char *input_name, char *output_name)
+{
+    bitmap_t *in_bitmap, *zoomed_in_bitmap, *out_bitmap, *zoomed_out_bitmap;
+    int zoomed_width;
+
+    in_bitmap = bitmap_read(input_name);
+    if (in_bitmap == NULL)
+    {
+	fprintf(stderr, "Error: Could not read image `%s'.\n", input_name);
+	exit(1);
+    }
+
+    zoomed_width = (int)ceilf(sqrtf(num_metapixels));
+    g_assert(zoomed_width * zoomed_width >= num_metapixels);
+
+    zoomed_in_bitmap = bitmap_scale(in_bitmap, zoomed_width, zoomed_width, FILTER_MITCHELL);
+    g_assert(zoomed_in_bitmap != NULL);
+
+    out_bitmap = millions_generate_from_bitmap(num_libraries, libraries, zoomed_in_bitmap);
+
+    zoomed_out_bitmap = bitmap_scale(out_bitmap, in_bitmap->width, in_bitmap->height, FILTER_MITCHELL);
+    g_assert(zoomed_out_bitmap != NULL);
+
+    bitmap_write(zoomed_out_bitmap, output_name);
+
+    bitmap_free(in_bitmap);
+    bitmap_free(zoomed_in_bitmap);
+    bitmap_free(out_bitmap);
+    bitmap_free(zoomed_out_bitmap);
+}
+
 static int
 get_image_size (const char *filename, unsigned int *width, unsigned int *height)
 {
@@ -508,6 +540,7 @@ usage (void)
 	   "  -m, --metric=METRIC          choose metric (only subpixel is valid)\n"
 	   "  -e, --search=SEARCH          choose search method (local or global)\n"
 	   "  -c, --collage                collage mode\n"
+	   "  -M, --millions               millions mode\n"
 	   "  -d, --distance=DIST          minimum distance between two instances of\n"
 	   "                               the same constituent image\n"
 	   "  -a, --cheat=PERC             cheat with specified percentage\n"
@@ -546,7 +579,8 @@ main (int argc, char *argv[])
     int mode = MODE_NONE;
     int metric;
     int search;
-    int collage = 0;
+    gboolean collage = FALSE;
+    gboolean millions = FALSE;
     int classic_min_distance, collage_min_distance;
     int cheat = 0;
     float scale = 1.0;
@@ -594,6 +628,7 @@ main (int argc, char *argv[])
 		{ "weights", required_argument, 0, 'W' },
 		{ "scale", required_argument, 0, 's' },
 		{ "collage", no_argument, 0, 'c' },
+		{ "millions", no_argument, 0, 'M' },
 		{ "distance", required_argument, 0, 'd' },
 		{ "cheat", required_argument, 0, 'a' },
 		{ "metric", required_argument, 0, 'm' },
@@ -605,7 +640,7 @@ main (int argc, char *argv[])
 
 	int option, option_index;
 
-	option = getopt_long(argc, argv, "l:m:e:w:h:C:W:s:cd:a:x:f:", long_options, &option_index);
+	option = getopt_long(argc, argv, "l:m:e:w:h:C:W:s:cMd:a:x:f:", long_options, &option_index);
 
 	if (option == -1)
 	    break;
@@ -734,7 +769,11 @@ main (int argc, char *argv[])
 		break;
 
 	    case 'c' :
-		collage = 1;
+		collage = TRUE;
+		break;
+
+	    case 'M' :
+		millions = TRUE;
 		break;
 
 	    case 'd' :
@@ -811,6 +850,11 @@ main (int argc, char *argv[])
     }
 
     /* check settings for soundness */
+    if (collage && millions)
+    {
+	fprintf(stderr, "Error: --collage and --millions cannot be used together.\n");
+	return 1;
+    }
     if (small_height <= 0)
     {
 	fprintf(stderr, "Error: height of small images must be positive.\n");
@@ -1020,6 +1064,8 @@ main (int argc, char *argv[])
 	    if (collage)
 		generate_collage(argv[optind], argv[optind + 1], scale, collage_min_distance,
 				 metric, cheat, flip);
+	    else if (millions)
+		generate_millions(argv[optind], argv[optind + 1]);
 	    else
 		make_classic_mosaic(argv[optind], argv[optind + 1],
 				    metric, scale, search, classic_min_distance, cheat, flip,

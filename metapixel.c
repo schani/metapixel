@@ -30,8 +30,20 @@
 void
 metapixel_complete_subpixel (metapixel_t *pixel)
 {
+    unsigned int sum[NUM_CHANNELS];
+    int i, j;
+
     color_convert_rgb_pixels(pixel->subpixels_hsv, pixel->subpixels_rgb, NUM_SUBPIXELS, COLOR_SPACE_HSV);
     color_convert_rgb_pixels(pixel->subpixels_yiq, pixel->subpixels_rgb, NUM_SUBPIXELS, COLOR_SPACE_YIQ);
+
+    for (i = 0; i < NUM_CHANNELS; ++i)
+	sum[i] = 0;
+    for (i = 0; i < NUM_SUBPIXELS; ++i)
+	for (j = 0; j < NUM_CHANNELS; ++j)
+	    sum[j] += pixel->subpixels_rgb[i * NUM_CHANNELS + j];
+
+    for (i = 0; i < NUM_CHANNELS; ++i)
+	pixel->average_rgb[i] = (sum[i] + NUM_SUBPIXELS / 2) / NUM_SUBPIXELS;
 }
 
 static void

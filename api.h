@@ -144,6 +144,8 @@ struct _metapixel_t
     unsigned char subpixels_hsv[NUM_SUBPIXELS * NUM_CHANNELS];
     unsigned char subpixels_yiq[NUM_SUBPIXELS * NUM_CHANNELS];
 
+    unsigned char average_rgb[NUM_CHANNELS];
+
     /* This is != 0 iff library == 0 || filename == 0, i.e., for
        metapixels which are not in a library or only in a mem
        library. */
@@ -299,5 +301,7 @@ bitmap_t* classic_paste_to_bitmap (classic_mosaic_t *mosaic, unsigned int width,
 				   bitmap_t *in_image, unsigned int cheat, progress_report_func_t report_func);
 bitmap_t* collage_paste_to_bitmap (collage_mosaic_t *mosaic, unsigned int width, unsigned int height,
 				   bitmap_t *in_image, unsigned int cheat, progress_report_func_t report_func);
+
+bitmap_t* millions_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_t *in_image);
 
 #endif

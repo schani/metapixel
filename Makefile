@@ -27,7 +27,7 @@ CC = gcc
 #LIBFFM = -lffm
 
 OBJS = main.o bitmap.o color.o metric.o matcher.o tiling.o metapixel.o library.o classic.o collage.o search.o \
-	utils.o error.o zoom.o \
+	utils.o error.o zoom.o millions.o \
 	getopt.o getopt1.o
 IMAGESIZE_OBJS = imagesize.o
 BOREDOM_OBJS = boredom.o

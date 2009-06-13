@@ -185,10 +185,27 @@ generate_collage (char *input_name, char *output_name, float scale, int min_dist
 }
 
 static void
+randomize_ptr_array (int length, gpointer *array)
+{
+    int i;
+
+    for (i = 0; i < length - 1; ++i)
+    {
+	int index = g_random_int_range(i, length);
+	gpointer tmp = array[i];
+
+	array[i] = array[index];
+	array[index] = tmp;
+    }
+}
+
+static void
 generate_millions (char *input_name, char *output_name)
 {
     bitmap_t *in_bitmap, *zoomed_in_bitmap, *out_bitmap, *zoomed_out_bitmap;
-    int zoomed_width;
+    int tile_width, metawidth, zoomed_width, num_passes, num_pass_pixels, i;
+    pixel_assignment_t *pixel_assignments;
+    pixel_assignment_t **pixel_assignment_ptrs;
 
     in_bitmap = bitmap_read(input_name);
     if (in_bitmap == NULL)
@@ -197,13 +214,31 @@ generate_millions (char *input_name, char *output_name)
 	exit(1);
     }
 
-    zoomed_width = (int)ceilf(sqrtf(num_metapixels));
-    g_assert(zoomed_width * zoomed_width >= num_metapixels);
+    tile_width = (int)ceilf(sqrtf(num_metapixels));
+    g_assert(tile_width * tile_width >= num_metapixels);
+
+    metawidth = (int)ceilf((float)MAX(in_bitmap->width, in_bitmap->height) / (float)tile_width);
+    zoomed_width = tile_width * metawidth;
+
+    num_passes = metawidth * metawidth;
+    num_pass_pixels = tile_width * tile_width;
+
+    g_print("doing %d passes of %d pixels each\n", num_passes, num_pass_pixels);
 
     zoomed_in_bitmap = bitmap_scale(in_bitmap, zoomed_width, zoomed_width, FILTER_MITCHELL);
     g_assert(zoomed_in_bitmap != NULL);
 
-    out_bitmap = millions_generate_from_bitmap(num_libraries, libraries, zoomed_in_bitmap);
+    pixel_assignment_ptrs = millions_generate_pixel_assignments(zoomed_width, zoomed_width, &pixel_assignments);
+    randomize_ptr_array(zoomed_width * zoomed_width, (gpointer*)pixel_assignment_ptrs);
+
+    for (i = 0; i < num_passes; ++i)
+	millions_generate_from_pixel_assignments(num_libraries, libraries, zoomed_in_bitmap,
+						 num_pass_pixels, pixel_assignment_ptrs + i * num_pass_pixels);
+    g_free(pixel_assignment_ptrs);
+
+    out_bitmap = millions_paste_image_from_pixel_assignments(zoomed_width, zoomed_width, pixel_assignments);
+    g_assert(out_bitmap != NULL);
+    g_free(pixel_assignments);
 
     zoomed_out_bitmap = bitmap_scale(out_bitmap, in_bitmap->width, in_bitmap->height, FILTER_MITCHELL);
     g_assert(zoomed_out_bitmap != NULL);

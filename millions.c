@@ -23,6 +23,7 @@
 #include <glib.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include "lispreader/pools.h"
 
@@ -31,6 +32,8 @@
 #if NUM_CHANNELS != 3
 #error only works with 3 channels
 #endif
+
+#define CHECK_BORDER
 
 typedef struct _pixel_list_t
 {
@@ -132,6 +135,19 @@ compare_pixel_with_weights (const void *p1, const void *p2)
     return 0;
 }
 
+static gboolean
+can_redistribute_to_subcube (subcube_t subcubes[2][2][2], gboolean redistribute_big,
+			     int x, int y, int z)
+{
+    subcube_t *subcube = &subcubes[x][y][z];
+
+    if (redistribute_big)
+	return num_pixels(subcube->small_pixels) > 0;
+    else
+	return num_pixels(subcube->small_pixels) < num_pixels(subcube->big_pixels);
+}
+
+
 /* assumes the pixel is not linked */
 static void
 redistribute_pixel (pixel_list_t *pixel, subcube_t subcubes[2][2][2], gboolean to_big,
@@ -149,14 +165,10 @@ redistribute_pixel (pixel_list_t *pixel, subcube_t subcubes[2][2][2], gboolean t
 	for (y = 0; y < 2; ++y)
 	    for (z = 0; z < 2; ++z)
 	    {
-		subcube_t *subcube = &subcubes[x][y][z];
-
 		if (x == forbid_x && y == forbid_y && z == forbid_z)
 		    continue;
-		if (to_big && num_pixels(subcube->small_pixels) == 0)
-		    continue;
 
-		if (to_big || num_pixels(subcube->small_pixels) < num_pixels(subcube->big_pixels))
+		if (can_redistribute_to_subcube(subcubes, to_big, x, y, z))
 		{
 		    int sub_x = x_start + x * (x_dim >> 1) + (x_dim >> 2);
 		    int sub_y = y_start + y * (y_dim >> 1) + (y_dim >> 2);
@@ -178,6 +190,14 @@ redistribute_pixel (pixel_list_t *pixel, subcube_t subcubes[2][2][2], gboolean t
 
     subcube_add_pixel(&subcubes[best_x][best_y][best_z], pixel, to_big);
 }
+
+static float
+euclid (int x, int y, int z)
+{
+    return sqrtf(x*x + y*y + z*z);
+}
+
+#define WEIGHT_MAX	256
 
 static void
 redistribute_pixels (subcube_t subcubes[2][2][2],
@@ -202,19 +222,35 @@ redistribute_pixels (subcube_t subcubes[2][2][2],
     i = 0;
     for (pixel = from_pixels; pixel != NULL; pixel = pixel->next)
     {
-	int weight;
+	int weight = WEIGHT_MAX;
 
 	/*
-	 * FIXME: for each of those we could first check whether the
-	 * subcube bordering on that side has still room for small
-	 * pixels and ignore the weight if it doesn't.
+	 * For each of those we first check whether the subcube
+	 * bordering on that side has still room for small pixels and
+	 * ignore the weight if it doesn't.
 	 *
-	 * If no bordering subcube has room we could take the distance
+	 * If no bordering subcube has room we take the distance
 	 * to the center of the cube as the weight.
 	 */
-	weight = ABS(pixel->color[0] - (x_start + (x_dim >> 1)));
-	weight = MIN(weight, ABS(pixel->color[1] - (y_start + (y_dim >> 1))));
-	weight = MIN(weight, ABS(pixel->color[2] - (z_start + (z_dim >> 1))));
+#ifdef CHECK_BORDER
+	if (can_redistribute_to_subcube(subcubes, redistribute_big, 1 - x, y, z))
+#endif
+	    weight = ABS(pixel->color[0] - (x_start + (x_dim >> 1)));
+#ifdef CHECK_BORDER
+	if (can_redistribute_to_subcube(subcubes, redistribute_big, x, 1 - y, z))
+#endif
+	    weight = MIN(weight, ABS(pixel->color[1] - (y_start + (y_dim >> 1))));
+#ifdef CHECK_BORDER
+	if (can_redistribute_to_subcube(subcubes, redistribute_big, x, y, 1 - z))
+#endif
+	    weight = MIN(weight, ABS(pixel->color[2] - (z_start + (z_dim >> 1))));
+
+#ifdef CHECK_BORDER
+	if (weight == WEIGHT_MAX)
+	    weight = euclid(ABS(pixel->color[0] - (x_start + (x_dim >> 1))),
+			    ABS(pixel->color[1] - (y_start + (y_dim >> 1))),
+			    ABS(pixel->color[2] - (z_start + (z_dim >> 1))));
+#endif
 
 	pixel_weight_table[i].pixel = pixel;
 	pixel_weight_table[i].weight = weight;

@@ -450,23 +450,20 @@ millions_generate_from_pixel_assignments (int num_libraries, library_t **librari
     free_pools(&pools);
 }
 
-bitmap_t*
-millions_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_t *in_image)
+pixel_assignment_t**
+millions_generate_pixel_assignments (int width, int height, pixel_assignment_t **raw_pixel_assignments)
 {
-    int num_pixel_assignments = in_image->width * in_image->height;
+    int num_pixel_assignments = width * height;
     pixel_assignment_t *pixel_assignments;
     pixel_assignment_t **pixel_assignment_ptrs;
-    GTimer *timer = g_timer_new();
     int row, col;
-    bitmap_t *out_image;
 
-    /* generate pixel assignments */
     pixel_assignments = g_new(pixel_assignment_t, num_pixel_assignments);
     pixel_assignment_ptrs = g_new(pixel_assignment_t*, num_pixel_assignments);
-    for (row = 0; row < in_image->height; ++row)
-	for (col = 0; col < in_image->width; ++col)
+    for (row = 0; row < height; ++row)
+	for (col = 0; col < width; ++col)
 	{
-	    int index = row * in_image->width + col;
+	    int index = row * width + col;
 	    pixel_assignment_t *assignment = &pixel_assignments[index];
 
 	    assignment->row = row;
@@ -476,21 +473,22 @@ millions_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_
 	    pixel_assignment_ptrs[index] = assignment;
 	}
 
-    g_print("pixel assignments generated: %f s\n", g_timer_elapsed(timer, NULL));
+    *raw_pixel_assignments = pixel_assignments;
 
-    millions_generate_from_pixel_assignments(num_libraries, libraries, in_image,
-					     num_pixel_assignments, pixel_assignment_ptrs);
-    g_free(pixel_assignment_ptrs);
+    return pixel_assignment_ptrs;
+}
 
-    g_print("processed: %f s\n", g_timer_elapsed(timer, NULL));
+bitmap_t*
+millions_paste_image_from_pixel_assignments (int width, int height, pixel_assignment_t *pixel_assignments)
+{
+    bitmap_t *out_image = bitmap_new_empty(COLOR_RGB_8, width, height);
+    int row, col;
 
-    out_image = bitmap_new_empty(COLOR_RGB_8, in_image->width, in_image->height);
     g_assert(out_image != NULL);
 
     for (row = 0; row < out_image->height; ++row)
     {
 	unsigned char *p = out_image->data + row * out_image->row_stride;
-	int col;
 
 	for (col = 0; col < out_image->width; ++col)
 	{
@@ -502,10 +500,33 @@ millions_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_
 	}
     }
 
+    return out_image;
+}
+
+bitmap_t*
+millions_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_t *in_image)
+{
+    int num_pixel_assignments = in_image->width * in_image->height;
+    pixel_assignment_t *pixel_assignments;
+    pixel_assignment_t **pixel_assignment_ptrs;
+    GTimer *timer = g_timer_new();
+    bitmap_t *out_image;
+
+    pixel_assignment_ptrs = millions_generate_pixel_assignments(in_image->width, in_image->height, &pixel_assignments);
+
+    g_print("pixel assignments generated: %f s\n", g_timer_elapsed(timer, NULL));
+
+    millions_generate_from_pixel_assignments(num_libraries, libraries, in_image,
+					     num_pixel_assignments, pixel_assignment_ptrs);
+    g_free(pixel_assignment_ptrs);
+
+    g_print("processed: %f s\n", g_timer_elapsed(timer, NULL));
+
+    out_image = millions_paste_image_from_pixel_assignments(in_image->width, in_image->height, pixel_assignments);
+    g_free(pixel_assignments);
+
     g_print("done: %f s\n", g_timer_elapsed(timer, NULL));
     g_timer_destroy(timer);
-
-    g_free(pixel_assignments);
 
     return out_image;
 }

@@ -305,5 +305,9 @@ bitmap_t* collage_paste_to_bitmap (collage_mosaic_t *mosaic, unsigned int width,
 bitmap_t* millions_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_t *in_image);
 void millions_generate_from_pixel_assignments (int num_libraries, library_t **libraries, bitmap_t *in_image,
 					       int num_pixel_assignments, pixel_assignment_t **pixel_assignments);
+pixel_assignment_t** millions_generate_pixel_assignments (int width, int height,
+							  pixel_assignment_t **raw_pixel_assignments);
+bitmap_t* millions_paste_image_from_pixel_assignments (int width, int height,
+						       pixel_assignment_t *pixel_assignments);
 
 #endif

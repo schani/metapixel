@@ -188,7 +188,7 @@ static void
 generate_millions (char *input_name, char *output_name)
 {
     bitmap_t *in_bitmap, *zoomed_in_bitmap, *out_bitmap, *zoomed_out_bitmap;
-    int zoomed_width;
+    int tile_width, metawidth, x, y;
 
     in_bitmap = bitmap_read(input_name);
     if (in_bitmap == NULL)
@@ -197,13 +197,30 @@ generate_millions (char *input_name, char *output_name)
 	exit(1);
     }
 
-    zoomed_width = (int)ceilf(sqrtf(num_metapixels));
-    g_assert(zoomed_width * zoomed_width >= num_metapixels);
+    tile_width = (int)ceilf(sqrtf(num_metapixels));
+    g_assert(tile_width * tile_width >= num_metapixels);
 
-    zoomed_in_bitmap = bitmap_scale(in_bitmap, zoomed_width, zoomed_width, FILTER_MITCHELL);
+    metawidth = (int)ceilf((float)MAX(in_bitmap->width, in_bitmap->height) / (float)tile_width);
+
+    g_print("doing %dx%d tiles of %dx%d pixels\n", metawidth, metawidth, tile_width, tile_width);
+
+    zoomed_in_bitmap = bitmap_scale(in_bitmap, tile_width * metawidth, tile_width * metawidth, FILTER_MITCHELL);
     g_assert(zoomed_in_bitmap != NULL);
 
-    out_bitmap = millions_generate_from_bitmap(num_libraries, libraries, zoomed_in_bitmap);
+    out_bitmap = bitmap_new_empty(COLOR_RGB_8, tile_width * metawidth, tile_width * metawidth);
+    g_assert(out_bitmap != NULL);
+
+    for (y = 0; y < metawidth; ++y)
+	for (x = 0; x < metawidth; ++x)
+	{
+	    bitmap_t *tile_in = bitmap_sub(zoomed_in_bitmap, x * tile_width, y * tile_width, tile_width, tile_width);
+	    bitmap_t *tile_out = millions_generate_from_bitmap(num_libraries, libraries, tile_in);
+
+	    bitmap_paste(out_bitmap, tile_out, x * tile_width, y * tile_width);
+
+	    bitmap_free(tile_in);
+	    bitmap_free(tile_out);
+	}
 
     zoomed_out_bitmap = bitmap_scale(out_bitmap, in_bitmap->width, in_bitmap->height, FILTER_MITCHELL);
     g_assert(zoomed_out_bitmap != NULL);

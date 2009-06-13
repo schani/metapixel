@@ -310,7 +310,7 @@ indent (int depth)
 
 static void
 process_cube (subcube_t *cube,
-	      int depth, int max_depth,
+	      int depth, int max_depth, int min_small_images,
 	      int x_start, int x_dim,
 	      int y_start, int y_dim,
 	      int z_start, int z_dim)
@@ -318,7 +318,7 @@ process_cube (subcube_t *cube,
     subcube_t subcubes[2][2][2];
     int x, y, z;
 
-    if (depth >= max_depth || num_pixels(cube->small_pixels) == 1)
+    if (depth >= max_depth || num_pixels(cube->small_pixels) <= min_small_images)
     {
 	assign_pixels(cube->small_pixels, cube->big_pixels);
 	return;
@@ -382,7 +382,7 @@ process_cube (subcube_t *cube,
 		g_assert(num_pixels(subcube->small_pixels) <= num_pixels(subcube->big_pixels));
 		g_assert(num_pixels(subcube->small_pixels) > 0 || num_pixels(subcube->big_pixels) == 0);
 		if (num_pixels(subcube->small_pixels) > 0)
-		    process_cube(subcube, depth + 1, max_depth,
+		    process_cube(subcube, depth + 1, max_depth, min_small_images,
 				 x_start + x * (x_dim >> 1), x_dim >> 1,
 				 y_start + y * (y_dim >> 1), y_dim >> 1,
 				 z_start + z * (z_dim >> 1), z_dim >> 1);
@@ -468,7 +468,7 @@ millions_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_
     g_print("have %d small and %d big pixels\n", num_pixels(cube.small_pixels), num_pixels(cube.big_pixels));
 #endif
 
-    process_cube(&cube, 0, 6, 0, 256, 0, 256, 0, 256);
+    process_cube(&cube, 0, 6, 3, 0, 256, 0, 256, 0, 256);
 
     free_pools(&pools);
 

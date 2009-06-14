@@ -309,5 +309,9 @@ pixel_assignment_t** millions_generate_pixel_assignments (int width, int height,
 							  pixel_assignment_t **raw_pixel_assignments);
 bitmap_t* millions_paste_image_from_pixel_assignments (int width, int height,
 						       pixel_assignment_t *pixel_assignments);
+bitmap_t* millions_paste_subimage_from_pixel_assignments (int width, int height,
+							  int sub_x, int sub_y, int sub_width, int sub_height,
+							  int pixel_width, int pixel_height,
+							  pixel_assignment_t *pixel_assignments);
 
 #endif

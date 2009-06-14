@@ -530,3 +530,31 @@ millions_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_
 
     return out_image;
 }
+
+bitmap_t*
+millions_paste_subimage_from_pixel_assignments (int width, int height,
+						int sub_x, int sub_y, int sub_width, int sub_height,
+						int pixel_width, int pixel_height,
+						pixel_assignment_t *pixel_assignments)
+{
+    bitmap_t *out_image;
+    int x, y;
+
+    out_image = bitmap_new_empty(COLOR_RGB_8, sub_width * pixel_width, sub_height * pixel_height);
+
+    for (y = 0; y < sub_height; ++y)
+	for (x = 0; x < sub_width; ++x)
+	{
+	    pixel_assignment_t *pixel = &pixel_assignments[x + sub_x + (y + sub_y) * width];
+	    bitmap_t *bitmap = metapixel_get_bitmap(pixel->metapixel);
+	    bitmap_t *zoomed = bitmap_scale(bitmap, pixel_width, pixel_height, FILTER_MITCHELL);
+
+	    bitmap_free(bitmap);
+
+	    bitmap_paste(out_image, zoomed, x * pixel_width, y * pixel_height);
+
+	    bitmap_free(zoomed);
+	}
+
+    return out_image;
+}

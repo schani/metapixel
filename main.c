@@ -203,7 +203,7 @@ static void
 generate_millions (char *input_name, char *output_name)
 {
     bitmap_t *in_bitmap, *zoomed_in_bitmap, *out_bitmap, *zoomed_out_bitmap;
-    int tile_width, metawidth, zoomed_width, num_passes, num_pass_pixels, i;
+    int tile_width, metawidth, zoomed_width, num_passes, num_pass_pixels, sub_width, zoom_level, i;
     pixel_assignment_t *pixel_assignments;
     pixel_assignment_t **pixel_assignment_ptrs;
 
@@ -238,17 +238,47 @@ generate_millions (char *input_name, char *output_name)
 
     out_bitmap = millions_paste_image_from_pixel_assignments(zoomed_width, zoomed_width, pixel_assignments);
     g_assert(out_bitmap != NULL);
-    g_free(pixel_assignments);
 
     zoomed_out_bitmap = bitmap_scale(out_bitmap, in_bitmap->width, in_bitmap->height, FILTER_MITCHELL);
     g_assert(zoomed_out_bitmap != NULL);
 
     bitmap_write(zoomed_out_bitmap, output_name);
 
-    bitmap_free(in_bitmap);
-    bitmap_free(zoomed_in_bitmap);
     bitmap_free(out_bitmap);
     bitmap_free(zoomed_out_bitmap);
+
+#ifdef DUMP_ZOOMED
+    sub_width = zoomed_width / 2;
+    zoom_level = 2;
+    while (sub_width >= 2)
+    {
+	char *filename = g_strdup_printf("/tmp/zoomed.%d.png", zoom_level);
+
+	out_bitmap = millions_paste_subimage_from_pixel_assignments(zoomed_width, zoomed_width,
+								    (zoomed_width - sub_width) / 2, (zoomed_width - sub_width) / 2,
+								    sub_width, sub_width,
+								    zoom_level, zoom_level,
+								    pixel_assignments);
+	g_assert(out_bitmap != NULL);
+	zoomed_out_bitmap = bitmap_scale(out_bitmap, in_bitmap->width, in_bitmap->height, FILTER_MITCHELL);
+	g_assert(zoomed_out_bitmap != NULL);
+
+	bitmap_write(zoomed_out_bitmap, filename);
+
+	g_free(filename);
+
+	bitmap_free(out_bitmap);
+	bitmap_free(zoomed_out_bitmap);
+
+	sub_width /= 2;
+	zoom_level *= 2;
+    }
+#endif
+
+    g_free(pixel_assignments);
+
+    bitmap_free(in_bitmap);
+    bitmap_free(zoomed_in_bitmap);
 }
 
 static int

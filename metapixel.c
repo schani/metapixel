@@ -126,8 +126,8 @@ metapixel_free (metapixel_t *metapixel)
 	bitmap_free(metapixel->bitmap);
 }
 
-bitmap_t*
-metapixel_get_bitmap (metapixel_t *metapixel)
+static bitmap_t*
+metapixel_get_bitmap_internal (metapixel_t *metapixel, gboolean do_cache)
 {
     if (metapixel->bitmap != 0)
 	return bitmap_copy(metapixel->bitmap);
@@ -160,8 +160,22 @@ metapixel_get_bitmap (metapixel_t *metapixel)
 
 	free(filename);
 
+	metapixel->bitmap = bitmap_copy(bitmap);
+
 	return bitmap;
     }
+}
+
+bitmap_t*
+metapixel_get_bitmap (metapixel_t *metapixel)
+{
+    return metapixel_get_bitmap_internal(metapixel, FALSE);
+}
+
+bitmap_t*
+metapixel_get_and_cache_bitmap (metapixel_t *metapixel)
+{
+    return metapixel_get_bitmap_internal(metapixel, TRUE);
 }
 
 int

@@ -220,6 +220,7 @@ void metapixel_free (metapixel_t *metapixel);
 /* The returned bitmap must be freed with bitmap_free.  Returns 0 on
    failure. */
 bitmap_t* metapixel_get_bitmap (metapixel_t *metapixel);
+bitmap_t* metapixel_get_and_cache_bitmap (metapixel_t *metapixel);
 
 /* Not functional yet. */
 void metapixel_set_enabled (metapixel_t *metapixel, int enabled);

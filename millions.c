@@ -535,10 +535,15 @@ bitmap_t*
 millions_paste_subimage_from_pixel_assignments (int width, int height,
 						int sub_x, int sub_y, int sub_width, int sub_height,
 						int pixel_width, int pixel_height,
-						pixel_assignment_t *pixel_assignments)
+						pixel_assignment_t *pixel_assignments,
+						unsigned int cheat,
+						bitmap_t* (*get_cheat_bitmap_func) (metapixel_t*, gpointer), gpointer data)
 {
     bitmap_t *out_image;
     int x, y;
+
+    if (cheat)
+	g_assert(get_cheat_bitmap_func != NULL);
 
     out_image = bitmap_new_empty(COLOR_RGB_8, sub_width * pixel_width, sub_height * pixel_height);
 
@@ -550,6 +555,18 @@ millions_paste_subimage_from_pixel_assignments (int width, int height,
 	    bitmap_t *zoomed = bitmap_scale(bitmap, pixel_width, pixel_height, FILTER_MITCHELL);
 
 	    bitmap_free(bitmap);
+
+	    if (cheat)
+	    {
+		bitmap_t *cheat_bitmap = get_cheat_bitmap_func(pixel->metapixel, data);
+		bitmap_t *zoomed_cheat = bitmap_scale(cheat_bitmap, pixel_width, pixel_height, FILTER_MITCHELL);
+
+		bitmap_free(cheat_bitmap);
+
+		bitmap_alpha_compose(zoomed, zoomed_cheat, cheat);
+
+		bitmap_free(zoomed_cheat);
+	    }
 
 	    bitmap_paste(out_image, zoomed, x * pixel_width, y * pixel_height);
 

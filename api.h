@@ -23,6 +23,7 @@
 #ifndef __METAPIXEL_API_H__
 #define __METAPIXEL_API_H__
 
+#include <glib.h>
 #include <stdio.h>
 
 #include "error.h"
@@ -312,6 +313,8 @@ bitmap_t* millions_paste_image_from_pixel_assignments (int width, int height,
 bitmap_t* millions_paste_subimage_from_pixel_assignments (int width, int height,
 							  int sub_x, int sub_y, int sub_width, int sub_height,
 							  int pixel_width, int pixel_height,
-							  pixel_assignment_t *pixel_assignments);
+							  pixel_assignment_t *pixel_assignments,
+							  unsigned int cheat,
+							  bitmap_t* (*get_cheat_bitmap_func) (metapixel_t*, gpointer), gpointer data);
 
 #endif

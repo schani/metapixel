@@ -199,6 +199,29 @@ randomize_ptr_array (int length, gpointer *array)
     }
 }
 
+static bitmap_t*
+get_level_1_bitmap_for_metapixel (metapixel_t *metapixel, gpointer data)
+{
+    char *filename;
+    bitmap_t *bitmap;
+
+    g_assert(metapixel->filename != NULL);
+    filename = strrchr(metapixel->filename, '/');
+    if (filename != NULL)
+	++filename;
+    else
+	filename = metapixel->filename;
+
+    filename = g_strdup_printf("/home/schani/Work/unix/metapixel/contact-favorites-level1/%s.png", filename);
+
+    bitmap = bitmap_read(filename);
+    g_assert(bitmap != NULL);
+
+    g_free(filename);
+
+    return bitmap;
+}
+
 static void
 generate_millions (char *input_name, char *output_name)
 {
@@ -253,12 +276,14 @@ generate_millions (char *input_name, char *output_name)
     while (sub_width >= 2)
     {
 	char *filename = g_strdup_printf("/tmp/zoomed.%d.png", zoom_level);
+	unsigned int cheat = (unsigned int)(logf(zoom_level) / logf(zoomed_width) * (float)0x10000);
 
 	out_bitmap = millions_paste_subimage_from_pixel_assignments(zoomed_width, zoomed_width,
 								    (zoomed_width - sub_width) / 2, (zoomed_width - sub_width) / 2,
 								    sub_width, sub_width,
 								    zoom_level, zoom_level,
-								    pixel_assignments);
+								    pixel_assignments,
+								    cheat, get_level_1_bitmap_for_metapixel, NULL);
 	g_assert(out_bitmap != NULL);
 	zoomed_out_bitmap = bitmap_scale(out_bitmap, in_bitmap->width, in_bitmap->height, FILTER_MITCHELL);
 	g_assert(zoomed_out_bitmap != NULL);

@@ -551,7 +551,7 @@ millions_paste_subimage_from_pixel_assignments (int width, int height,
 	for (x = 0; x < sub_width; ++x)
 	{
 	    pixel_assignment_t *pixel = &pixel_assignments[x + sub_x + (y + sub_y) * width];
-	    bitmap_t *bitmap = metapixel_get_bitmap(pixel->metapixel);
+	    bitmap_t *bitmap = metapixel_get_and_cache_bitmap(pixel->metapixel);
 	    bitmap_t *zoomed = bitmap_scale(bitmap, pixel_width, pixel_height, FILTER_MITCHELL);
 
 	    bitmap_free(bitmap);

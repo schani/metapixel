@@ -202,8 +202,19 @@ randomize_ptr_array (int length, gpointer *array)
 static bitmap_t*
 get_level_1_bitmap_for_metapixel (metapixel_t *metapixel, gpointer data)
 {
+    static GHashTable *cache = NULL;
+
     char *filename;
     bitmap_t *bitmap;
+
+    if (cache != NULL)
+    {
+	bitmap = g_hash_table_lookup(cache, metapixel);
+	if (bitmap)
+	    return bitmap_copy(bitmap);
+    }
+    else
+	cache = g_hash_table_new(g_direct_hash, g_direct_equal);
 
     g_assert(metapixel->filename != NULL);
     filename = strrchr(metapixel->filename, '/');
@@ -219,14 +230,18 @@ get_level_1_bitmap_for_metapixel (metapixel_t *metapixel, gpointer data)
 
     g_free(filename);
 
-    return bitmap;
+    g_hash_table_insert(cache, metapixel, bitmap);
+
+    return bitmap_copy(bitmap);
 }
+
+#define DUMP_ZOOMED
 
 static void
 generate_millions (char *input_name, char *output_name)
 {
     bitmap_t *in_bitmap, *zoomed_in_bitmap, *out_bitmap, *zoomed_out_bitmap;
-    int tile_width, metawidth, zoomed_width, num_passes, num_pass_pixels, sub_width, zoom_level, i;
+    int tile_width, metawidth, zoomed_width, num_passes, num_pass_pixels, sub_width, i;
     pixel_assignment_t *pixel_assignments;
     pixel_assignment_t **pixel_assignment_ptrs;
 
@@ -271,12 +286,14 @@ generate_millions (char *input_name, char *output_name)
     bitmap_free(zoomed_out_bitmap);
 
 #ifdef DUMP_ZOOMED
-    sub_width = zoomed_width / 2;
-    zoom_level = 2;
+    sub_width = (int)(zoomed_width / 1.5);
     while (sub_width >= 2)
     {
+	int zoom_level = (int)ceilf((float)zoomed_width / (float)sub_width);
 	char *filename = g_strdup_printf("/tmp/zoomed.%d.png", zoom_level);
 	unsigned int cheat = (unsigned int)(logf(zoom_level) / logf(zoomed_width) * (float)0x10000);
+
+	g_print("generating sub zoom %d with pixels of width %d - cheat %d percent\n", sub_width, zoom_level, cheat * 100 / 0x10000);
 
 	out_bitmap = millions_paste_subimage_from_pixel_assignments(zoomed_width, zoomed_width,
 								    (zoomed_width - sub_width) / 2, (zoomed_width - sub_width) / 2,
@@ -295,8 +312,7 @@ generate_millions (char *input_name, char *output_name)
 	bitmap_free(out_bitmap);
 	bitmap_free(zoomed_out_bitmap);
 
-	sub_width /= 2;
-	zoom_level *= 2;
+	sub_width = (int)(sub_width / 1.5);
     }
 #endif
 

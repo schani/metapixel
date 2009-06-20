@@ -27,29 +27,13 @@
 
 #include "api.h"
 
-void
-metapixel_complete_subpixel (metapixel_t *pixel)
-{
-    unsigned int sum[NUM_CHANNELS];
-    int i, j;
-
-    color_convert_rgb_pixels(pixel->subpixels_hsv, pixel->subpixels_rgb, NUM_SUBPIXELS, COLOR_SPACE_HSV);
-    color_convert_rgb_pixels(pixel->subpixels_yiq, pixel->subpixels_rgb, NUM_SUBPIXELS, COLOR_SPACE_YIQ);
-
-    for (i = 0; i < NUM_CHANNELS; ++i)
-	sum[i] = 0;
-    for (i = 0; i < NUM_SUBPIXELS; ++i)
-	for (j = 0; j < NUM_CHANNELS; ++j)
-	    sum[j] += pixel->subpixels_rgb[i * NUM_CHANNELS + j];
-
-    for (i = 0; i < NUM_CHANNELS; ++i)
-	pixel->average_rgb[i] = (sum[i] + NUM_SUBPIXELS / 2) / NUM_SUBPIXELS;
-}
-
 static void
-generate_coefficients (metapixel_t *pixel)
+calculate_subpixels_rgb (metapixel_t *pixel)
 {
     bitmap_t *scaled_bitmap;
+
+    g_assert(!pixel->subpixels_rgb_calculated);
+    g_assert(pixel->bitmap);
 
     /* generate subpixel coefficients */
     if (pixel->width != NUM_SUBPIXEL_ROWS_COLS || pixel->height != NUM_SUBPIXEL_ROWS_COLS)
@@ -63,16 +47,89 @@ generate_coefficients (metapixel_t *pixel)
 	assert(scaled_bitmap != 0);
     }
 
-    //bitmap_write(scaled_bitmap, "/tmp/debug.png");
-
     assert(scaled_bitmap->color == COLOR_RGB_8);
     assert(scaled_bitmap->pixel_stride == NUM_CHANNELS);
     assert(scaled_bitmap->row_stride == NUM_SUBPIXEL_ROWS_COLS * NUM_CHANNELS);
 
     memcpy(pixel->subpixels_rgb, scaled_bitmap->data, NUM_SUBPIXELS * NUM_CHANNELS);
-    metapixel_complete_subpixel(pixel);
 
     bitmap_free(scaled_bitmap);
+
+    pixel->subpixels_rgb_calculated = TRUE;
+}
+
+unsigned char*
+metapixel_get_subpixels (metapixel_t *pixel, int color_space)
+{
+    if (!pixel->subpixels_rgb_calculated)
+	calculate_subpixels_rgb(pixel);
+    if (color_space == COLOR_SPACE_RGB)
+	return pixel->subpixels_rgb;
+    if (!pixel->subpixels_other_calculated)
+    {
+	color_convert_rgb_pixels(pixel->subpixels_hsv, pixel->subpixels_rgb, NUM_SUBPIXELS, COLOR_SPACE_HSV);
+	color_convert_rgb_pixels(pixel->subpixels_yiq, pixel->subpixels_rgb, NUM_SUBPIXELS, COLOR_SPACE_YIQ);
+	pixel->subpixels_other_calculated = TRUE;
+    }
+    switch (color_space)
+    {
+	case COLOR_SPACE_HSV :
+	    return pixel->subpixels_hsv;
+	case COLOR_SPACE_YIQ :
+	    return pixel->subpixels_yiq;
+	default :
+	    g_assert_not_reached();
+    }
+}
+
+unsigned char*
+metapixel_get_average_rgb (metapixel_t *pixel)
+{
+    unsigned int sum[NUM_CHANNELS];
+    int i, j;
+    unsigned int num_pixels;
+
+    if (pixel->average_rgb_calculated)
+	return pixel->average_rgb;
+
+    for (i = 0; i < NUM_CHANNELS; ++i)
+	sum[i] = 0;
+
+    if (pixel->subpixels_rgb_calculated)
+    {
+	num_pixels = NUM_SUBPIXELS;
+	for (i = 0; i < NUM_SUBPIXELS; ++i)
+	    for (j = 0; j < NUM_CHANNELS; ++j)
+		sum[j] += pixel->subpixels_rgb[i * NUM_CHANNELS + j];
+    }
+    else
+    {
+	unsigned int x, y;
+
+	g_assert(pixel->bitmap);
+
+	num_pixels = pixel->bitmap->width * pixel->bitmap->height;
+	g_assert(num_pixels <= G_MAXUINT / 256);
+
+	for (y = 0; y < pixel->bitmap->height; ++y)
+	{
+	    unsigned char *p = pixel->bitmap->data + y * pixel->bitmap->row_stride;
+
+	    for (x = 0; x < pixel->bitmap->width; ++x)
+	    {
+		unsigned char *q = p + x * pixel->bitmap->pixel_stride;
+
+		for (j = 0; j < NUM_CHANNELS; ++j)
+		    sum[j] += q[j];
+	    }
+	}
+    }
+
+    for (i = 0; i < NUM_CHANNELS; ++i)
+	pixel->average_rgb[i] = (sum[i] + num_pixels / 2) / num_pixels;
+    pixel->average_rgb_calculated = TRUE;
+
+    return pixel->average_rgb;
 }
 
 metapixel_t*
@@ -110,8 +167,6 @@ metapixel_new_from_bitmap (bitmap_t *bitmap, const char *name,
 
     metapixel->bitmap = bitmap_scale(bitmap, scaled_width, scaled_height, FILTER_MITCHELL);
     assert(metapixel->bitmap != 0);
-
-    generate_coefficients(metapixel);
 
     return metapixel;
 }

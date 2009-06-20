@@ -387,7 +387,7 @@ make_pixel_from_metapixel (pools_t *pools, metapixel_t *metapixel)
 {
     pixel_list_t *pixel = pools_alloc(pools, sizeof(pixel_list_t));
 
-    memcpy(pixel->color, metapixel->average_rgb, sizeof(pixel->color));
+    memcpy(pixel->color, metapixel_get_average_rgb(metapixel), sizeof(pixel->color));
     pixel->data = metapixel;
     pixel->length = 1;
     pixel->next = NULL;
@@ -496,7 +496,7 @@ millions_paste_image_from_pixel_assignments (int width, int height, pixel_assign
 
 	    g_assert(assignment->metapixel != NULL);
 
-	    memcpy(p + col * out_image->pixel_stride, assignment->metapixel->average_rgb, NUM_CHANNELS);
+	    memcpy(p + col * out_image->pixel_stride, metapixel_get_average_rgb(assignment->metapixel), NUM_CHANNELS);
 	}
     }
 

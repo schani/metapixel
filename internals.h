@@ -145,13 +145,13 @@ metapixel_t* metapixel_new (const char *name, unsigned int scaled_width, unsigne
 int metapixel_paste (metapixel_t *pixel, bitmap_t *image, unsigned int x, unsigned int y,
 		     unsigned int small_width, unsigned int small_height, unsigned int orientation);
 
-/* Converts the RGB subpixel data to HSV and YIQ */
-void metapixel_complete_subpixel (metapixel_t *pixel);
-
 /* num_new_libraries and new_libraries have very peculiar semantics! */
 metapixel_t* metapixel_find_in_libraries (int num_libraries, library_t **libraries,
 					  const char *library_path, const char *filename,
 					  int *num_new_libraries, library_t ***new_libraries);
+
+unsigned char* metapixel_get_subpixels (metapixel_t *pixel, int color_space);
+unsigned char* metapixel_get_average_rgb (metapixel_t *pixel);
 
 typedef float (*compare_func_t) (coeffs_union_t *coeffs, metapixel_t *pixel,
 				 float best_score, int color_space, float weights[]);

@@ -71,22 +71,6 @@ metric_generate_coeffs_for_subimage (coeffs_union_t *coeffs, bitmap_t *bitmap,
 	assert(0);
 }
 
-static unsigned char*
-subpixels_for_color_space (metapixel_t *pixel, int color_space)
-{
-    switch (color_space)
-    {
-	case COLOR_SPACE_RGB :
-	    return pixel->subpixels_rgb;
-	case COLOR_SPACE_HSV :
-	    return pixel->subpixels_hsv;
-	case COLOR_SPACE_YIQ :
-	    return pixel->subpixels_yiq;
-	default :
-	    assert(0);
-    }
-}
-
 #define COMPARE_FUNC_NAME   subpixel_compare_no_flip
 #define FLIP_X(x)           ((x))
 #define FLIP_Y(y)           ((y))

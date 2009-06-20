@@ -140,11 +140,13 @@ struct _metapixel_t
 
     int enabled;		/* Always true in this release */
 
-    /* these three are very internal */
+    /* these are very internal */
+    gboolean subpixels_rgb_calculated;
+    gboolean subpixels_other_calculated;
+    gboolean average_rgb_calculated;
     unsigned char subpixels_rgb[NUM_SUBPIXELS * NUM_CHANNELS];
     unsigned char subpixels_hsv[NUM_SUBPIXELS * NUM_CHANNELS];
     unsigned char subpixels_yiq[NUM_SUBPIXELS * NUM_CHANNELS];
-
     unsigned char average_rgb[NUM_CHANNELS];
 
     /* This is != 0 iff library == 0 || filename == 0, i.e., for

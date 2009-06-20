@@ -124,11 +124,12 @@ write_metapixel_metadata (metapixel_t *metapixel, FILE *out)
 		static char *channel_names[] = { "r", "g", "b" };
 
 		int i;
+		unsigned char *subpixels_rgb = metapixel_get_subpixels(metapixel, COLOR_SPACE_RGB);
 
 		lisp_print_open_paren(out);
 		    lisp_print_symbol(channel_names[channel], out);
 		    for (i = 0; i < NUM_SUBPIXELS; ++i)
-			lisp_print_integer((int)metapixel->subpixels_rgb[i * NUM_CHANNELS + channel], out);
+			lisp_print_integer((int)subpixels_rgb[i * NUM_CHANNELS + channel], out);
 		lisp_print_close_paren(out);
 	    }
 	lisp_print_close_paren(out);
@@ -245,13 +246,7 @@ read_tables (const char *library_dir, library_t *library)
 			    lst = lisp_cdr(lst);
 			}
 		}
-
-		metapixel_complete_subpixel(pixel);
-
-		/*
-		pixel->data = 0;
-		pixel->collage_positions = 0;
-		*/
+		pixel->subpixels_rgb_calculated = TRUE;
 	    }
 	    else
 	    {

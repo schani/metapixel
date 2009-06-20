@@ -240,7 +240,7 @@ get_level_1_bitmap_for_metapixel (metapixel_t *metapixel, gpointer data)
 #define ZOOM_FACTOR	1.07
 
 static void
-generate_millions (char *input_name, char *output_name)
+generate_millions (char *input_name, char *output_name, gboolean multipass)
 {
     bitmap_t *in_bitmap, *zoomed_in_bitmap, *out_bitmap, *zoomed_out_bitmap, *cropped_out_bitmap;
     int tile_width, zoomed_width, num_passes, num_pass_pixels, i, int_center;
@@ -258,9 +258,18 @@ generate_millions (char *input_name, char *output_name)
     tile_width = (int)ceilf(sqrtf(num_metapixels));
     g_assert(tile_width * tile_width >= num_metapixels);
 
-    zoomed_width = MAX(in_bitmap->width, in_bitmap->height);
-    num_passes = (zoomed_width * zoomed_width) / num_metapixels;
-    num_pass_pixels = (zoomed_width * zoomed_width + num_passes - 1) / num_passes;
+    if (multipass)
+    {
+	zoomed_width = MAX(in_bitmap->width, in_bitmap->height);
+	num_passes = (zoomed_width * zoomed_width) / num_metapixels;
+	num_pass_pixels = (zoomed_width * zoomed_width + num_passes - 1) / num_passes;
+    }
+    else
+    {
+	zoomed_width = (int)ceilf(sqrtf(num_metapixels));
+	num_passes = 1;
+	num_pass_pixels = zoomed_width * zoomed_width;
+    }
 
     g_print("doing %d passes of %d pixels each\n", num_passes, num_pass_pixels);
 
@@ -681,6 +690,7 @@ usage (void)
 	   "  -e, --search=SEARCH          choose search method (local or global)\n"
 	   "  -c, --collage                collage mode\n"
 	   "  -M, --millions               millions mode\n"
+	   "  --multipass                  multiple passes for millions mode\n"
 	   "  -d, --distance=DIST          minimum distance between two instances of\n"
 	   "                               the same constituent image\n"
 	   "  -a, --cheat=PERC             cheat with specified percentage\n"
@@ -706,6 +716,7 @@ usage (void)
 #define OPT_PRINT_PREPARE_SETTINGS     264
 #define OPT_FLIP                       265
 #define OPT_NEW_LIBRARY		       266
+#define OPT_MULTIPASS		       267
 
 #define MODE_NONE		0
 #define MODE_NEW_LIBRARY	1
@@ -721,6 +732,7 @@ main (int argc, char *argv[])
     int search;
     gboolean collage = FALSE;
     gboolean millions = FALSE;
+    gboolean multipass = FALSE;
     int classic_min_distance, collage_min_distance;
     int cheat = 0;
     float scale = 1.0;
@@ -769,6 +781,7 @@ main (int argc, char *argv[])
 		{ "scale", required_argument, 0, 's' },
 		{ "collage", no_argument, 0, 'c' },
 		{ "millions", no_argument, 0, 'M' },
+		{ "multipass", no_argument, 0, OPT_MULTIPASS },
 		{ "distance", required_argument, 0, 'd' },
 		{ "cheat", required_argument, 0, 'a' },
 		{ "metric", required_argument, 0, 'm' },
@@ -916,6 +929,10 @@ main (int argc, char *argv[])
 		millions = TRUE;
 		break;
 
+	    case OPT_MULTIPASS :
+		multipass = TRUE;
+		break;
+
 	    case 'd' :
 		classic_min_distance = collage_min_distance = atoi(optarg);
 		break;
@@ -993,6 +1010,11 @@ main (int argc, char *argv[])
     if (collage && millions)
     {
 	fprintf(stderr, "Error: --collage and --millions cannot be used together.\n");
+	return 1;
+    }
+    if (multipass && !millions)
+    {
+	fprintf(stderr, "Error: --multipass can only be used with --millions.\n");
 	return 1;
     }
     if (small_height <= 0)
@@ -1205,7 +1227,7 @@ main (int argc, char *argv[])
 		generate_collage(argv[optind], argv[optind + 1], scale, collage_min_distance,
 				 metric, cheat, flip);
 	    else if (millions)
-		generate_millions(argv[optind], argv[optind + 1]);
+		generate_millions(argv[optind], argv[optind + 1], multipass);
 	    else
 		make_classic_mosaic(argv[optind], argv[optind + 1],
 				    metric, scale, search, classic_min_distance, cheat, flip,

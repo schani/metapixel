@@ -239,14 +239,25 @@ get_level_1_bitmap_for_metapixel (metapixel_t *metapixel, gpointer data)
 //#define DUMP_ZOOMED
 #define ZOOM_FACTOR	1.07
 
+static bitmap_t*
+make_gray_bitmap (unsigned char gray)
+{
+    unsigned char pixel[3] = { gray, gray, gray };
+
+    return bitmap_new_copying(COLOR_RGB_8, 1, 1, 3, 3, pixel);
+}
+
 static void
-generate_millions (char *input_name, char *output_name, gboolean multipass)
+generate_millions (char *input_name, char *output_name, gboolean multipass, gboolean fill_with_bw)
 {
     bitmap_t *in_bitmap, *zoomed_in_bitmap, *out_bitmap, *zoomed_out_bitmap, *cropped_out_bitmap;
     int tile_width, zoomed_width, num_passes, num_pass_pixels, i, int_center;
     float zoom_level, center;
     pixel_assignment_t *pixel_assignments;
     pixel_assignment_t **pixel_assignment_ptrs;
+
+    if (fill_with_bw)
+	g_assert(!multipass);
 
     in_bitmap = bitmap_read(input_name);
     if (in_bitmap == NULL)
@@ -269,6 +280,32 @@ generate_millions (char *input_name, char *output_name, gboolean multipass)
 	zoomed_width = (int)ceilf(sqrtf(num_metapixels));
 	num_passes = 1;
 	num_pass_pixels = zoomed_width * zoomed_width;
+    }
+
+    if (fill_with_bw)
+    {
+	int num_fill_pixels = num_pass_pixels - num_metapixels;
+	int num_black_pixels = num_fill_pixels / 2;
+	int num_white_pixels = num_fill_pixels - num_black_pixels;
+	bitmap_t *black = make_gray_bitmap(0);
+	bitmap_t *white = make_gray_bitmap(255);
+
+	g_print("filling with %d black and %d white pixels\n", num_black_pixels, num_white_pixels);
+
+	for (i = 0; i < num_black_pixels; ++i)
+	{
+	    metapixel_t *metapixel = metapixel_new_from_bitmap(black, "black", black->width, black->height);
+
+	    library_add_metapixel(libraries[0], metapixel, FALSE);
+	    metapixel_free(metapixel);
+	}
+	for (i = 0; i < num_white_pixels; ++i)
+	{
+	    metapixel_t *metapixel = metapixel_new_from_bitmap(white, "white", white->width, white->height);
+
+	    library_add_metapixel(libraries[0], metapixel, FALSE);
+	    metapixel_free(metapixel);
+	}
     }
 
     g_print("doing %d passes of %d pixels each\n", num_passes, num_pass_pixels);
@@ -1128,7 +1165,7 @@ main (int argc, char *argv[])
 
 	pixel->flip = flip;
 
-	if (!library_add_metapixel(library, pixel))
+	if (!library_add_metapixel(library, pixel, TRUE))
 	{
 	    fprintf(stderr, "Error: could not add metapixel to library.\n");
 	    return 1;
@@ -1227,7 +1264,7 @@ main (int argc, char *argv[])
 		generate_collage(argv[optind], argv[optind + 1], scale, collage_min_distance,
 				 metric, cheat, flip);
 	    else if (millions)
-		generate_millions(argv[optind], argv[optind + 1], multipass);
+		generate_millions(argv[optind], argv[optind + 1], multipass, !multipass);
 	    else
 		make_classic_mosaic(argv[optind], argv[optind + 1],
 				    metric, scale, search, classic_min_distance, cheat, flip,

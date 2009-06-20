@@ -71,9 +71,15 @@ copy_metapixel_for_library (metapixel_t *metapixel, library_t *library, const ch
 
     copy->library = library;
     copy->name = strdup(metapixel->name);
-    copy->filename = strdup(filename);
-    assert(copy->filename != 0);
-    copy->bitmap = 0;
+    if (filename != NULL)
+    {
+	copy->filename = strdup(filename);
+	g_assert(copy->filename != NULL);
+    }
+    else
+	copy->filename = NULL;
+    if (metapixel->bitmap)
+	copy->bitmap = bitmap_copy(metapixel->bitmap);
     copy->next = 0;
 
     return copy;
@@ -368,63 +374,68 @@ library_close (library_t *library)
 }
 
 metapixel_t*
-library_add_metapixel (library_t *library, metapixel_t *metapixel)
+library_add_metapixel (library_t *library, metapixel_t *metapixel, gboolean save)
 {
-    char bitmap_filename[strlen(library->path) + 1 + strlen(metapixel->name) + 1 + 6 + 1];
-    char tables_filename[strlen(library->path) + 1 + strlen(TABLES_FILENAME) + 1];
-    bitmap_t *bitmap;
-    FILE *file;
-
-    /* get a filename for the bitmap */
-    sprintf(bitmap_filename, "%s/%s", library->path, metapixel->name);
-    if (access(bitmap_filename, F_OK) == 0)
+    if (save)
     {
-	int i;
+	char bitmap_filename[strlen(library->path) + 1 + strlen(metapixel->name) + 1 + 6 + 1];
+	char tables_filename[strlen(library->path) + 1 + strlen(TABLES_FILENAME) + 1];
+	bitmap_t *bitmap;
+	FILE *file;
 
-	for (i = 0; i < 1000000; ++i)
+	/* get a filename for the bitmap */
+	sprintf(bitmap_filename, "%s/%s", library->path, metapixel->name);
+	if (access(bitmap_filename, F_OK) == 0)
 	{
-	    sprintf(bitmap_filename, "%s/%s.%06d", library->path, metapixel->name, i);
-	    if (access(bitmap_filename, F_OK) == -1)
-		break;
+	    int i;
+
+	    for (i = 0; i < 1000000; ++i)
+	    {
+		sprintf(bitmap_filename, "%s/%s.%06d", library->path, metapixel->name, i);
+		if (access(bitmap_filename, F_OK) == -1)
+		    break;
+	    }
 	}
+
+	if (access(bitmap_filename, F_OK) == 0)
+	{
+	    error_report(ERROR_CANNOT_FIND_METAPIXEL_IMAGE_NAME, error_make_string_info(bitmap_filename));
+
+	    return 0;
+	}
+
+	/* write the bitmap */
+	if (metapixel->bitmap == 0)
+	    bitmap = metapixel_get_bitmap(metapixel);
+	else
+	    bitmap = metapixel->bitmap;
+
+	/* FIXME: check for errors */
+	bitmap_write(bitmap, bitmap_filename);
+
+	if (metapixel->bitmap == 0)
+	    bitmap_free(bitmap);
+
+	/* copy the metapixel */
+	metapixel = copy_metapixel_for_library(metapixel, library, bitmap_filename + strlen(library->path) + 1);
+	assert(metapixel != 0);
+
+	/* add the metadata to the tables file */
+	sprintf(tables_filename, "%s/%s", library->path, TABLES_FILENAME);
+	file = fopen(tables_filename, "a");
+	if (file == 0)
+	{
+	    metapixel_free(metapixel);
+
+	    error_report(ERROR_TABLES_FILE_CANNOT_OPEN, error_make_string_info(tables_filename));
+
+	    return 0;
+	}
+	write_metapixel_metadata(metapixel, file);
+	fclose(file);
     }
-
-    if (access(bitmap_filename, F_OK) == 0)
-    {
-	error_report(ERROR_CANNOT_FIND_METAPIXEL_IMAGE_NAME, error_make_string_info(bitmap_filename));
-
-	return 0;
-    }
-
-    /* write the bitmap */
-    if (metapixel->bitmap == 0)
-	bitmap = metapixel_get_bitmap(metapixel);
     else
-	bitmap = metapixel->bitmap;
-
-    /* FIXME: check for errors */
-    bitmap_write(bitmap, bitmap_filename);
-
-    if (metapixel->bitmap == 0)
-	bitmap_free(bitmap);
-
-    /* copy the metapixel */
-    metapixel = copy_metapixel_for_library(metapixel, library, bitmap_filename + strlen(library->path) + 1);
-    assert(metapixel != 0);
-
-    /* add the metadata to the tables file */
-    sprintf(tables_filename, "%s/%s", library->path, TABLES_FILENAME);
-    file = fopen(tables_filename, "a");
-    if (file == 0)
-    {
-	metapixel_free(metapixel);
-
-	error_report(ERROR_TABLES_FILE_CANNOT_OPEN, error_make_string_info(tables_filename));
-
-	return 0;
-    }
-    write_metapixel_metadata(metapixel, file);
-    fclose(file);
+	metapixel = copy_metapixel_for_library(metapixel, library, metapixel->filename);
 
     /* add the metapixel to the library */
     metapixel->next = library->metapixels;

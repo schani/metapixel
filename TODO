@@ -2,6 +2,9 @@
 
 * 1.1.0
 
+remove "save" argument in library_add_metapixel and implement memory
+libraries instead - metapixel in disk libraries should always be saved
+
 open files binary in rwimg
 
 test suite

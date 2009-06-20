@@ -212,8 +212,9 @@ int library_save (library_t *library, const char *path);
 void library_close (library_t *library);
 
 /* Copies the metapixel data structure and adds the copy to the
-   library.  Returns the copied metapixel or 0 on failure. */
-metapixel_t* library_add_metapixel (library_t *library, metapixel_t *metapixel);
+   library if save is TRUE.  Returns the copied metapixel or 0 on
+   failure. */
+metapixel_t* library_add_metapixel (library_t *library, metapixel_t *metapixel, gboolean save);
 
 metapixel_t* metapixel_new_from_bitmap (bitmap_t *bitmap, const char *name,
 					unsigned int scaled_width, unsigned int scaled_height);

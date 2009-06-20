@@ -243,7 +243,7 @@ static void
 generate_millions (char *input_name, char *output_name)
 {
     bitmap_t *in_bitmap, *zoomed_in_bitmap, *out_bitmap, *zoomed_out_bitmap, *cropped_out_bitmap;
-    int tile_width, metawidth, zoomed_width, num_passes, num_pass_pixels, i, int_center;
+    int tile_width, zoomed_width, num_passes, num_pass_pixels, i, int_center;
     float zoom_level, center;
     pixel_assignment_t *pixel_assignments;
     pixel_assignment_t **pixel_assignment_ptrs;
@@ -258,11 +258,9 @@ generate_millions (char *input_name, char *output_name)
     tile_width = (int)ceilf(sqrtf(num_metapixels));
     g_assert(tile_width * tile_width >= num_metapixels);
 
-    metawidth = (int)ceilf((float)MAX(in_bitmap->width, in_bitmap->height) / (float)tile_width);
-    zoomed_width = tile_width * metawidth;
-
-    num_passes = metawidth * metawidth;
-    num_pass_pixels = tile_width * tile_width;
+    zoomed_width = MAX(in_bitmap->width, in_bitmap->height);
+    num_passes = (zoomed_width * zoomed_width) / num_metapixels;
+    num_pass_pixels = (zoomed_width * zoomed_width + num_passes - 1) / num_passes;
 
     g_print("doing %d passes of %d pixels each\n", num_passes, num_pass_pixels);
 
@@ -273,8 +271,14 @@ generate_millions (char *input_name, char *output_name)
     randomize_ptr_array(zoomed_width * zoomed_width, (gpointer*)pixel_assignment_ptrs);
 
     for (i = 0; i < num_passes; ++i)
+    {
+	int num_pixels = MIN(num_pass_pixels, zoomed_width * zoomed_width - i * num_pass_pixels);
+
+	g_assert(num_pixels >= num_metapixels);
+	g_print("pass %d with %d pixels\n", i, num_pixels);
 	millions_generate_from_pixel_assignments(num_libraries, libraries, zoomed_in_bitmap,
-						 num_pass_pixels, pixel_assignment_ptrs + i * num_pass_pixels);
+						 num_pixels, pixel_assignment_ptrs + i * num_pass_pixels);
+    }
     g_free(pixel_assignment_ptrs);
 
     out_bitmap = millions_paste_image_from_pixel_assignments(zoomed_width, zoomed_width, pixel_assignments);

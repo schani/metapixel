@@ -248,11 +248,75 @@ make_gray_bitmap (unsigned char gray)
 }
 
 static void
+generate_millions_zoom (int zoomed_width, pixel_assignment_t *pixel_assignments,
+			bitmap_t *zoom_to_bitmap, char *zoom_to_bitmap_name)
+{
+    int int_center, i;
+    float zoom_level, center;
+
+    int_center = zoomed_width / 2;
+
+    pixel_assignments[int_center + int_center * zoomed_width].metapixel
+	= metapixel_new_from_bitmap(zoom_to_bitmap, zoom_to_bitmap_name,
+				    zoom_to_bitmap->width, zoom_to_bitmap->height);
+
+    center = (float)int_center + 0.5;
+    i = 1;
+    zoom_level = ZOOM_FACTOR;
+    while (zoom_level < zoomed_width)
+    {
+	float sub_width = zoomed_width / zoom_level;
+	float sub_start = center - sub_width / 2.0;
+	float sub_end = sub_start + sub_width;
+	int int_sub_start = (int)floorf(sub_start);
+	int int_sub_end = (int)ceilf(sub_end);
+	int int_sub_width = int_sub_end - int_sub_start + 1;
+	int pixel_width = (int)ceilf(zoom_level);
+	char *filename = g_strdup_printf("/tmp/zoomed.%03d.png", i);
+	unsigned int cheat = (unsigned int)(logf(zoom_level) / logf(zoomed_width) * (float)0x10000);
+	int crop_start, crop_width;
+	bitmap_t *out_bitmap, *cropped_out_bitmap, *zoomed_out_bitmap;
+
+	g_print("generating sub zoom %d (%f) with pixels of width %d - cheat %d percent\n",
+		int_sub_width, sub_width, pixel_width, cheat * 100 / 0x10000);
+
+	out_bitmap = millions_paste_subimage_from_pixel_assignments(zoomed_width, zoomed_width,
+								    int_sub_start, int_sub_start,
+								    int_sub_width, int_sub_width,
+								    pixel_width, pixel_width,
+								    pixel_assignments,
+								    cheat, get_level_1_bitmap_for_metapixel, NULL);
+	g_assert(out_bitmap != NULL);
+
+	crop_start = (int)((sub_start - int_sub_start) / int_sub_width * out_bitmap->width);
+	crop_width = (int)(sub_width / int_sub_width * out_bitmap->width);
+
+	cropped_out_bitmap = bitmap_sub(out_bitmap, crop_start, crop_start, crop_width, crop_width);
+	g_assert(cropped_out_bitmap != NULL);
+
+	bitmap_free(out_bitmap);
+
+	zoomed_out_bitmap = bitmap_scale(cropped_out_bitmap, zoom_to_bitmap->width, zoom_to_bitmap->height, FILTER_MITCHELL);
+	g_assert(zoomed_out_bitmap != NULL);
+
+	bitmap_free(cropped_out_bitmap);
+
+	bitmap_write(zoomed_out_bitmap, filename);
+
+	bitmap_free(zoomed_out_bitmap);
+
+	g_free(filename);
+
+	zoom_level *= ZOOM_FACTOR;
+	++i;
+    }
+}
+
+static void
 generate_millions (char *input_name, char *output_name, gboolean multipass, gboolean fill_with_bw)
 {
-    bitmap_t *in_bitmap, *zoomed_in_bitmap, *out_bitmap, *zoomed_out_bitmap, *cropped_out_bitmap;
-    int tile_width, zoomed_width, num_passes, num_pass_pixels, i, int_center;
-    float zoom_level, center;
+    bitmap_t *in_bitmap, *zoomed_in_bitmap, *out_bitmap, *zoomed_out_bitmap;
+    int tile_width, zoomed_width, num_passes, num_pass_pixels, i;
     pixel_assignment_t *pixel_assignments;
     pixel_assignment_t **pixel_assignment_ptrs;
 
@@ -339,61 +403,7 @@ generate_millions (char *input_name, char *output_name, gboolean multipass, gboo
     bitmap_free(zoomed_out_bitmap);
 
 #ifdef DUMP_ZOOMED
-    int_center = zoomed_width / 2;
-
-    pixel_assignments[int_center + int_center * zoomed_width].metapixel
-	= metapixel_new_from_bitmap(in_bitmap, input_name,
-				    in_bitmap->width, in_bitmap->height);
-
-    center = (float)int_center + 0.5;
-    i = 1;
-    zoom_level = ZOOM_FACTOR;
-    while (zoom_level < zoomed_width)
-    {
-	float sub_width = zoomed_width / zoom_level;
-	float sub_start = center - sub_width / 2.0;
-	float sub_end = sub_start + sub_width;
-	int int_sub_start = (int)floorf(sub_start);
-	int int_sub_end = (int)ceilf(sub_end);
-	int int_sub_width = int_sub_end - int_sub_start + 1;
-	int pixel_width = (int)ceilf(zoom_level);
-	char *filename = g_strdup_printf("/tmp/zoomed.%03d.png", i);
-	unsigned int cheat = (unsigned int)(logf(zoom_level) / logf(zoomed_width) * (float)0x10000);
-	int crop_start, crop_width;
-
-	g_print("generating sub zoom %d (%f) with pixels of width %d - cheat %d percent\n",
-		int_sub_width, sub_width, pixel_width, cheat * 100 / 0x10000);
-
-	out_bitmap = millions_paste_subimage_from_pixel_assignments(zoomed_width, zoomed_width,
-								    int_sub_start, int_sub_start,
-								    int_sub_width, int_sub_width,
-								    pixel_width, pixel_width,
-								    pixel_assignments,
-								    cheat, get_level_1_bitmap_for_metapixel, NULL);
-	g_assert(out_bitmap != NULL);
-
-	crop_start = (int)((sub_start - int_sub_start) / int_sub_width * out_bitmap->width);
-	crop_width = (int)(sub_width / int_sub_width * out_bitmap->width);
-
-	cropped_out_bitmap = bitmap_sub(out_bitmap, crop_start, crop_start, crop_width, crop_width);
-	g_assert(cropped_out_bitmap != NULL);
-
-	bitmap_free(out_bitmap);
-
-	zoomed_out_bitmap = bitmap_scale(cropped_out_bitmap, in_bitmap->width, in_bitmap->height, FILTER_MITCHELL);
-	g_assert(zoomed_out_bitmap != NULL);
-
-	bitmap_free(cropped_out_bitmap);
-
-	bitmap_write(zoomed_out_bitmap, filename);
-
-	bitmap_free(zoomed_out_bitmap);
-
-	g_free(filename);
-
-	zoom_level *= ZOOM_FACTOR;
-	++i;
-    }
+    generate_millions_zoom(zoomed_width, pixel_assignments, in_bitmap, input_name);
 #endif
 
     g_free(pixel_assignments);

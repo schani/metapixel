@@ -249,7 +249,8 @@ make_gray_bitmap (unsigned char gray)
 
 static void
 generate_millions_zoom (int zoomed_width, pixel_assignment_t *pixel_assignments,
-			int int_dest_x, int int_dest_y, bitmap_t *zoom_to_bitmap, char *zoom_to_bitmap_name)
+			int int_dest_x, int int_dest_y, bitmap_t *zoom_to_bitmap, char *zoom_to_bitmap_name,
+			char *output_prefix)
 {
     float dest_x = (float)int_dest_x + 0.5;
     float dest_y = (float)int_dest_y + 0.5;
@@ -290,7 +291,7 @@ generate_millions_zoom (int zoomed_width, pixel_assignment_t *pixel_assignments,
 	int int_sub_width = int_sub_end_x - int_sub_start_x;
 	int int_sub_height = int_sub_end_y - int_sub_start_y;
 	int pixel_width = (int)ceilf(zoom_level);
-	char *filename = g_strdup_printf("/tmp/zoomed.%03d.png", i);
+	char *filename = g_strdup_printf("%s.%03d.png", output_prefix, i);
 	unsigned int cheat = (unsigned int)(logf(zoom_level) / logf(zoomed_width) * (float)0x10000);
 	int crop_start_x, crop_start_y, crop_width, crop_height;
 	bitmap_t *out_bitmap, *cropped_out_bitmap, *zoomed_out_bitmap;
@@ -335,23 +336,17 @@ generate_millions_zoom (int zoomed_width, pixel_assignment_t *pixel_assignments,
     }
 }
 
-static void
-generate_millions (char *input_name, char *output_name, gboolean multipass, gboolean fill_with_bw)
+static pixel_assignment_t*
+generate_millions_pixel_assignments (bitmap_t *in_bitmap, char *output_name, gboolean multipass, gboolean fill_with_bw,
+				     int *_zoomed_width)
 {
-    bitmap_t *in_bitmap, *zoomed_in_bitmap, *out_bitmap, *zoomed_out_bitmap;
+    bitmap_t *zoomed_in_bitmap;
     int tile_width, zoomed_width, num_passes, num_pass_pixels, i;
     pixel_assignment_t *pixel_assignments;
     pixel_assignment_t **pixel_assignment_ptrs;
 
     if (fill_with_bw)
 	g_assert(!multipass);
-
-    in_bitmap = bitmap_read(input_name);
-    if (in_bitmap == NULL)
-    {
-	fprintf(stderr, "Error: Could not read image `%s'.\n", input_name);
-	exit(1);
-    }
 
     tile_width = (int)ceilf(sqrtf(num_metapixels));
     g_assert(tile_width * tile_width >= num_metapixels);
@@ -368,6 +363,7 @@ generate_millions (char *input_name, char *output_name, gboolean multipass, gboo
 	num_passes = 1;
 	num_pass_pixels = zoomed_width * zoomed_width;
     }
+    *_zoomed_width = zoomed_width;
 
     if (fill_with_bw)
     {
@@ -414,6 +410,27 @@ generate_millions (char *input_name, char *output_name, gboolean multipass, gboo
     }
     g_free(pixel_assignment_ptrs);
 
+    bitmap_free(zoomed_in_bitmap);
+
+    return pixel_assignments;
+}
+
+static void
+generate_millions (char *input_name, char *output_name, gboolean multipass, gboolean fill_with_bw)
+{
+    bitmap_t *in_bitmap, *out_bitmap, *zoomed_out_bitmap;
+    int zoomed_width;
+    pixel_assignment_t *pixel_assignments;
+
+    in_bitmap = bitmap_read(input_name);
+    if (in_bitmap == NULL)
+    {
+	fprintf(stderr, "Error: Could not read image `%s'.\n", input_name);
+	exit(1);
+    }
+
+    pixel_assignments = generate_millions_pixel_assignments(in_bitmap, output_name, multipass, fill_with_bw, &zoomed_width);
+
     out_bitmap = millions_paste_image_from_pixel_assignments(zoomed_width, zoomed_width, pixel_assignments);
     g_assert(out_bitmap != NULL);
 
@@ -426,13 +443,13 @@ generate_millions (char *input_name, char *output_name, gboolean multipass, gboo
     bitmap_free(zoomed_out_bitmap);
 
 #ifdef DUMP_ZOOMED
-    generate_millions_zoom(zoomed_width, pixel_assignments, zoomed_width / 2, zoomed_width / 2, in_bitmap, input_name);
+    generate_millions_zoom(zoomed_width, pixel_assignments, zoomed_width / 2, zoomed_width / 2,
+			   in_bitmap, input_name, "/tmp/zoomed");
 #endif
 
-    g_free(pixel_assignments);
-
     bitmap_free(in_bitmap);
-    bitmap_free(zoomed_in_bitmap);
+
+    g_free(pixel_assignments);
 }
 
 static int

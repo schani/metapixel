@@ -224,7 +224,7 @@ get_level_1_bitmap_for_metapixel (metapixel_t *metapixel, gpointer data)
     else
 	filename = metapixel_filename;
 
-    filename = g_strdup_printf("/home/schani/Work/unix/metapixel/contact-favorites-level1-bw/%s.png", filename);
+    filename = g_strdup_printf("/home/schani/Work/unix/metapixel/contact-favorites-bw-level1/%s", filename);
 
     bitmap = bitmap_read(filename);
     g_assert(bitmap != NULL);
@@ -236,7 +236,7 @@ get_level_1_bitmap_for_metapixel (metapixel_t *metapixel, gpointer data)
     return bitmap_copy(bitmap);
 }
 
-//#define DUMP_ZOOMED
+#define DUMP_ZOOMED
 #define ZOOM_FACTOR	1.07
 
 static bitmap_t*
@@ -250,11 +250,10 @@ make_gray_bitmap (unsigned char gray)
 static void
 generate_millions_zoom (int zoomed_width, pixel_assignment_t *pixel_assignments,
 			int int_dest_x, int int_dest_y, bitmap_t *zoom_to_bitmap, char *zoom_to_bitmap_name,
-			char *output_prefix)
+			char *output_prefix, int *frame_num)
 {
     float dest_x = (float)int_dest_x + 0.5;
     float dest_y = (float)int_dest_y + 0.5;
-    int i;
     float zoom_level;
 
     g_assert(int_dest_x >= 0 && int_dest_x < zoomed_width && int_dest_y >= 0 && int_dest_y < zoomed_width);
@@ -263,7 +262,6 @@ generate_millions_zoom (int zoomed_width, pixel_assignment_t *pixel_assignments,
 	= metapixel_new_from_bitmap(zoom_to_bitmap, zoom_to_bitmap_name,
 				    zoom_to_bitmap->width, zoom_to_bitmap->height);
 
-    i = 1;
     zoom_level = ZOOM_FACTOR;
     while (zoom_level < zoomed_width)
     {
@@ -291,7 +289,7 @@ generate_millions_zoom (int zoomed_width, pixel_assignment_t *pixel_assignments,
 	int int_sub_width = int_sub_end_x - int_sub_start_x;
 	int int_sub_height = int_sub_end_y - int_sub_start_y;
 	int pixel_width = (int)ceilf(zoom_level);
-	char *filename = g_strdup_printf("%s.%03d.png", output_prefix, i);
+	char *filename = g_strdup_printf("%s.%03d.png", output_prefix, (*frame_num)++);
 	unsigned int cheat = (unsigned int)(logf(zoom_level) / logf(zoomed_width) * (float)0x10000);
 	int crop_start_x, crop_start_y, crop_width, crop_height;
 	bitmap_t *out_bitmap, *cropped_out_bitmap, *zoomed_out_bitmap;
@@ -332,13 +330,11 @@ generate_millions_zoom (int zoomed_width, pixel_assignment_t *pixel_assignments,
 	g_free(filename);
 
 	zoom_level *= ZOOM_FACTOR;
-	++i;
     }
 }
 
 static pixel_assignment_t*
-generate_millions_pixel_assignments (bitmap_t *in_bitmap, char *output_name, gboolean multipass, gboolean fill_with_bw,
-				     int *_zoomed_width)
+generate_millions_pixel_assignments (bitmap_t *in_bitmap, gboolean multipass, gboolean fill_with_bw, int *_zoomed_width)
 {
     bitmap_t *zoomed_in_bitmap;
     int tile_width, zoomed_width, num_passes, num_pass_pixels, i;
@@ -389,6 +385,8 @@ generate_millions_pixel_assignments (bitmap_t *in_bitmap, char *output_name, gbo
 	    library_add_metapixel(libraries[0], metapixel, FALSE);
 	    metapixel_free(metapixel);
 	}
+
+	num_metapixels += num_fill_pixels;
     }
 
     g_print("doing %d passes of %d pixels each\n", num_passes, num_pass_pixels);
@@ -416,6 +414,44 @@ generate_millions_pixel_assignments (bitmap_t *in_bitmap, char *output_name, gbo
 }
 
 static void
+generate_millions_zoom_animation (char **input_names, char *output_template, gboolean multipass, gboolean fill_with_bw)
+{
+    bitmap_t *in_bitmap, *next_in_bitmap;
+    int zoomed_width;
+    pixel_assignment_t *pixel_assignments, *next_pixel_assignments;
+    int i, frame_num;
+
+    next_in_bitmap = bitmap_read(input_names[0]);
+    g_assert(next_in_bitmap != NULL);
+
+    next_pixel_assignments = generate_millions_pixel_assignments(next_in_bitmap, multipass, fill_with_bw, &zoomed_width);
+
+    frame_num = 222;
+
+    for (i = 0; input_names[i+1] != NULL; ++i)
+    {
+	char *input_name = input_names[i+1];
+
+	in_bitmap = next_in_bitmap;
+	pixel_assignments = next_pixel_assignments;
+
+	next_in_bitmap = bitmap_read(input_name);
+	g_assert(next_in_bitmap != NULL);
+
+	next_pixel_assignments = generate_millions_pixel_assignments(next_in_bitmap, multipass, fill_with_bw, &zoomed_width);
+
+	generate_millions_zoom(zoomed_width, pixel_assignments, rand() % zoomed_width, rand() % zoomed_width,
+			       next_in_bitmap, input_name, "/tmp/zoomed", &frame_num);
+
+	bitmap_free(in_bitmap);
+	g_free(pixel_assignments);
+    }
+
+    bitmap_free(next_in_bitmap);
+    g_free(next_pixel_assignments);
+}
+
+static void
 generate_millions (char *input_name, char *output_name, gboolean multipass, gboolean fill_with_bw)
 {
     bitmap_t *in_bitmap, *out_bitmap, *zoomed_out_bitmap;
@@ -429,7 +465,7 @@ generate_millions (char *input_name, char *output_name, gboolean multipass, gboo
 	exit(1);
     }
 
-    pixel_assignments = generate_millions_pixel_assignments(in_bitmap, output_name, multipass, fill_with_bw, &zoomed_width);
+    pixel_assignments = generate_millions_pixel_assignments(in_bitmap, multipass, fill_with_bw, &zoomed_width);
 
     out_bitmap = millions_paste_image_from_pixel_assignments(zoomed_width, zoomed_width, pixel_assignments);
     g_assert(out_bitmap != NULL);
@@ -437,17 +473,12 @@ generate_millions (char *input_name, char *output_name, gboolean multipass, gboo
     zoomed_out_bitmap = bitmap_scale(out_bitmap, in_bitmap->width, in_bitmap->height, FILTER_MITCHELL);
     g_assert(zoomed_out_bitmap != NULL);
 
+    bitmap_free(in_bitmap);
+
     bitmap_write(zoomed_out_bitmap, output_name);
 
     bitmap_free(out_bitmap);
     bitmap_free(zoomed_out_bitmap);
-
-#ifdef DUMP_ZOOMED
-    generate_millions_zoom(zoomed_width, pixel_assignments, zoomed_width / 2, zoomed_width / 2,
-			   in_bitmap, input_name, "/tmp/zoomed");
-#endif
-
-    bitmap_free(in_bitmap);
 
     g_free(pixel_assignments);
 }
@@ -1314,7 +1345,26 @@ main (int argc, char *argv[])
 		generate_collage(argv[optind], argv[optind + 1], scale, collage_min_distance,
 				 metric, cheat, flip);
 	    else if (millions)
-		generate_millions(argv[optind], argv[optind + 1], multipass, !multipass);
+	    {
+		char *filenames[] = {
+		    //"/home/schani/Work/unix/metapixel/burningman-faces-bw/249346902_4052f198a6.jpg",
+		    //"/home/schani/Work/unix/metapixel/burningman-faces-bw/1325008370_47f14c9a4b.jpg",
+		    //"/home/schani/Work/unix/metapixel/burningman-faces-bw/249346902_4052f198a6.jpg",
+		    "/home/schani/Work/unix/metapixel/burningman-faces-bw/22181944_546bff0168.jpg",
+		    "/home/schani/Work/unix/metapixel/burningman-faces-bw/249346902_4052f198a6.jpg",
+		    "/home/schani/Work/unix/metapixel/burningman-faces-bw/446446_0cbaa83aab.jpg",
+		    "/home/schani/Work/unix/metapixel/burningman-faces-bw/249346902_4052f198a6.jpg",
+		    "/home/schani/Work/unix/metapixel/burningman-faces-bw/41327201_8344904d64.jpg",
+		    "/home/schani/Work/unix/metapixel/burningman-faces-bw/249346902_4052f198a6.jpg",
+		    "/home/schani/Work/unix/metapixel/burningman-faces-bw/1327244200_d2a366ce0b.jpg",
+		    "/home/schani/Work/unix/metapixel/burningman-faces-bw/249346902_4052f198a6.jpg",
+		    NULL
+		};
+
+		generate_millions_zoom_animation(filenames, "/tmp/zoomed", FALSE, TRUE);
+
+		//generate_millions(argv[optind], argv[optind + 1], multipass, !multipass);
+	    }
 	    else
 		make_classic_mosaic(argv[optind], argv[optind + 1],
 				    metric, scale, search, classic_min_distance, cheat, flip,

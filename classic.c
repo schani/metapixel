@@ -675,6 +675,7 @@ classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int 
 	unsigned char black [] = { 0, 0, 0, 0 };
 	unsigned int row_height = tiling_get_rectangular_height(&mosaic->tiling, out_image_height, y);
 	bitmap_t *out_bitmap;
+	int have_empty = 0;
 
 	out_bitmap = writer_get_row(writer, &mosaic->tiling);
 	assert(out_bitmap != 0);
@@ -704,7 +705,7 @@ classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int 
 	    int index = y * mosaic->tiling.metawidth + x;
 
 	    if (mosaic->matches [index].pixel == NULL) {
-		/* FIXME: do something with the empty slot */
+		have_empty = 1;
 	    }
 	    else if (!metapixel_paste(mosaic->matches[index].pixel,
 				 out_bitmap, column_x, 0, column_width, row_height,
@@ -736,7 +737,28 @@ classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int 
 	    source_bitmap = bitmap_scale(reader->in_image, out_image_width, row_height, FILTER_MITCHELL);
 	    assert(source_bitmap != 0);
 
-	    bitmap_alpha_compose(out_bitmap, source_bitmap, cheat);
+	    if (have_empty) {
+		for (x = 0; x < mosaic->tiling.metawidth; ++x)
+		{
+		    unsigned int column_x = tiling_get_rectangular_x(&mosaic->tiling, out_image_width, x);
+		    unsigned int column_width = tiling_get_rectangular_width(&mosaic->tiling, out_image_width, x);
+		    int index = y * mosaic->tiling.metawidth + x;
+		    bitmap_t *out_sub, *source_sub;
+
+		    if (mosaic->matches [index].pixel == NULL)
+			continue;
+
+		    out_sub = bitmap_sub (out_bitmap, column_x, 0, column_width, row_height);
+		    source_sub = bitmap_sub (source_bitmap, column_x, 0, column_width, row_height);
+
+		    bitmap_alpha_compose (out_sub, source_sub, cheat);
+
+		    bitmap_free (out_sub);
+		    bitmap_free (source_sub);
+		}
+	    } else {
+		bitmap_alpha_compose(out_bitmap, source_bitmap, cheat);
+	    }
 
 	    bitmap_free(source_bitmap);
 	}

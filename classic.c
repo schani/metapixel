@@ -639,6 +639,7 @@ classic_free (classic_mosaic_t *mosaic)
 
 int
 classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int cheat,
+	       classic_reader_t *background_reader,
 	       classic_writer_t *writer, progress_report_func_t report_func)
 {
     int x, y;
@@ -673,7 +674,16 @@ classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int 
 	assert(out_bitmap->width == out_image_width);
 	assert(out_bitmap->height == row_height);
 
-	bitmap_fill (out_bitmap, black);
+	if (background_reader == NULL) {
+	    bitmap_fill (out_bitmap, black);
+	} else {
+	    bitmap_t *background;
+
+	    read_classic_row (background_reader);
+	    background = bitmap_scale (background_reader->in_image, out_image_width, row_height, FILTER_MITCHELL);
+	    bitmap_paste (out_bitmap, background, 0, 0);
+	    bitmap_free (background);
+	}
 
 	for (x = 0; x < mosaic->tiling.metawidth; ++x)
 	{
@@ -741,7 +751,9 @@ classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int 
 
 bitmap_t*
 classic_paste_to_bitmap (classic_mosaic_t *mosaic, unsigned int width, unsigned int height,
-			 bitmap_t *in_image, unsigned int cheat, progress_report_func_t report_func)
+			 bitmap_t *in_image, unsigned int cheat,
+			 classic_reader_t *background_reader,
+			 progress_report_func_t report_func)
 {
     bitmap_t *out_bitmap = bitmap_new_empty(COLOR_RGB_8, width, height);
     classic_writer_t *writer;
@@ -759,7 +771,7 @@ classic_paste_to_bitmap (classic_mosaic_t *mosaic, unsigned int width, unsigned 
 	assert(reader != 0);
     }
 
-    if (!classic_paste(mosaic, reader, cheat, writer, report_func))
+    if (!classic_paste(mosaic, reader, cheat, background_reader, writer, report_func))
     {
 	bitmap_free(out_bitmap);
 	out_bitmap = 0;

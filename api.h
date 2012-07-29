@@ -296,10 +296,12 @@ void collage_free (collage_mosaic_t *mosaic);
    cheating) to 0x10000 (full opacity).  If cheat == 0, then
    reader/in_image can be 0. */
 int classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int cheat,
+		   classic_reader_t *background_reader,
 		   classic_writer_t *writer, progress_report_func_t report_func);
 /* width and height are the width and height of the resulting bitmap. */
 bitmap_t* classic_paste_to_bitmap (classic_mosaic_t *mosaic, unsigned int width, unsigned int height,
-				   bitmap_t *in_image, unsigned int cheat, progress_report_func_t report_func);
+				   bitmap_t *in_image, unsigned int cheat, classic_reader_t *background_reader,
+				   progress_report_func_t report_func);
 bitmap_t* collage_paste_to_bitmap (collage_mosaic_t *mosaic, unsigned int width, unsigned int height,
 				   bitmap_t *in_image, unsigned int cheat, progress_report_func_t report_func);
 

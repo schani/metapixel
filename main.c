@@ -147,7 +147,7 @@ print_current_time (void)
 
 static void
 generate_collage (char *input_name, char *output_name, float scale, int min_distance, int metric_kind, int cheat,
-		  unsigned int allowed_flips, int max_pixels)
+		  unsigned int allowed_flips, int max_pixels, char *background_name)
 {
     bitmap_t *in_bitmap, *out_bitmap;
     metric_t metric;
@@ -155,7 +155,7 @@ generate_collage (char *input_name, char *output_name, float scale, int min_dist
     unsigned int scaled_small_width = (unsigned int)(small_width / scale);
     unsigned int scaled_small_height = (unsigned int)(small_height / scale);
 
-    assert (max_pixels == 0);
+    assert (max_pixels == 0 && background_name == NULL);
 
     in_bitmap = bitmap_read(input_name);
     if (in_bitmap == 0)
@@ -242,7 +242,7 @@ make_classic_reader (const char *in_image_name, float in_image_scale)
 static int
 make_classic_mosaic (char *in_image_name, char *out_image_name,
 		     int metric_kind, float scale, int search, int min_distance, int cheat, unsigned int flip,
-		     int max_pixels,
+		     int max_pixels, char *background_filename,
 		     char *in_protocol_name, char *out_protocol_name)
 {
     classic_mosaic_t *mosaic;
@@ -330,7 +330,7 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
     }
 
     {
-	classic_reader_t *reader = 0;
+	classic_reader_t *reader = NULL, *background_reader = NULL;
 	classic_writer_t *writer;
 	unsigned int metawidth, metaheight;
 
@@ -348,10 +348,17 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
 	    assert(reader != 0);
 	}
 
+	if (background_filename != NULL) {
+	    tiling_t tiling;
+	    tiling_init_rectangular (&tiling, metawidth, metaheight);
+	    background_reader = classic_reader_new_from_file (background_filename, &tiling);
+	    assert (background_reader != NULL);
+	}
+
 	writer = classic_writer_new_for_file(out_image_name, metawidth * small_width, metaheight * small_height);
 	assert(writer != 0);
 
-	classic_paste(mosaic, reader, cheat * 0x10000 / 100, writer, 0);
+	classic_paste(mosaic, reader, cheat * 0x10000 / 100, background_reader, writer, 0);
 
 	classic_writer_free(writer);
 
@@ -560,6 +567,7 @@ main (int argc, char *argv[])
     char *out_filename = 0;
     char *in_filename = 0;
     char *antimosaic_filename = 0;
+    char *background_filename = 0;
     string_list_t *library_directories = 0;
     int prepare_width = 0, prepare_height = 0;
     unsigned int flip = 0xdeadbeef;
@@ -609,12 +617,13 @@ main (int argc, char *argv[])
 		{ "antimosaic", required_argument, 0, 'x' },
 		{ "forbid-reconstruction", required_argument, 0, 'f' },
 		{ "max-pixels", required_argument, 0, 'M' },
+		{ "background", required_argument, 0, 'B' },
 		{ 0, 0, 0, 0 }
 	    };
 
 	int option, option_index;
 
-	option = getopt_long(argc, argv, "l:m:e:w:h:C:W:s:cd:a:x:f:M:", long_options, &option_index);
+	option = getopt_long(argc, argv, "l:m:e:w:h:C:W:s:cd:a:x:f:M:B:", long_options, &option_index);
 
 	if (option == -1)
 	    break;
@@ -786,6 +795,14 @@ main (int argc, char *argv[])
 		max_pixels = atoi (optarg);
 		break;
 
+	    case 'B' :
+		if (background_filename != NULL) {
+		    fprintf (stderr, "Error: at most one background picture can be specified.\n");
+		    return 1;
+		}
+		background_filename = strdup (optarg);
+		break;
+
 	    case OPT_VERSION :
 		printf("metapixel " METAPIXEL_VERSION "\n"
 		       "\n"
@@ -864,6 +881,10 @@ main (int argc, char *argv[])
     if (max_pixels < 0)
     {
 	fprintf (stderr, "Error: the maximum number of pixels must not be negative.\n");
+	return 1;
+    }
+    if (background_filename != NULL && max_pixels == 0) {
+	fprintf (stderr, "Error: a background picture only makes sense with maximum pixels.\n");
 	return 1;
     }
 
@@ -1037,11 +1058,11 @@ main (int argc, char *argv[])
 	{
 	    if (collage)
 		generate_collage(argv[optind], argv[optind + 1], scale, collage_min_distance,
-				 metric, cheat, flip, max_pixels);
+				 metric, cheat, flip, max_pixels, background_filename);
 	    else
 		make_classic_mosaic(argv[optind], argv[optind + 1],
 				    metric, scale, search, classic_min_distance, cheat, flip,
-				    max_pixels,
+				    max_pixels, background_filename,
 				    in_filename, out_filename);
 	}
 	else if (mode == MODE_BATCH)
@@ -1145,7 +1166,7 @@ main (int argc, char *argv[])
 
 			make_classic_mosaic(this_image_in_filename, this_image_out_filename,
 					    this_metric, this_scale, this_search, this_min_distance, this_cheat, 0,
-					    max_pixels,
+					    max_pixels, background_filename,
 					    this_prot_in_filename, this_prot_out_filename);
 		    }
 		    else

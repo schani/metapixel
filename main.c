@@ -62,6 +62,7 @@ static int default_collage_min_distance = DEFAULT_COLLAGE_MIN_DISTANCE;
 static int default_cheat_amount = 0;
 static int default_forbid_reconstruction_radius = 0;
 static unsigned int default_metapixel_flip = FLIP_HOR | FLIP_VER, default_prepare_flip = FLIP_HOR;
+static int default_max_pixels = 0;
 
 /* actual settings */
 
@@ -69,6 +70,7 @@ static int small_width, small_height;
 static int color_space;
 static float weight_factors[NUM_CHANNELS];
 static int forbid_reconstruction_radius;
+static int max_pixels;
 
 static int benchmark_rendering = 0;
 
@@ -145,13 +147,15 @@ print_current_time (void)
 
 static void
 generate_collage (char *input_name, char *output_name, float scale, int min_distance, int metric_kind, int cheat,
-		  unsigned int allowed_flips)
+		  unsigned int allowed_flips, int max_pixels)
 {
     bitmap_t *in_bitmap, *out_bitmap;
     metric_t metric;
     collage_mosaic_t *mosaic;
     unsigned int scaled_small_width = (unsigned int)(small_width / scale);
     unsigned int scaled_small_height = (unsigned int)(small_height / scale);
+
+    assert (max_pixels == 0);
 
     in_bitmap = bitmap_read(input_name);
     if (in_bitmap == 0)
@@ -238,6 +242,7 @@ make_classic_reader (const char *in_image_name, float in_image_scale)
 static int
 make_classic_mosaic (char *in_image_name, char *out_image_name,
 		     int metric_kind, float scale, int search, int min_distance, int cheat, unsigned int flip,
+		     int max_pixels,
 		     char *in_protocol_name, char *out_protocol_name)
 {
     classic_mosaic_t *mosaic;
@@ -278,14 +283,14 @@ make_classic_mosaic (char *in_image_name, char *out_image_name,
 
 	init_metric(&metric, metric_kind);
 
-	if (search == SEARCH_LOCAL)
-	    matcher_init_local(&matcher, &metric, min_distance);
-	else if (search == SEARCH_GLOBAL)
+	if (search == SEARCH_GLOBAL || max_pixels > 0)
 	    matcher_init_global(&matcher, &metric);
+	else if (search == SEARCH_LOCAL)
+	    matcher_init_local(&matcher, &metric, min_distance);
 	else
 	    assert(0);
 
-	mosaic = classic_generate(num_libraries, libraries, reader, &matcher, forbid_reconstruction_radius, flip, 0);
+	mosaic = classic_generate(num_libraries, libraries, reader, &matcher, forbid_reconstruction_radius, flip, max_pixels, 0);
 
 	classic_reader_free(reader);
     }
@@ -457,6 +462,8 @@ read_rc_file (void)
 			if (lisp_boolean(vars[1]))
 			    default_metapixel_flip |= FLIP_VER;
 		    }
+		    else if (lisp_match_string("(max-pixels #?(integer))", obj, vars))
+			default_max_pixels = lisp_integer (vars [0]);
 		    else
 		    {
 			fprintf(stderr, "Warning: unknown rc file option ");
@@ -571,6 +578,7 @@ main (int argc, char *argv[])
     collage_min_distance = default_collage_min_distance;
     cheat = default_cheat_amount;
     forbid_reconstruction_radius = default_forbid_reconstruction_radius + 1;
+    max_pixels = default_max_pixels;
 
     while (1)
     {
@@ -600,12 +608,13 @@ main (int argc, char *argv[])
 		{ "search", required_argument, 0, 'e' },
 		{ "antimosaic", required_argument, 0, 'x' },
 		{ "forbid-reconstruction", required_argument, 0, 'f' },
+		{ "max-pixels", required_argument, 0, 'M' },
 		{ 0, 0, 0, 0 }
 	    };
 
 	int option, option_index;
 
-	option = getopt_long(argc, argv, "l:m:e:w:h:C:W:s:cd:a:x:f:", long_options, &option_index);
+	option = getopt_long(argc, argv, "l:m:e:w:h:C:W:s:cd:a:x:f:M:", long_options, &option_index);
 
 	if (option == -1)
 	    break;
@@ -773,6 +782,10 @@ main (int argc, char *argv[])
 		forbid_reconstruction_radius = atoi(optarg) + 1;
 		break;
 
+	    case 'M' :
+		max_pixels = atoi (optarg);
+		break;
+
 	    case OPT_VERSION :
 		printf("metapixel " METAPIXEL_VERSION "\n"
 		       "\n"
@@ -846,6 +859,11 @@ main (int argc, char *argv[])
     if (forbid_reconstruction_radius <= 0)
     {
 	fprintf(stderr, "Error: forbid reconstruction distance must be non-negative.\n");
+	return 1;
+    }
+    if (max_pixels < 0)
+    {
+	fprintf (stderr, "Error: the maximum number of pixels must not be negative.\n");
 	return 1;
     }
 
@@ -1019,10 +1037,11 @@ main (int argc, char *argv[])
 	{
 	    if (collage)
 		generate_collage(argv[optind], argv[optind + 1], scale, collage_min_distance,
-				 metric, cheat, flip);
+				 metric, cheat, flip, max_pixels);
 	    else
 		make_classic_mosaic(argv[optind], argv[optind + 1],
 				    metric, scale, search, classic_min_distance, cheat, flip,
+				    max_pixels,
 				    in_filename, out_filename);
 	}
 	else if (mode == MODE_BATCH)
@@ -1126,6 +1145,7 @@ main (int argc, char *argv[])
 
 			make_classic_mosaic(this_image_in_filename, this_image_out_filename,
 					    this_metric, this_scale, this_search, this_min_distance, this_cheat, 0,
+					    max_pixels,
 					    this_prot_in_filename, this_prot_out_filename);
 		    }
 		    else

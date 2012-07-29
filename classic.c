@@ -494,16 +494,108 @@ generate_global (int num_libraries, library_t **libraries, classic_reader_t *rea
     return mosaic;
 }
 
+static unsigned int
+best_score_index (unsigned int num_matches, metapixel_match_t *matches)
+{
+    unsigned int i, best_i;
+    float best_score;
+
+    assert (num_matches > 0);
+
+    best_i = 0;
+    best_score = matches [0].score;
+
+    for (i = 1; i < num_matches; ++i) {
+	if (matches [i].score < best_score) {
+	    best_i = i;
+	    best_score = matches [i].score;
+	}
+    }
+
+    return best_i;
+}
+
+static classic_mosaic_t*
+generate_best_max (int num_libraries, library_t **libraries, classic_reader_t *reader, metric_t *metric,
+		   unsigned int allowed_flips, unsigned int max_pixels, progress_report_func_t report_func)
+{
+    classic_mosaic_t *mosaic;
+    int metawidth = reader->tiling.metawidth, metaheight = reader->tiling.metaheight;
+    unsigned int num_matches = metawidth * metaheight;
+    int pixel, x, y, i;
+    unsigned int num_metapixels = library_count_metapixels (num_libraries, libraries);
+    metapixel_match_t matches [num_matches];
+    coeffs_union_t coeffs [num_matches];
+    metapixel_t *forbidden [max_pixels];
+    PROGRESS_DECLS;
+
+    if (max_pixels > num_metapixels)
+	max_pixels = num_metapixels;
+
+    if (num_metapixels < max_pixels)
+    {
+	error_report (ERROR_NOT_ENOUGH_BEST_MAX_METAPIXELS, error_make_null_info ());
+	return NULL;
+    }
+
+    mosaic = init_mosaic_from_reader (reader);
+    assert (mosaic != NULL);
+
+    START_PROGRESS;
+
+    for (y = 0; y < metaheight; ++y) {
+	read_classic_row(reader);
+
+	for (x = 0; x < metawidth; ++x)
+	    generate_search_coeffs_for_classic_subimage(reader, x, &coeffs [y * metawidth + x], metric);
+    }
+
+    for (pixel = 0; pixel < max_pixels; ++pixel) {
+	unsigned int best;
+
+	for (i = 0; i < num_matches; ++i) {
+	    matches [i] = search_metapixel_nearest_to (num_libraries, libraries,
+						       &coeffs [i], metric, 0, 0,
+						       forbidden, pixel,
+						       0, allowed_flips, 0, 0);
+	}
+
+	best = best_score_index (num_matches, matches);
+	assert (best < num_metapixels);
+
+	//printf ("best %d-%d\n", best % metawidth, best / metawidth);
+
+	mosaic->matches [best] = matches [best];
+	forbidden [pixel] = matches [best].pixel;
+
+#ifdef CONSOLE_OUTPUT
+	printf(".");
+	fflush(stdout);
+#endif
+
+	REPORT_PROGRESS((float)pixel / num_metapixels);
+   }
+
+#ifdef CONSOLE_OUTPUT
+    printf("\n");
+#endif
+
+    return mosaic;
+}
+
 classic_mosaic_t*
 classic_generate (int num_libraries, library_t **libraries,
 		  classic_reader_t *reader, matcher_t *matcher,
 		  unsigned int forbid_reconstruction_radius,
 		  unsigned int allowed_flips,
+		  unsigned int max_pixels,
 		  progress_report_func_t report_func)
 {
     classic_mosaic_t *mosaic;
 
-    if (matcher->kind == MATCHER_LOCAL)
+    if (max_pixels > 0)
+	mosaic = generate_best_max (num_libraries, libraries, reader, &matcher->metric, allowed_flips, max_pixels, report_func);
+    else if (matcher->kind == MATCHER_LOCAL)
 	mosaic = generate_local(num_libraries, libraries, reader, matcher->v.local.min_distance, &matcher->metric,
 				forbid_reconstruction_radius, allowed_flips, report_func);
     else if (matcher->kind == MATCHER_GLOBAL)
@@ -521,6 +613,7 @@ classic_generate_from_bitmap (int num_libraries, library_t **libraries,
 			      bitmap_t *in_image, tiling_t *tiling, matcher_t *matcher,
 			      unsigned int forbid_reconstruction_radius,
 			      unsigned int allowed_flips,
+			      unsigned int max_pixels,
 			      progress_report_func_t report_func)
 {
     classic_reader_t *reader = classic_reader_new_from_bitmap(in_image, tiling);
@@ -529,7 +622,7 @@ classic_generate_from_bitmap (int num_libraries, library_t **libraries,
     assert(reader != 0);
 
     mosaic = classic_generate(num_libraries, libraries, reader, matcher,
-			      forbid_reconstruction_radius, allowed_flips, report_func);
+			      forbid_reconstruction_radius, allowed_flips, max_pixels, report_func);
 
     classic_reader_free(reader);
 
@@ -570,6 +663,7 @@ classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int 
 
     for (y = 0; y < mosaic->tiling.metaheight; ++y)
     {
+	unsigned char black [] = { 0, 0, 0, 0 };
 	unsigned int row_height = tiling_get_rectangular_height(&mosaic->tiling, out_image_height, y);
 	bitmap_t *out_bitmap;
 
@@ -578,6 +672,8 @@ classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int 
 
 	assert(out_bitmap->width == out_image_width);
 	assert(out_bitmap->height == row_height);
+
+	bitmap_fill (out_bitmap, black);
 
 	for (x = 0; x < mosaic->tiling.metawidth; ++x)
 	{
@@ -589,7 +685,10 @@ classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int 
 	    unsigned int column_width = tiling_get_rectangular_width(&mosaic->tiling, out_image_width, x);
 	    int index = y * mosaic->tiling.metawidth + x;
 
-	    if (!metapixel_paste(mosaic->matches[index].pixel,
+	    if (mosaic->matches [index].pixel == NULL) {
+		/* FIXME: do something with the empty slot */
+	    }
+	    else if (!metapixel_paste(mosaic->matches[index].pixel,
 				 out_bitmap, column_x, 0, column_width, row_height,
 				 mosaic->matches[index].orientation))
 	    {

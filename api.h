@@ -258,11 +258,13 @@ classic_mosaic_t* classic_generate (int num_libraries, library_t **libraries,
 				    classic_reader_t *reader, matcher_t *matcher,
 				    unsigned int forbid_reconstruction_radius,
 				    unsigned int allowed_flips,
+				    unsigned int max_pixels,
 				    progress_report_func_t report_func);
 classic_mosaic_t* classic_generate_from_bitmap (int num_libraries, library_t **libraries,
 						bitmap_t *in_image, tiling_t *tiling, matcher_t *matcher,
 						unsigned int forbid_reconstruction_radius,
 						unsigned int allowed_flips,
+						unsigned int max_pixels,
 						progress_report_func_t report_func);
 collage_mosaic_t* collage_generate_from_bitmap (int num_libraries, library_t **libraries, bitmap_t *in_bitmap,
 						unsigned int min_small_width, unsigned int min_small_height,

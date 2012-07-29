@@ -54,6 +54,7 @@ error_kind (int error_code)
 	  { ERROR_PROTOCOL_INCONSISTENCY, ERROR_INFO_STRING },
 	  { ERROR_METAPIXEL_NOT_FOUND, ERROR_INFO_STRING },
 	  { ERROR_ILLEGAL_SMALL_IMAGE_SIZE, ERROR_INFO_NULL },
+	  { ERROR_NOT_ENOUGH_BEST_MAX_METAPIXELS, ERROR_INFO_NULL },
 	  { -1, -1 } };
 
     int i;
@@ -92,6 +93,7 @@ error_format_error (int error_code, error_info_t info)
 	  { ERROR_PROTOCOL_INCONSISTENCY, "Protocol `%s' is inconsistent" },
 	  { ERROR_METAPIXEL_NOT_FOUND, "Metapixel with filename `%s' not found" },
 	  { ERROR_ILLEGAL_SMALL_IMAGE_SIZE, "Illegal small image size" },
+	  { ERROR_NOT_ENOUGH_BEST_MAX_METAPIXELS, "Not enough metapixels to fill that many slots" },
 	  { -1, 0 } };
 
     int kind = error_kind(error_code);

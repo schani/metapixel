@@ -495,7 +495,7 @@ generate_global (int num_libraries, library_t **libraries, classic_reader_t *rea
 }
 
 static unsigned int
-best_score_index (unsigned int num_matches, metapixel_match_t *matches)
+best_score_index (unsigned int num_matches, metapixel_match_t *matches, unsigned char *filled)
 {
     unsigned int i, best_i;
     float best_score;
@@ -506,6 +506,8 @@ best_score_index (unsigned int num_matches, metapixel_match_t *matches)
     best_score = matches [0].score;
 
     for (i = 1; i < num_matches; ++i) {
+	if (filled [i])
+	    continue;
 	if (matches [i].score < best_score) {
 	    best_i = i;
 	    best_score = matches [i].score;
@@ -527,6 +529,7 @@ generate_best_max (int num_libraries, library_t **libraries, classic_reader_t *r
     metapixel_match_t matches [num_matches];
     coeffs_union_t coeffs [num_matches];
     metapixel_t *forbidden [max_pixels];
+    unsigned char filled_slots [num_matches];
     PROGRESS_DECLS;
 
     if (max_pixels > num_metapixels)
@@ -541,6 +544,8 @@ generate_best_max (int num_libraries, library_t **libraries, classic_reader_t *r
     mosaic = init_mosaic_from_reader (reader);
     assert (mosaic != NULL);
 
+    memset (filled_slots, 0, sizeof (filled_slots));
+
     START_PROGRESS;
 
     for (y = 0; y < metaheight; ++y) {
@@ -554,18 +559,21 @@ generate_best_max (int num_libraries, library_t **libraries, classic_reader_t *r
 	unsigned int best;
 
 	for (i = 0; i < num_matches; ++i) {
+	    if (filled_slots [i])
+		continue;
 	    matches [i] = search_metapixel_nearest_to (num_libraries, libraries,
 						       &coeffs [i], metric, 0, 0,
 						       forbidden, pixel,
 						       0, allowed_flips, 0, 0);
 	}
 
-	best = best_score_index (num_matches, matches);
+	best = best_score_index (num_matches, matches, filled_slots);
 	assert (best < num_metapixels);
 
 	//printf ("best %d-%d\n", best % metawidth, best / metawidth);
 
 	mosaic->matches [best] = matches [best];
+	filled_slots [best] = 1;
 	forbidden [pixel] = matches [best].pixel;
 
 #ifdef CONSOLE_OUTPUT

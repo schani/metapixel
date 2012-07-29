@@ -715,11 +715,7 @@ classic_paste (classic_mosaic_t *mosaic, classic_reader_t *reader, unsigned int 
 	    read_classic_row(reader);
 	    assert(reader->in_image != 0);
 
-	    if (reader->in_image_width != out_image_width
-		|| reader->num_lines != row_height)
-		source_bitmap = bitmap_scale(reader->in_image, out_image_width, row_height, FILTER_MITCHELL);
-	    else
-		source_bitmap = bitmap_copy(reader->in_image);
+	    source_bitmap = bitmap_scale(reader->in_image, out_image_width, row_height, FILTER_MITCHELL);
 	    assert(source_bitmap != 0);
 
 	    bitmap_alpha_compose(out_bitmap, source_bitmap, cheat);

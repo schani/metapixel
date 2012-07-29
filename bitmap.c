@@ -188,6 +188,9 @@ bitmap_scale (bitmap_t *src, unsigned int scaled_width, unsigned int scaled_heig
     if (filter == 0)
 	return 0;
 
+    if (src->width == scaled_width && src->height == scaled_height)
+	return bitmap_copy (src);
+
     bitmap = bitmap_new_empty(src->color, scaled_width, scaled_height);
     assert(bitmap != 0);
 

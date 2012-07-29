@@ -112,6 +112,7 @@ int bitmap_write (bitmap_t *bitmap, const char *filename);
 void bitmap_paste (bitmap_t *dst, bitmap_t *src, unsigned int x, unsigned int y);
 /* Opacity is 0 for full transparency and 0x10000 (65536) for full opacity. */
 void bitmap_alpha_compose (bitmap_t *dst, bitmap_t *src, unsigned int opacity);
+void bitmap_fill (bitmap_t *dst, unsigned char *color);
 
 struct _metapixel_t
 {

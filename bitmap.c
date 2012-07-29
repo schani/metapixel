@@ -316,3 +316,19 @@ bitmap_alpha_compose (bitmap_t *dst, bitmap_t *src, unsigned int opacity)
 	}
     }
 }
+
+void
+bitmap_fill (bitmap_t *dst, unsigned char *color)
+{
+    unsigned int num_channels = color_channels (dst->color);
+    unsigned int row, column;
+
+    for (row = 0; row < dst->height; ++row) {
+	unsigned char *dst_data = dst->data + row * dst->row_stride;
+
+	for (column = 0; column < dst->width; ++column) {
+	    memcpy (dst_data, color, num_channels);
+	    dst_data += dst->pixel_stride;
+	}
+    }
+}

@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <float.h>
 
 #include "lispreader/lispreader.h"
 
@@ -497,15 +498,12 @@ generate_global (int num_libraries, library_t **libraries, classic_reader_t *rea
 static unsigned int
 best_score_index (unsigned int num_matches, metapixel_match_t *matches, unsigned char *filled)
 {
-    unsigned int i, best_i;
-    float best_score;
+    unsigned int i, best_i = -1;
+    float best_score = FLT_MAX;
 
     assert (num_matches > 0);
 
-    best_i = 0;
-    best_score = matches [0].score;
-
-    for (i = 1; i < num_matches; ++i) {
+    for (i = 0; i < num_matches; ++i) {
 	if (filled [i])
 	    continue;
 	if (matches [i].score < best_score) {
@@ -514,6 +512,7 @@ best_score_index (unsigned int num_matches, metapixel_match_t *matches, unsigned
 	}
     }
 
+    assert (best_i >= 0);
     return best_i;
 }
 
@@ -532,8 +531,8 @@ generate_best_max (int num_libraries, library_t **libraries, classic_reader_t *r
     unsigned char filled_slots [num_matches];
     PROGRESS_DECLS;
 
-    if (max_pixels > num_metapixels)
-	max_pixels = num_metapixels;
+    if (max_pixels > num_matches)
+	max_pixels = num_matches;
 
     if (num_metapixels < max_pixels)
     {
@@ -568,10 +567,12 @@ generate_best_max (int num_libraries, library_t **libraries, classic_reader_t *r
 	}
 
 	best = best_score_index (num_matches, matches, filled_slots);
-	assert (best < num_metapixels);
+	assert (best < num_matches);
 
 	//printf ("best %d-%d\n", best % metawidth, best / metawidth);
 
+	assert (matches [best].pixel != NULL);
+	assert (mosaic->matches [best].pixel == NULL);
 	mosaic->matches [best] = matches [best];
 	filled_slots [best] = 1;
 	forbidden [pixel] = matches [best].pixel;

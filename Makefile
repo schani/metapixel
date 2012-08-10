@@ -41,16 +41,16 @@ liblispreader :
 	$(MAKE) -C lispreader
 
 metapixel : $(OBJS) librwimg liblispreader
-	$(CC) $(LDOPTS) -o metapixel $(OBJS) rwimg/librwimg.a lispreader/liblispreader.a -lpng -ljpeg -lgif $(LIBFFM) -lm -lz
+	$(CC) -o metapixel $(OBJS) rwimg/librwimg.a lispreader/liblispreader.a -lpng -ljpeg -lgif $(LIBFFM) -lm -lz $(LDOPTS)
 
 metapixel.1 : metapixel.xml
 	xsltproc --nonet $(MANPAGE_XSL) metapixel.xml
 
 imagesize : $(IMAGESIZE_OBJS)
-	$(CC) $(LDOPTS) -o imagesize $(IMAGESIZE_OBJS) rwimg/librwimg.a -lpng -ljpeg -lgif -lm -lz
+	$(CC) -o imagesize $(IMAGESIZE_OBJS) rwimg/librwimg.a -lpng -ljpeg -lgif -lm -lz  $(LDOPTS)
 
 boredom : $(BOREDOM_OBJS)
-	$(CC) $(LDOPTS) -o boredom $(BOREDOM_OBJS) rwimg/librwimg.a -lpng -ljpeg -lgif -lm -lz
+	$(CC) -o boredom $(BOREDOM_OBJS) rwimg/librwimg.a -lpng -ljpeg -lgif -lm -lz $(LDOPTS)
 
 zoom : zoom.c rwjpeg.c rwpng.c readimage.c writeimage.c
 	$(CC) -o zoom $(OPTIMIZE) $(PROFILE) $(MACOS_CCOPTS) -DTEST_ZOOM -DRWIMG_JPEG -DRWIMG_PNG \

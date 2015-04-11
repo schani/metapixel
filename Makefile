@@ -3,7 +3,7 @@ INSTALL = install
 MANPAGE_XSL = /usr/share/xml/docbook/stylesheet/nwalsh/current/manpages/docbook.xsl
 
 BINDIR = $(PREFIX)/bin
-MANDIR = $(PREFIX)/man
+MANDIR = $(PREFIX)/share/man
 
 VERSION = 1.1.0
 
@@ -66,7 +66,7 @@ install : metapixel metapixel.1
 	$(INSTALL) -d $(BINDIR)
 	$(INSTALL) metapixel $(BINDIR)
 	$(INSTALL) metapixel-prepare $(BINDIR)
-	$(INSTALL) metapixel.1 $(MANDIR)/man1
+	$(INSTALL) -D metapixel.1 $(MANDIR)/man1/metapixel.1
 #	$(INSTALL) imagesize $(BINDIR)
 #	$(INSTALL) sizesort $(BINDIR)
 

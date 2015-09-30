@@ -504,14 +504,19 @@ usage (void)
 	   "  -C, --color-space=SPACE      select color space (hsv, rgb, yiq)\n"
 	   "                               default is hsv\n"
 	   "  -W, --weights=A,B,C          assign relative weights to color channels\n"
+	   "                               default to 1,1,1\n"
 	   "  -s  --scale=SCALE            scale input image by specified factor\n"
 	   "  -m, --metric=METRIC          choose metric (only subpixel is valid)\n"
 	   "  -e, --search=SEARCH          choose search method (local or global)\n"
+	   "                               default to local\n"
 	   "  -c, --collage                collage mode\n"
 	   "  -d, --distance=DIST          minimum distance between two instances of\n"
 	   "                               the same constituent image\n"
+	   "                               default to %d\n"
 	   "  -a, --cheat=PERC             cheat with specified percentage\n"
+	   "                               default to %d\n"
 	   "  -f, --forbid-reconstruction=DIST\n"
+	   "                               default to %d"
 	   "                               forbid placing antimosaic images on their\n"
 	   "                               original locations or locations around it\n"
 	   "  --flip=DIRECTIONS            specify along which axis images may be\n"
@@ -519,7 +524,11 @@ usage (void)
 	   "  --out=FILE                   write protocol to file\n"
 	   "  --in=FILE                    read protocol from file and use it\n"
 	   "\n"
-	   "Report bugs and suggestions to schani@complang.tuwien.ac.at\n");
+	   "Report bugs and suggestions to schani@complang.tuwien.ac.at\n",
+	   default_classic_min_distance,
+	   default_cheat_amount,
+	   default_forbid_reconstruction_radius + 1
+	   );
 }
 
 #define OPT_VERSION                    256

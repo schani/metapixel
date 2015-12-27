@@ -1,0 +1,11 @@
+language: c
+sudo: required
+before_script:
+  - git submodule update --init --recursive
+  - sudo apt-get update -qq
+  - sudo apt-get install -y libgif-dev
+  - sudo apt-get install -y libjpeg-dev
+  - sudo apt-get install -y libpng-dev
+  - sudo apt-get install -y libglib2.0-dev
+script:
+  - make metapixel convert metapixel-imagesize

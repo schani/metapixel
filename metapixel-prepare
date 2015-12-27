@@ -27,6 +27,7 @@ use strict;
 
 use Getopt::Long;
 use File::Basename;
+use Cwd 'abs_path';
 use IO::Handle;
 
 sub disambiguate_filename {
@@ -121,12 +122,14 @@ sub process_dir {
 
 	    print "Testing file: $fullname\n" if $DEBUG;
 
-	    while (-l $fullname) {
+	    if (-l $fullname) {
 		print "Following symlink: $fullname\n" if $DEBUG;
-		$fullname = readlink($fullname);
+		# Get full path since it might be relevant to original directory
+		$fullname = abs_path($fullname);
+		print "Got: $fullname\n" if $DEBUG;
 	    }
 
-	    if (-f $fullname && -r $fullname) {
+	    if (-f $fullname && -e $fullname) {
 		my ($name, $path, $suffix) = fileparse($fullname);
 
 		print "Processing: $fullname\n" if $DEBUG;

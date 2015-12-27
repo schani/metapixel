@@ -164,7 +164,7 @@ location it has in the resulting mosaic.
 Here's how you create an antimosaic with a minimum reconstruction
 distance of 2:
 
-    metapixel --library images -x input.jpg -f 2 --metapixel input.jpg output.png
+    metapixel -x input.jpg -f 2 --metapixel input.jpg output.png
 
 ## The configuration file
 

@@ -11,8 +11,8 @@ VERSION = 1.0.2
 OPTIMIZE = -O2
 #PROFILE = -pg
 
-MACOS_LDOPTS = -L/sw/lib
-MACOS_CCOPTS = -I/sw/include
+RWIMG_CFLAGS = `pkg-config --cflags libpng` -I/usr/local/include
+MACOS_LDOPTS = `pkg-config --libs libpng` -L/usr/local/lib -ljpeg -lgif
 
 FORMATDEFS = -DRWIMG_JPEG -DRWIMG_PNG -DRWIMG_GIF
 
@@ -28,7 +28,7 @@ OBJS = metapixel.o vector.o zoom.o $(LISPREADER_OBJS) getopt.o getopt1.o
 CONVERT_OBJS = convert.o $(LISPREADER_OBJS) getopt.o getopt1.o
 IMAGESIZE_OBJS = imagesize.o
 
-all : metapixel metapixel.1 convert metapixel-imagesize
+all : metapixel convert metapixel-imagesize
 
 metapixel : $(OBJS) librwimg
 	$(CC) $(LDOPTS) -o metapixel $(OBJS) rwimg/librwimg.a -lpng -ljpeg -lgif $(LIBFFM) -lm -lz
@@ -49,7 +49,7 @@ zoom : zoom.c librwimg
 	$(CC) $(CCOPTS) $(FORMATDEFS) -c $<
 
 librwimg :
-	$(MAKE) -C rwimg
+	$(MAKE) CFLAGS="$(RWIMG_CFLAGS)" -C rwimg
 
 install : metapixel metapixel.1
 	$(INSTALL) -d $(BINDIR)

@@ -15,16 +15,23 @@ To compile Metapixel you need, in addition to a C compiler, libpng,
 libjpeg, and giflib.  To run the script for preparing constituent
 images, you will additionally need Perl.  Most Linux distributions
 contain these software packages.  On OS X, you can get them with
-[Homebrew](http://brew.sh/).
+[Homebrew](http://brew.sh/):
+
+    brew install libpng jpeg giflib
+
+If you got the Metapixel sources by cloning a Git repository, to fetch
+required submodules do
+
+    git submodule update --init
 
 Edit the first line of `Makefile` if you want to install Metapixel
 somewhere else than `/usr/local`.  Then, type
 
     make
 
-If everything compiled fine, become root and type
+If everything compiled fine, do
 
-    make install
+    sudo make install
 
 ## Configuring Metapixel
 

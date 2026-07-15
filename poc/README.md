@@ -59,6 +59,7 @@ uniformly, never per-target.
 | `src/matcher.worker.ts` | phase A + phase B assignment in a Web Worker (~5–20 ms per mosaic) |
 | `src/mosaic.ts` | target analysis (256px, 1px per cell), worker wrapper, live insertion |
 | `src/renderer.ts` | instanced WebGL2 tile renderer, flat-photo overlays for zoom handoff, tone curve |
+| `src/detail.ts` | neighbor fidelity: tiles the camera zooms past get sharp flats (≥4% of viewport) and their own mosaics (≥22%), by the same rules as the target; LRU-cached maps/VBOs |
 | `src/choreo.ts` | endless-zoom state machine: target picking (uniform over photos, not tiles), camera flights, coordinate rebasing (≤3 live levels) |
 | `src/capture.ts` | webcam self-view, countdown, mirrored square grayscale capture |
 | `src/main.ts` | boot, keyboard, HUD |
@@ -110,8 +111,8 @@ installation, with attribution (see `seed-photos/LICENSE.txt`).
   copies as first-class pool entries) — this requires deciding that *any
   print* of a photo satisfies its presence constraint, else variants make
   the constraint heavier instead of lighter.
-- Seed photos are 128px: soft when they are the fullscreen zoom target
-  (1024px originals exist per FFHQ id), and neighbor tiles blur when zoomed
-  past (only the target gets a flat hi-res overlay).
+- Seed photos are 128px: soft when a tile grows toward fullscreen. The FFHQ
+  ids are preserved so the 1024px originals (or a 512px re-encode) can be
+  fetched to make flats genuinely crisp.
 - Single machine, webcam capture only; phone capture + a small ingest server
   is the natural production split (the architecture doesn't change).

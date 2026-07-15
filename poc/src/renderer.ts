@@ -129,59 +129,92 @@ export class Renderer {
     }
   }
 
-  draw(levels: Level[], cam: Camera, knobs: Knobs): void {
+  freeBuffer(vbo: WebGLBuffer): void {
+    this.gl.deleteBuffer(vbo);
+  }
+
+  draw(
+    levels: Level[],
+    cam: Camera,
+    knobs: Knobs,
+    details?: Level[][]
+  ): void {
     const gl = this.gl;
     const W = gl.drawingBufferWidth;
     const H = gl.drawingBufferHeight;
     gl.viewport(0, 0, W, H);
     gl.clearColor(0.02, 0.02, 0.03, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    const aspect = W / H;
-    const halfX = cam.h * aspect;
+    const halfX = cam.h * (W / H);
+    const curveLo = knobs.curveEnabled ? knobs.curveLo : -1;
 
     gl.bindVertexArray(this.vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuf);
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 
-    const curveLo = knobs.curveEnabled ? knobs.curveLo : -1;
-    const curveHi = knobs.curveHi;
-
-    // Tint weight of the previous (parent) level's mosaic — the flat overlay
-    // of each level is tinted at its parent's weight, exactly like the tile
-    // it covers, so zoom targets get no special treatment.
+    // Tint weight of the previous (parent) level's mosaic — flat overlays are
+    // tinted at their parent's weight, exactly like the tiles they cover.
     let parentTintW = 0;
-    for (const level of levels) {
-      // Vertical screen px per tile, and level height as viewport fraction.
-      const tilePx = ((level.rect.size / G) * H) / (2 * cam.h);
-      const frac = level.rect.size / (2 * cam.h);
-      const tintW = knobs.tintEnabled
-        ? knobs.tintMax * (1 - smoothstep(knobs.tintLo, knobs.tintHi, tilePx))
-        : 0;
-
-      if (level.map && level.vbo && tilePx > 0.5) {
-        gl.useProgram(this.mosaicProg);
-        gl.uniform3f(this.uni.uRect, level.rect.x, level.rect.y, level.rect.size);
-        gl.uniform2f(this.uni.uCam, cam.x, cam.y);
-        gl.uniform2f(this.uni.uHalf, halfX, cam.h);
-        gl.uniform1f(this.uni.uTintW, tintW);
-        gl.uniform1f(this.uni.uAlpha, 1);
-        gl.uniform2f(this.uni.uCurve, curveLo, curveHi);
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.pool.atlasTex);
-        gl.uniform1i(this.uni.uAtlas, 0);
-        gl.bindBuffer(gl.ARRAY_BUFFER, level.vbo);
-        gl.enableVertexAttribArray(1);
-        gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 16, 0);
-        gl.vertexAttribDivisor(1, 1);
-        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, CELLS);
+    for (let i = 0; i < levels.length; i++) {
+      const tintW = this.drawLevel(levels[i], cam, knobs, parentTintW, H, halfX, curveLo);
+      const dts = details?.[i];
+      if (dts) {
+        for (const d of dts) {
+          this.drawLevel(d, cam, knobs, tintW, H, halfX, curveLo);
+        }
       }
+      parentTintW = tintW;
+    }
+    gl.bindVertexArray(null);
+  }
 
-      // Flat photo overlay: opaque while the level is small on screen,
-      // dissolves into the mosaic as it grows toward fullscreen.
-      if (!level.flatTex) level.flatTex = this.pool.getFlatTex(level.photoIdx);
-      const flatAlpha = 1 - smoothstep(knobs.flatLo, knobs.flatHi, frac);
-      if (level.flatTex && flatAlpha > 0.01) {
+  // Draw one square (chain level or neighbor detail): mosaic if available,
+  // then the flat photo overlay. Returns the square's own mosaic tint weight.
+  private drawLevel(
+    level: Level,
+    cam: Camera,
+    knobs: Knobs,
+    parentTintW: number,
+    H: number,
+    halfX: number,
+    curveLo: number
+  ): number {
+    const gl = this.gl;
+    // Vertical screen px per tile, and level height as viewport fraction.
+    const tilePx = ((level.rect.size / G) * H) / (2 * cam.h);
+    const frac = level.rect.size / (2 * cam.h);
+    const tintW = knobs.tintEnabled
+      ? knobs.tintMax * (1 - smoothstep(knobs.tintLo, knobs.tintHi, tilePx))
+      : 0;
+
+    if (level.map && level.vbo && tilePx > 0.5) {
+      gl.useProgram(this.mosaicProg);
+      gl.uniform3f(this.uni.uRect, level.rect.x, level.rect.y, level.rect.size);
+      gl.uniform2f(this.uni.uCam, cam.x, cam.y);
+      gl.uniform2f(this.uni.uHalf, halfX, cam.h);
+      gl.uniform1f(this.uni.uTintW, tintW);
+      gl.uniform1f(this.uni.uAlpha, 1);
+      gl.uniform2f(this.uni.uCurve, curveLo, knobs.curveHi);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.pool.atlasTex);
+      gl.uniform1i(this.uni.uAtlas, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, level.vbo);
+      gl.enableVertexAttribArray(1);
+      gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 16, 0);
+      gl.vertexAttribDivisor(1, 1);
+      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, CELLS);
+    }
+
+    // Flat photo overlay: fades in once the square is big enough on screen
+    // that the atlas tile goes soft (the same rule for zoom targets and
+    // neighbors alike), and dissolves into the mosaic near fullscreen.
+    const flatAlpha =
+      smoothstep(0.04, 0.075, frac) *
+      (1 - smoothstep(knobs.flatLo, knobs.flatHi, frac));
+    if (flatAlpha > 0.01) {
+      const flatTex = this.pool.getFlatTex(level.photoIdx);
+      if (flatTex) {
         gl.useProgram(this.flatProg);
         gl.uniform3f(this.funi.uRect, level.rect.x, level.rect.y, level.rect.size);
         gl.uniform2f(this.funi.uCam, cam.x, cam.y);
@@ -189,9 +222,9 @@ export class Renderer {
         gl.uniform1f(this.funi.uAlpha, flatAlpha);
         gl.uniform1f(this.funi.uTintB, level.tintB);
         gl.uniform1f(this.funi.uTintW, parentTintW);
-        gl.uniform2f(this.funi.uCurve, curveLo, curveHi);
+        gl.uniform2f(this.funi.uCurve, curveLo, knobs.curveHi);
         gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, level.flatTex);
+        gl.bindTexture(gl.TEXTURE_2D, flatTex);
         gl.uniform1i(this.funi.uTex, 0);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuf);
         gl.enableVertexAttribArray(0);
@@ -200,8 +233,7 @@ export class Renderer {
         gl.disableVertexAttribArray(1);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       }
-      parentTintW = tintW;
     }
-    gl.bindVertexArray(null);
+    return tintW;
   }
 }

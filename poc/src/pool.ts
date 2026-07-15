@@ -23,8 +23,10 @@ export class Pool {
   count = 0;
   seedCount = 0; // photos below this index are seeds, above are webcam
   ids: string[] = [];
-  private flatTexCache = new Map<number, WebGLTexture>();
-  private flatLoading = new Map<number, Promise<WebGLTexture>>();
+  private flatTexCache = new Map<number, WebGLTexture>(); // LRU via re-insertion
+  private flatLoading = new Set<number>();
+  private static readonly FLAT_CACHE_CAP = 512;
+  private static readonly FLAT_LOAD_CAP = 16;
   private webcamPixels = new Map<number, ImageData>(); // 256px, for map builds
   private webcamFlat = new Map<number, HTMLCanvasElement>(); // 512px
 
@@ -122,12 +124,18 @@ export class Pool {
     return ctx.getImageData(0, 0, 256, 256);
   }
 
-  // Full-photo texture for the flat overlay during zoom handoff.
+  // Full-photo texture for flat overlays. Call every frame you use it: a get
+  // marks the texture recently-used, protecting it from LRU eviction.
   getFlatTex(idx: number): WebGLTexture | null {
     const cached = this.flatTexCache.get(idx);
-    if (cached) return cached;
-    if (!this.flatLoading.has(idx)) {
-      this.flatLoading.set(idx, this.loadFlatTex(idx));
+    if (cached) {
+      this.flatTexCache.delete(idx);
+      this.flatTexCache.set(idx, cached);
+      return cached;
+    }
+    if (!this.flatLoading.has(idx) && this.flatLoading.size < Pool.FLAT_LOAD_CAP) {
+      this.flatLoading.add(idx);
+      void this.loadFlatTex(idx).finally(() => this.flatLoading.delete(idx));
     }
     return null;
   }
@@ -155,6 +163,11 @@ export class Pool {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     this.flatTexCache.set(idx, tex);
+    while (this.flatTexCache.size > Pool.FLAT_CACHE_CAP) {
+      const oldest = this.flatTexCache.keys().next().value!;
+      gl.deleteTexture(this.flatTexCache.get(oldest)!);
+      this.flatTexCache.delete(oldest);
+    }
     return tex;
   }
 

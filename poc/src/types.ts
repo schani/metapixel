@@ -25,12 +25,13 @@ export interface Camera {
   h: number; // vertical half-extent of the view, in root-space units
 }
 
+// A rendered square: either a chain level of the zoom, or a synthetic
+// "detail" for a big neighbor tile — both drawn by the same code path.
 export interface Level {
   photoIdx: number;
   rect: Rect; // position within current root space
   map: TileMap | null;
   vbo: WebGLBuffer | null;
-  flatTex: WebGLTexture | null;
   // Brightness of the parent-mosaic cell this level occupies. The flat
   // overlay is tinted with this (at the parent's tint weight) so the zoom
   // target is treated identically to every other tile.

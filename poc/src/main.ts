@@ -4,6 +4,7 @@ import { Matcher } from "./mosaic";
 import { Renderer } from "./renderer";
 import { Choreo } from "./choreo";
 import { Capture } from "./capture";
+import { DetailManager } from "./detail";
 
 const canvas = document.getElementById("glcanvas") as HTMLCanvasElement;
 const loading = document.getElementById("loading")!;
@@ -52,6 +53,7 @@ async function boot() {
   const matcher = new Matcher(pool, CAPACITY);
   const renderer = new Renderer(gl, pool);
   const choreo = new Choreo(pool, matcher, renderer);
+  const detail = new DetailManager(pool, matcher, renderer);
 
   loading.textContent = "building first mosaic…";
   const rootIdx = Math.floor(Math.random() * pool.seedCount);
@@ -117,12 +119,17 @@ async function boot() {
       fpsT = t;
     }
     if (!paused) choreo.update(dt, canvas.width / canvas.height);
-    renderer.draw(choreo.levels, choreo.cam, knobs);
+    const details = detail.update(
+      choreo.levels,
+      choreo.cam,
+      canvas.width / canvas.height
+    );
+    renderer.draw(choreo.levels, choreo.cam, knobs, details);
     if (hudVisible) {
       hud.textContent =
         `fps ${fps.toFixed(0)}  pool ${pool.count}  ` +
         `levels ${choreo.levels.length}  queue ${choreo.queue.length}  ` +
-        `h ${choreo.cam.h.toExponential(2)}  ${choreo.state}  ` +
+        `h ${choreo.cam.h.toExponential(2)}  ${choreo.state}  det ${detail.detailCount}  ` +
         `tint ${knobs.tintEnabled ? "on" : "OFF"} ` +
         `curve ${knobs.curveEnabled ? `${Math.round(knobs.curveLo * 255)}..${Math.round(knobs.curveHi * 255)}` : "OFF"}` +
         (paused ? "  PAUSED" : "");

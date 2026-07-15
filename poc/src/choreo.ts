@@ -80,7 +80,7 @@ export class Choreo {
   }
 
   private makeLevel(photoIdx: number, rect: Rect, tintB = 0.5): Level {
-    return { photoIdx, rect, map: null, vbo: null, flatTex: null, tintB };
+    return { photoIdx, rect, map: null, vbo: null, tintB };
   }
 
   private async buildMap(level: Level): Promise<void> {

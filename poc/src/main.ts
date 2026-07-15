@@ -31,6 +31,10 @@ const knobs: Knobs = {
 
 let hudVisible = true;
 let paused = false;
+// Supersampling factor: render internally above native resolution and let the
+// browser downscale. Averaging samples per output pixel suppresses the moiré
+// beat between the tile grid and the pixel grid. 's' toggles for A/B.
+let superSample = 2;
 
 async function boot() {
   const gl = canvas.getContext("webgl2")!;
@@ -40,7 +44,10 @@ async function boot() {
   }
 
   function resize() {
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = Math.min(
+      4,
+      Math.min(2, window.devicePixelRatio || 1) * superSample
+    );
     canvas.width = Math.round(canvas.clientWidth * dpr);
     canvas.height = Math.round(canvas.clientHeight * dpr);
   }
@@ -86,6 +93,9 @@ async function boot() {
       knobs.curveEnabled = !knobs.curveEnabled;
     } else if (e.key === "p") {
       paused = !paused;
+    } else if (e.key === "s") {
+      superSample = superSample === 2 ? 1 : 2;
+      resize();
     }
   });
 
@@ -131,7 +141,8 @@ async function boot() {
         `levels ${choreo.levels.length}  queue ${choreo.queue.length}  ` +
         `h ${choreo.cam.h.toExponential(2)}  ${choreo.state}  det ${detail.detailCount}  ` +
         `tint ${knobs.tintEnabled ? "on" : "OFF"} ` +
-        `curve ${knobs.curveEnabled ? `${Math.round(knobs.curveLo * 255)}..${Math.round(knobs.curveHi * 255)}` : "OFF"}` +
+        `curve ${knobs.curveEnabled ? `${Math.round(knobs.curveLo * 255)}..${Math.round(knobs.curveHi * 255)}` : "OFF"}  ` +
+        `ss ${superSample}x` +
         (paused ? "  PAUSED" : "");
     }
     requestAnimationFrame(frame);

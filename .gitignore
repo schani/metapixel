@@ -4,3 +4,11 @@ imagesize
 metapixel
 boredom
 metapixel.1
+.DS_Store
+
+# metapixel live (poc/) — photos and generated assets stay out of git
+seed-photos/
+poc/node_modules/
+poc/public/assets/
+poc/public/seed
+poc/dist/

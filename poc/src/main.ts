@@ -44,10 +44,7 @@ async function boot() {
   }
 
   function resize() {
-    const dpr = Math.min(
-      4,
-      Math.min(2, window.devicePixelRatio || 1) * superSample
-    );
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
     canvas.width = Math.round(canvas.clientWidth * dpr);
     canvas.height = Math.round(canvas.clientHeight * dpr);
   }
@@ -94,8 +91,7 @@ async function boot() {
     } else if (e.key === "p") {
       paused = !paused;
     } else if (e.key === "s") {
-      superSample = superSample === 2 ? 1 : 2;
-      resize();
+      superSample = (superSample % 3) + 1; // 1 -> 2 -> 3 -> 1
     }
   });
 
@@ -134,7 +130,7 @@ async function boot() {
       choreo.cam,
       canvas.width / canvas.height
     );
-    renderer.draw(choreo.levels, choreo.cam, knobs, details);
+    renderer.draw(choreo.levels, choreo.cam, knobs, details, superSample);
     if (hudVisible) {
       hud.textContent =
         `fps ${fps.toFixed(0)}  pool ${pool.count}  ` +

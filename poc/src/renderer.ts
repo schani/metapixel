@@ -57,6 +57,31 @@ void main() {
   vUV = aCorner;
 }`;
 
+// Exact NxN box downsample from the supersampled framebuffer. The browser's
+// own canvas downscale is bilinear (2x2 taps), which skips samples at 3:1
+// and re-introduces beat patterns; this averages every covered sample.
+const DOWN_VS = `#version 300 es
+layout(location=0) in vec2 aCorner;
+void main() {
+  gl_Position = vec4(aCorner * 2.0 - 1.0, 0.0, 1.0);
+}`;
+
+const DOWN_FS = `#version 300 es
+precision highp float;
+uniform sampler2D uTex;
+uniform int uSS;
+out vec4 outColor;
+void main() {
+  ivec2 base = ivec2(gl_FragCoord.xy) * uSS;
+  vec3 acc = vec3(0.0);
+  for (int y = 0; y < uSS; y++) {
+    for (int x = 0; x < uSS; x++) {
+      acc += texelFetch(uTex, base + ivec2(x, y), 0).rgb;
+    }
+  }
+  outColor = vec4(acc / float(uSS * uSS), 1.0);
+}`;
+
 const FLAT_FS = `#version 300 es
 precision mediump float;
 uniform sampler2D uTex;
@@ -81,12 +106,23 @@ export class Renderer {
   private vao: WebGLVertexArrayObject;
   private uni: Record<string, WebGLUniformLocation> = {};
   private funi: Record<string, WebGLUniformLocation> = {};
+  private downProg: WebGLProgram;
+  private downUni: { uTex: WebGLUniformLocation; uSS: WebGLUniformLocation };
+  private fbo: WebGLFramebuffer | null = null;
+  private fboTex: WebGLTexture | null = null;
+  private fboW = 0;
+  private fboH = 0;
 
   constructor(gl: WebGL2RenderingContext, pool: Pool) {
     this.gl = gl;
     this.pool = pool;
     this.mosaicProg = createProgram(gl, MOSAIC_VS, MOSAIC_FS);
     this.flatProg = createProgram(gl, FLAT_VS, FLAT_FS);
+    this.downProg = createProgram(gl, DOWN_VS, DOWN_FS);
+    this.downUni = {
+      uTex: gl.getUniformLocation(this.downProg, "uTex")!,
+      uSS: gl.getUniformLocation(this.downProg, "uSS")!,
+    };
     for (const n of ["uRect", "uCam", "uHalf", "uAtlas", "uTintW", "uAlpha", "uCurve"]) {
       this.uni[n] = gl.getUniformLocation(this.mosaicProg, n)!;
     }
@@ -133,16 +169,30 @@ export class Renderer {
     this.gl.deleteBuffer(vbo);
   }
 
+  // Cap the supersampled framebuffer so Retina fullscreen doesn't explode.
+  private static readonly MAX_FBO_PIXELS = 28_000_000;
+
   draw(
     levels: Level[],
     cam: Camera,
     knobs: Knobs,
-    details?: Level[][]
+    details?: Level[][],
+    superSample = 1
   ): void {
     const gl = this.gl;
     const W = gl.drawingBufferWidth;
     const H = gl.drawingBufferHeight;
-    gl.viewport(0, 0, W, H);
+    let ss = Math.max(1, Math.floor(superSample));
+    while (ss > 1 && W * ss * H * ss > Renderer.MAX_FBO_PIXELS) ss--;
+
+    if (ss > 1) {
+      this.ensureFBO(W * ss, H * ss);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+      gl.viewport(0, 0, this.fboW, this.fboH);
+    } else {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, W, H);
+    }
     gl.clearColor(0.02, 0.02, 0.03, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
     const halfX = cam.h * (W / H);
@@ -155,6 +205,7 @@ export class Renderer {
 
     // Tint weight of the previous (parent) level's mosaic — flat overlays are
     // tinted at their parent's weight, exactly like the tiles they cover.
+    // Size heuristics (tilePx) use logical pixels (H), not FBO pixels.
     let parentTintW = 0;
     for (let i = 0; i < levels.length; i++) {
       const tintW = this.drawLevel(levels[i], cam, knobs, parentTintW, H, halfX, curveLo);
@@ -166,7 +217,45 @@ export class Renderer {
       }
       parentTintW = tintW;
     }
+
+    if (ss > 1) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, W, H);
+      gl.useProgram(this.downProg);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.fboTex);
+      gl.uniform1i(this.downUni.uTex, 0);
+      gl.uniform1i(this.downUni.uSS, ss);
+      gl.disable(gl.BLEND);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuf);
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+      gl.vertexAttribDivisor(1, 0);
+      gl.disableVertexAttribArray(1);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      gl.enable(gl.BLEND);
+    }
     gl.bindVertexArray(null);
+  }
+
+  private ensureFBO(w: number, h: number): void {
+    const gl = this.gl;
+    if (this.fbo && this.fboW === w && this.fboH === h) return;
+    if (this.fboTex) gl.deleteTexture(this.fboTex);
+    if (this.fbo) gl.deleteFramebuffer(this.fbo);
+    this.fboTex = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, this.fboTex);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, w, h);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    this.fbo = gl.createFramebuffer()!;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+    gl.framebufferTexture2D(
+      gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.fboTex, 0
+    );
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    this.fboW = w;
+    this.fboH = h;
   }
 
   // Draw one square (chain level or neighbor detail): mosaic if available,

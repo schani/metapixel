@@ -1,8 +1,8 @@
 // Preprocess seed photos into tile atlases + matching descriptors.
 //
 // Output (public/assets/):
-//   atlas<N>.jpg     4096x4096 grayscale JPEG, 64x64 grid of 64px tiles
-//   luma.bin         count bytes, per photo: average luminance
+//   atlas<N>.jpg     4096x4096 color JPEG, 64x64 grid of 64px tiles
+//   rgb.bin          count*3 bytes, per photo: average R, G, B
 //   manifest.json    { tileSize, atlasSize, count, atlases, ids }
 
 import sharp from "sharp";
@@ -24,12 +24,11 @@ console.log(`${files.length} seed photos`);
 
 const count = files.length;
 const numAtlases = Math.ceil(count / PER_ATLAS);
-// Single-channel (luminance) atlases — the installation is B&W.
 const atlases = Array.from(
   { length: numAtlases },
-  () => Buffer.alloc(ATLAS * ATLAS)
+  () => Buffer.alloc(ATLAS * ATLAS * 3)
 );
-const lumas = Buffer.alloc(count);
+const rgbs = Buffer.alloc(count * 3);
 
 let done = 0;
 async function processOne(i) {
@@ -38,23 +37,27 @@ async function processOne(i) {
     .resize(TILE, TILE, { fit: "cover" })
     .raw()
     .toBuffer();
-  const tile = Buffer.alloc(TILE * TILE);
-  let sum = 0;
+  let sumR = 0, sumG = 0, sumB = 0;
   for (let p = 0; p < TILE * TILE; p++) {
-    const l = Math.round(
-      0.2126 * rgb[p * 3] + 0.7152 * rgb[p * 3 + 1] + 0.0722 * rgb[p * 3 + 2]
-    );
-    tile[p] = l;
-    sum += l;
+    sumR += rgb[p * 3];
+    sumG += rgb[p * 3 + 1];
+    sumB += rgb[p * 3 + 2];
   }
-  lumas[i] = Math.round(sum / (TILE * TILE));
+  rgbs[i * 3] = Math.round(sumR / (TILE * TILE));
+  rgbs[i * 3 + 1] = Math.round(sumG / (TILE * TILE));
+  rgbs[i * 3 + 2] = Math.round(sumB / (TILE * TILE));
 
   const atlas = atlases[Math.floor(i / PER_ATLAS)];
   const slot = i % PER_ATLAS;
   const ox = (slot % PER_ROW) * TILE;
   const oy = Math.floor(slot / PER_ROW) * TILE;
   for (let y = 0; y < TILE; y++) {
-    tile.copy(atlas, (oy + y) * ATLAS + ox, y * TILE, (y + 1) * TILE);
+    rgb.copy(
+      atlas,
+      ((oy + y) * ATLAS + ox) * 3,
+      y * TILE * 3,
+      (y + 1) * TILE * 3
+    );
   }
 
   if (++done % 1000 === 0) console.log(`${done}/${count}`);
@@ -71,12 +74,12 @@ await Promise.all(
 await mkdir(OUT_DIR, { recursive: true });
 for (let a = 0; a < numAtlases; a++) {
   const out = path.join(OUT_DIR, `atlas${a}.jpg`);
-  await sharp(atlases[a], { raw: { width: ATLAS, height: ATLAS, channels: 1 } })
+  await sharp(atlases[a], { raw: { width: ATLAS, height: ATLAS, channels: 3 } })
     .jpeg({ quality: 88 })
     .toFile(out);
   console.log(`wrote ${out}`);
 }
-await writeFile(path.join(OUT_DIR, "luma.bin"), lumas);
+await writeFile(path.join(OUT_DIR, "rgb.bin"), rgbs);
 await writeFile(
   path.join(OUT_DIR, "manifest.json"),
   JSON.stringify({

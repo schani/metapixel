@@ -1,18 +1,20 @@
 import { G, CELLS, TileMap } from "./types";
 import { Pool } from "./pool";
 
-// Target photos are analyzed at G px: one pixel = one cell's target brightness.
+// Target photos are analyzed at G px: one pixel = one cell's target color.
 export const TARGET_SIZE = G; // 256
 
-export function cellBFromImage(img: ImageData): Uint8Array {
+export function cellRGBFromImage(img: ImageData): Uint8Array {
   if (img.width !== TARGET_SIZE || img.height !== TARGET_SIZE) {
     throw new Error(`target image must be ${TARGET_SIZE}px square`);
   }
-  const cellB = new Uint8Array(CELLS);
+  const cellRGB = new Uint8Array(CELLS * 3);
   for (let c = 0; c < CELLS; c++) {
-    cellB[c] = img.data[c * 4]; // grayscale input: R == G == B
+    cellRGB[c * 3] = img.data[c * 4];
+    cellRGB[c * 3 + 1] = img.data[c * 4 + 1];
+    cellRGB[c * 3 + 2] = img.data[c * 4 + 2];
   }
-  return cellB;
+  return cellRGB;
 }
 
 export interface BuildResult {
@@ -34,7 +36,7 @@ export class Matcher {
     });
     this.worker.postMessage({
       type: "init",
-      lumas: pool.lumas.slice(0, pool.count),
+      rgbs: pool.rgbs.slice(0, pool.count * 3),
       count: pool.count,
       capacity,
     });
@@ -45,15 +47,15 @@ export class Matcher {
     });
   }
 
-  addLuma(idx: number, luma: number): void {
-    this.worker.postMessage({ type: "addLuma", idx, luma });
+  addPhoto(idx: number, rgb: Uint8Array): void {
+    this.worker.postMessage({ type: "addPhoto", idx, rgb: rgb.slice() });
   }
 
-  build(cellB: Uint8Array): Promise<BuildResult> {
+  build(cellRGB: Uint8Array): Promise<BuildResult> {
     const jobId = this.nextJob++;
     return new Promise((resolve) => {
       this.pending.set(jobId, resolve);
-      this.worker.postMessage({ type: "build", jobId, cellB: cellB.slice(), G });
+      this.worker.postMessage({ type: "build", jobId, cellRGB: cellRGB.slice(), G });
     });
   }
 }
@@ -67,13 +69,13 @@ export function isInterior(cell: number): boolean {
 }
 
 // Give photo `idx` a home in an existing map by claiming the free cell with
-// the nearest target brightness (free cells' occupants always have homes
+// the nearest target color (free cells' occupants always have homes
 // elsewhere, so eviction never removes a photo's last appearance). Prefers
 // interior cells so the new photo is a valid zoom target.
 export function insertIntoMap(
   map: TileMap,
   idx: number,
-  lumas: Uint8Array
+  rgbs: Uint8Array
 ): boolean {
   let freeSpot = -1;
   for (let c = 0; c < CELLS; c++) {
@@ -87,14 +89,19 @@ export function insertIntoMap(
     map.homeMask[freeSpot] = 1;
     return false;
   }
-  const b = lumas[idx];
-  let best = 0x7fffffff;
+  const r = rgbs[idx * 3];
+  const g = rgbs[idx * 3 + 1];
+  const b = rgbs[idx * 3 + 2];
+  let best = Infinity;
   let bc = -1;
-  let bestBorder = 0x7fffffff;
+  let bestBorder = Infinity;
   let bcBorder = -1;
   for (let c = 0; c < CELLS; c++) {
     if (map.homeMask[c]) continue;
-    const d = Math.abs(map.cellB[c] - b);
+    const dr = map.cellRGB[c * 3] - r;
+    const dg = map.cellRGB[c * 3 + 1] - g;
+    const db = map.cellRGB[c * 3 + 2] - b;
+    const d = dr * dr + dg * dg + db * db;
     if (isInterior(c)) {
       if (d < best) {
         best = d;

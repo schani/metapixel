@@ -1,7 +1,7 @@
 # metapixel live
 
 An interactive photomosaic art installation: visitors are photographed with a
-webcam, and a big screen shows an endless zoom through recursive B&W
+webcam, and a big screen shows an endless zoom through recursive
 photomosaics — every photo is a mosaic of all the other photos, and the camera
 dives from face to face forever. Freshly captured visitors are woven into
 every mosaic within seconds and the camera flies to them.
@@ -20,22 +20,31 @@ neighbors and simply happens to fill the screen. New captures claim a
 "free" cell whose occupant provably appears elsewhere in the same mosaic, so
 nobody's last appearance is ever evicted.
 
-**The mosaic is a halftone print.** The installation is black & white. Tiles
-are matched on average brightness only (at 4–8 px on screen, within-tile
-detail is invisible) and the whole image is treated as a dithering problem:
+**The mosaic is a halftone print.** Tiles are matched on one average RGB
+color per photo (at 4–8 px on screen, within-tile detail is invisible) and
+the whole image is treated as a dithering problem. Luma — the perceptually
+dominant axis — is solved exactly; chroma is solved within each luma level:
 
-- **Phase A — histogram fitting**: decide *which* 65,536 tiles to use. The
-  mandatory mass (every pool photo once) is fixed; the free budget fills the
-  target histogram's deficits at the nearest achievable brightness. The
-  1-D earth-mover's distance between the result and the target is logged as
-  "average brightness error per tile" (~2–3 for typical photos, ~25+ for
+- **Phase A — histogram fitting**: decide *which* 65,536 tiles to use, by
+  luma. The mandatory mass (every pool photo once) is fixed; the free budget
+  fills the target histogram's deficits at the nearest achievable brightness.
+  The 1-D earth-mover's distance between the result and the target is logged
+  as "average brightness error per tile" (~2–3 for typical photos, ~25+ for
   extreme ones — the irreducible cost of the everyone-appears constraint).
-- **Phase B — jittered rank matching**: decide *where* they go. Sort cells by
-  target brightness plus ±10 random jitter, sort the tile multiset by luma,
-  match rank to rank. This is the exact 1-D optimal-transport solution:
-  monotone, so brightness "crossings" (a swap that would improve the image)
-  are impossible. The jitter turns contours at pool-supply gaps into dither
-  noise and scatters surplus tiles uniformly within flat regions.
+- **Phase B — jittered rank matching**: decide *where* the luma levels go.
+  Sort cells by target brightness plus ±10 random jitter, sort the tile
+  multiset by luma, match rank to rank. This is the exact 1-D
+  optimal-transport solution: monotone, so brightness "crossings" (a swap
+  that would improve the image) are impossible. The jitter turns contours at
+  pool-supply gaps into dither noise and scatters surplus tiles uniformly
+  within flat regions.
+- **Phase B2 — chroma within each luma level**: all tiles of one level share
+  a luma, so only chroma distinguishes them. The level's cells are sorted by
+  a warm–cool key (R−B, ±10 jitter); the level's must-have photos are placed
+  by monotone minimum-cost matching on that key — the same no-crossings
+  guarantee as luma, one dimension down. Every remaining (free) cell picks a
+  random photo from the near-nearest set in full RGB distance, so free fill
+  is chroma-true without one photo carpeting a flat region.
 
   (Historical note: three generations of error-diffusion placement — greedy
   with repair, scattered homes + serpentine Floyd–Steinberg, random-order
@@ -44,7 +53,7 @@ detail is invisible) and the whole image is treated as a dithering problem:
   ends that line of bugs by construction.)
 
 **Uniform display transform.** A global tone curve ('c') stretches the pool's
-practical brightness range (p1..p99 ≈ 41..193) to full black..white,
+practical brightness range (p1..p99 ≈ 41..193) to full range, per channel,
 identically for every pixel at every zoom level — the "print medium" for the
 whole show. Optional tint blending ('t', off by default) is likewise applied
 uniformly, never per-target.
@@ -53,10 +62,10 @@ uniformly, never per-target.
 
 | module | role |
 | --- | --- |
-| `preprocess.mjs` | seed photos → grayscale 4096² JPEG atlases (64px tiles) + `luma.bin` (1 byte avg brightness per photo) |
+| `preprocess.mjs` | seed photos → color 4096² JPEG atlases (64px tiles) + `rgb.bin` (3 bytes avg color per photo) |
 | `resample.mjs` | select seeds from the full FFHQ set by brightness-histogram flattening (maximizes dark/bright tails) |
-| `src/pool.ts` | photo collection: R8 array-texture atlas (8 layers = 32,768 capacity), brightness values, flat textures, webcam additions |
-| `src/matcher.worker.ts` | phase A + phase B assignment in a Web Worker (~5–20 ms per mosaic) |
+| `src/pool.ts` | photo collection: RGBA8 array-texture atlas (4 layers = 16,384 capacity), average colors, flat textures, webcam additions |
+| `src/matcher.worker.ts` | phase A + B + B2 assignment in a Web Worker (~30–60 ms per mosaic) |
 | `src/mosaic.ts` | target analysis (256px, 1px per cell), worker wrapper, live insertion |
 | `src/renderer.ts` | instanced WebGL2 tile renderer, flat-photo overlays for zoom handoff, tone curve |
 | `src/detail.ts` | neighbor fidelity: tiles the camera zooms past get sharp flats (≥4% of viewport) and their own mosaics (≥22%), by the same rules as the target; LRU-cached maps/VBOs |

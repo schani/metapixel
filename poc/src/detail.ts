@@ -1,6 +1,6 @@
 import { G, Camera, Level, TileMap } from "./types";
 import { Pool } from "./pool";
-import { Matcher, cellBFromImage } from "./mosaic";
+import { Matcher, cellRGBFromImage } from "./mosaic";
 import { Renderer } from "./renderer";
 
 // Neighbor detail: as the camera dives, tiles it merely passes get the same
@@ -80,7 +80,11 @@ export class DetailManager {
             },
             map: entry ? entry.map : null,
             vbo: entry ? entry.vbo : null,
-            tintB: level.map.cellB[cell] / 255,
+            tint: [
+              level.map.cellRGB[cell * 3] / 255,
+              level.map.cellRGB[cell * 3 + 1] / 255,
+              level.map.cellRGB[cell * 3 + 2] / 255,
+            ],
           });
           n++;
         }
@@ -105,15 +109,15 @@ export class DetailManager {
     void (async () => {
       try {
         const img = await this.pool.getPixels256(idx);
-        const cellB = cellBFromImage(img);
-        const { assign, homeMask } = await this.matcher.build(cellB);
-        const map: TileMap = { assign, cellB, homeMask };
+        const cellRGB = cellRGBFromImage(img);
+        const { assign, homeMask } = await this.matcher.build(cellRGB);
+        const map: TileMap = { assign, cellRGB, homeMask };
         const scratch: Level = {
           photoIdx: idx,
           rect: { x: 0, y: 0, size: 1 },
           map,
           vbo: null,
-          tintB: 0,
+          tint: [0, 0, 0],
         };
         this.renderer.buildLevelVBO(scratch);
         this.mapCache.set(idx, { map, vbo: scratch.vbo!, touch: this.frame });

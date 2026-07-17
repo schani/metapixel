@@ -1,28 +1,46 @@
-// Principled mosaic assignment in two phases:
+// Principled mosaic assignment in two phases (now in color: each photo and
+// each cell is described by one average RGB; luma is Rec.709 of that color).
 //
 // Phase A — histogram fitting: decide WHICH 65,536 tiles to use, ignoring
-//   position. The must-have mass is fixed (every pool photo once = the pool's
-//   own histogram); the free budget fills the target histogram's deficits,
-//   mapped to the nearest achievable brightness. The leftover surplus is the
-//   irreducible mismatch, reported per build.
+//   position. Runs on luma — the perceptually dominant axis. The must-have
+//   mass is fixed (every pool photo once = the pool's own histogram); the
+//   free budget fills the target histogram's deficits, mapped to the nearest
+//   achievable brightness. The leftover surplus is the irreducible mismatch,
+//   reported per build.
 //
-// Phase B — placement: jittered rank matching, the exact solution of the 1-D
-//   optimal-transport problem phase A sets up: sort cells by target
+// Phase B — placement: jittered rank matching on luma, the exact solution of
+//   the 1-D optimal-transport problem phase A sets up: sort cells by target
 //   brightness (plus small random jitter), sort the multiset by luma, match
-//   rank to rank. Monotone by construction — a darker tile can never end up
-//   on a brighter cell than a brighter tile (no "crossings"), which greedy
-//   online placement could not guarantee. The jitter converts would-be
-//   contours at pool-supply gaps into dither noise and randomizes
-//   tie-breaking within flat regions, so irreducible surplus tiles scatter
-//   uniformly. Must-have photos are issued at random positions within their
-//   brightness level, by the same rule as free duplicates.
+//   rank to rank. Monotone by construction — no brightness "crossings".
+//
+// Phase B2 — color, inside each luma level: all tiles of one level share the
+//   same luma, so only chroma distinguishes them. Cells of the level are
+//   sorted by a warm–cool key (R−B, plus jitter); the level's must-have
+//   photos (each used exactly once) are placed by monotone minimum-cost
+//   matching on that key — the same no-crossings guarantee as luma, one
+//   dimension down. The remaining cells are free: each picks a random photo
+//   from the level's near-nearest set in full RGB distance (a tolerance band
+//   around the best match keeps the variety that random duplicates used to
+//   provide, without letting one photo carpet a flat region).
 
 const JITTER = 10; // +- luma jitter on cell targets before rank matching
+const CHROMA_JITTER = 10; // +- jitter on the warm-cool key inside a level
+const FREE_TOL = 12; // free picks accept photos within this RGB distance of the best
 
 let count = 0;
-let lumas = new Uint8Array(0);
+let rgbs = new Uint8Array(0); // 3 bytes per photo: avg R, G, B
+let lumas = new Uint8Array(0); // Rec.709 luma of the avg color
 
-// Photo buckets by brightness.
+function lumaOf(r: number, g: number, b: number): number {
+  return Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b);
+}
+
+// Warm–cool chroma key of a photo.
+function ckey(p: number): number {
+  return rgbs[p * 3] - rgbs[p * 3 + 2];
+}
+
+// Photo buckets by luma, each sorted ascending by chroma key.
 let buckets: Int32Array[] = [];
 let bucketLen = new Int32Array(256);
 
@@ -35,6 +53,7 @@ function rebuildBuckets(): void {
     const b = lumas[p];
     buckets[b][fill[b]++] = p;
   }
+  for (const b of buckets) b.sort((x, y) => ckey(x) - ckey(y));
 }
 
 // Distance from `b` to the nearest luma with len[luma] > 0; -1 if none.
@@ -63,14 +82,18 @@ function shuffle(a: Int32Array): void {
 }
 
 function build(
-  cellB: Uint8Array,
+  cellRGB: Uint8Array,
   G: number
 ): { assign: Int32Array; homeMask: Uint8Array; misfit: number /* EMD */ } {
-  const cells = cellB.length;
+  const cells = cellRGB.length / 3;
+  const cellLuma = new Uint8Array(cells);
+  for (let c = 0; c < cells; c++) {
+    cellLuma[c] = lumaOf(cellRGB[c * 3], cellRGB[c * 3 + 1], cellRGB[c * 3 + 2]);
+  }
 
-  // ---- Phase A: the multiset. rem[l] = tiles of brightness l we will use.
+  // ---- Phase A: the multiset. rem[l] = tiles of luma l we will use.
   const T = new Int32Array(256);
-  for (let c = 0; c < cells; c++) T[cellB[c]]++;
+  for (let c = 0; c < cells; c++) T[cellLuma[c]]++;
 
   const rem = new Int32Array(256);
   rem.set(bucketLen); // mandatory: every photo once
@@ -111,15 +134,7 @@ function build(
     misfit += Math.abs(cumA - cumT);
   }
 
-  // Must-have issuance order within each brightness level.
-  const mustOrder = buckets.map((b) => {
-    const copy = b.slice();
-    shuffle(copy);
-    return copy;
-  });
-  const mustPtr = new Int32Array(256);
-
-  // ---- Phase B: jittered rank matching.
+  // ---- Phase B: jittered rank matching on luma.
   const assign = new Int32Array(cells);
   const homeMask = new Uint8Array(cells);
 
@@ -133,7 +148,7 @@ function build(
   shuffle(scatter);
   for (let i = 0; i < cells; i++) {
     const c = scatter[i];
-    const k = cellB[c] + JITTER + Math.round((Math.random() * 2 - 1) * JITTER);
+    const k = cellLuma[c] + JITTER + Math.round((Math.random() * 2 - 1) * JITTER);
     keys[c] = Math.max(0, Math.min(KEY_RANGE - 1, k));
     keyCount[keys[c]]++;
   }
@@ -146,27 +161,113 @@ function build(
     sortedCells[fillPos[keys[c]]++] = c;
   }
 
-  // Walk the multiset in luma order, consuming rank-matched cells. Within
-  // each luma level, shuffle the cell block so must-have photos land at
-  // random positions among that level's cells.
+  // ---- Phase B2: within each luma level, place by chroma.
+  // Memoized free-pick candidate lists, keyed by (level, quantized cell RGB).
+  const freeCand = new Map<number, Int32Array>();
+
   let cursor = 0;
-  const block: number[] = [];
   for (let a = 0; a < 256; a++) {
-    let n = rem[a];
-    if (n <= 0) continue;
-    block.length = 0;
-    while (n-- > 0) block.push(sortedCells[cursor++]);
-    for (let i = block.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      const t = block[i]; block[i] = block[j]; block[j] = t;
+    const K = rem[a];
+    if (K <= 0) continue;
+    const blockStart = cursor;
+    cursor += K;
+
+    // Level's bucket; every rem[a] > 0 has bucketLen[a] > 0 by construction,
+    // but fall back to the nearest non-empty bucket just in case.
+    let bucket = buckets[a];
+    if (bucket.length === 0) {
+      const d = nearestDist(a, bucketLen);
+      bucket = buckets[lumaAt(a, d, bucketLen)];
     }
-    for (const c of block) {
-      if (mustPtr[a] < mustOrder[a].length) {
-        assign[c] = mustOrder[a][mustPtr[a]++];
-        homeMask[c] = 1;
-      } else {
-        assign[c] = buckets[a][Math.floor(Math.random() * bucketLen[a])];
+    const M = Math.min(bucket.length, K);
+
+    // Sort the level's cells by jittered warm–cool key. Pack key<<17 | rank
+    // so a plain numeric sort carries the rank along (cells <= 65536 < 2^17).
+    const packed = new Int32Array(K);
+    for (let i = 0; i < K; i++) {
+      const c = sortedCells[blockStart + i];
+      const jit = Math.round((Math.random() * 2 - 1) * CHROMA_JITTER);
+      const k = cellRGB[c * 3] - cellRGB[c * 3 + 2] + jit; // -275..275
+      packed[i] = ((k + 512) << 17) | i;
+    }
+    packed.sort();
+    const cellAt = (r: number): number =>
+      sortedCells[blockStart + (packed[r] & 0x1ffff)];
+
+    // Must-haves: monotone minimum-cost matching of the bucket's M photos
+    // (sorted by chroma key) onto the K sorted cells. dp[j][c] = best cost
+    // matching the first j photos into the first c cells.
+    const claimed = new Uint8Array(K);
+    if (M > 0 && bucket === buckets[a]) {
+      const pk = new Int32Array(M);
+      for (let j = 0; j < M; j++) pk[j] = ckey(bucket[j]);
+      const ck = new Int32Array(K);
+      for (let r = 0; r < K; r++) ck[r] = (packed[r] >> 17) - 512;
+
+      let prev = new Float64Array(K + 1); // dp[j-1][*], starts as dp[0][*] = 0
+      let cur = new Float64Array(K + 1);
+      const take = new Uint8Array(M * K);
+      for (let j = 1; j <= M; j++) {
+        cur[j - 1] = Infinity;
+        for (let c = j; c <= K; c++) {
+          const skip = cur[c - 1];
+          const t = prev[c - 1] + Math.abs(pk[j - 1] - ck[c - 1]);
+          if (t <= skip) {
+            cur[c] = t;
+            take[(j - 1) * K + (c - 1)] = 1;
+          } else {
+            cur[c] = skip;
+            take[(j - 1) * K + (c - 1)] = 0;
+          }
+        }
+        const tmp = prev; prev = cur; cur = tmp;
       }
+      let j = M, c = K;
+      while (j > 0) {
+        if (take[(j - 1) * K + (c - 1)]) {
+          const cell = cellAt(c - 1);
+          assign[cell] = bucket[j - 1];
+          homeMask[cell] = 1;
+          claimed[c - 1] = 1;
+          j--;
+        }
+        c--;
+      }
+    }
+
+    // Free cells: a random photo from the near-nearest set in RGB distance.
+    for (let r = 0; r < K; r++) {
+      if (claimed[r]) continue;
+      const cell = cellAt(r);
+      const cr = cellRGB[cell * 3];
+      const cg = cellRGB[cell * 3 + 1];
+      const cb = cellRGB[cell * 3 + 2];
+      const q = ((cr >> 3) << 10) | ((cg >> 3) << 5) | (cb >> 3);
+      const memoKey = (a << 15) | q;
+      let cand = freeCand.get(memoKey);
+      if (!cand) {
+        let best = Infinity;
+        for (let j = 0; j < bucket.length; j++) {
+          const p = bucket[j];
+          const dr = rgbs[p * 3] - cr;
+          const dg = rgbs[p * 3 + 1] - cg;
+          const db = rgbs[p * 3 + 2] - cb;
+          const d2 = dr * dr + dg * dg + db * db;
+          if (d2 < best) best = d2;
+        }
+        const lim = (Math.sqrt(best) + FREE_TOL) ** 2;
+        const list: number[] = [];
+        for (let j = 0; j < bucket.length; j++) {
+          const p = bucket[j];
+          const dr = rgbs[p * 3] - cr;
+          const dg = rgbs[p * 3 + 1] - cg;
+          const db = rgbs[p * 3 + 2] - cb;
+          if (dr * dr + dg * dg + db * db <= lim) list.push(p);
+        }
+        cand = Int32Array.from(list);
+        freeCand.set(memoKey, cand);
+      }
+      assign[cell] = cand[Math.floor(Math.random() * cand.length)];
     }
   }
   return { assign, homeMask, misfit };
@@ -175,17 +276,22 @@ function build(
 self.addEventListener("message", (e: MessageEvent) => {
   const msg = e.data;
   if (msg.type === "init") {
+    rgbs = new Uint8Array(msg.capacity * 3);
+    rgbs.set(msg.rgbs, 0);
     lumas = new Uint8Array(msg.capacity);
-    lumas.set(msg.lumas, 0);
     count = msg.count;
+    for (let p = 0; p < count; p++) {
+      lumas[p] = lumaOf(rgbs[p * 3], rgbs[p * 3 + 1], rgbs[p * 3 + 2]);
+    }
     rebuildBuckets();
-  } else if (msg.type === "addLuma") {
-    lumas[msg.idx] = msg.luma;
+  } else if (msg.type === "addPhoto") {
+    rgbs.set(msg.rgb, msg.idx * 3);
+    lumas[msg.idx] = lumaOf(msg.rgb[0], msg.rgb[1], msg.rgb[2]);
     count = Math.max(count, msg.idx + 1);
     rebuildBuckets();
   } else if (msg.type === "build") {
     const t0 = performance.now();
-    const { assign, homeMask, misfit } = build(msg.cellB, msg.G);
+    const { assign, homeMask, misfit } = build(msg.cellRGB, msg.G);
     (self as any).postMessage(
       {
         jobId: msg.jobId,

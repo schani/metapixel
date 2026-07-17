@@ -6,7 +6,7 @@ export const CELLS = G * G; // 65536
 
 export interface TileMap {
   assign: Int32Array; // CELLS photo indices
-  cellB: Uint8Array; // CELLS target brightness (also the tint, in B&W)
+  cellRGB: Uint8Array; // CELLS*3 target average color (also the tint)
   // 1 = this cell is some photo's guaranteed ("home") appearance; 0 = free
   // dithered fill. Free cells are always safe to evict: their occupant has
   // a home elsewhere in this same mosaic.
@@ -32,20 +32,21 @@ export interface Level {
   rect: Rect; // position within current root space
   map: TileMap | null;
   vbo: WebGLBuffer | null;
-  // Brightness of the parent-mosaic cell this level occupies. The flat
-  // overlay is tinted with this (at the parent's tint weight) so the zoom
-  // target is treated identically to every other tile.
-  tintB: number; // 0..1
+  // Color of the parent-mosaic cell this level occupies. The flat overlay is
+  // tinted with this (at the parent's tint weight) so the zoom target is
+  // treated identically to every other tile.
+  tint: [number, number, number]; // 0..1 each
 }
 
 export interface Knobs {
   // Global display tone curve ('c' key): linear stretch mapping the pool's
-  // practical brightness range to full black..white. Applied identically to
-  // every rendered pixel at every zoom level — tiles and flat overlays alike —
-  // so a photo looks the same as a tile and as the fullscreen zoom target.
+  // practical brightness range to full black..white, applied per channel.
+  // Applied identically to every rendered pixel at every zoom level — tiles
+  // and flat overlays alike — so a photo looks the same as a tile and as the
+  // fullscreen zoom target.
   curveEnabled: boolean;
-  curveLo: number; // 0..1 luminance mapped to black
-  curveHi: number; // 0..1 luminance mapped to white
+  curveLo: number; // 0..1 channel value mapped to 0
+  curveHi: number; // 0..1 channel value mapped to 1
   tintEnabled: boolean; // master switch for tint blending ('t' key)
   tintLo: number; // tile px below which tint is full
   tintHi: number; // tile px above which tint is zero

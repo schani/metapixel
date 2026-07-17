@@ -53,7 +53,6 @@ export class Capture {
     const c512 = document.createElement("canvas");
     c512.width = c512.height = 512;
     const ctx = c512.getContext("2d")!;
-    ctx.filter = "grayscale(1)"; // the installation is B&W
     ctx.translate(512, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(this.video, sx, sy, s, s, 0, 0, 512, 512);

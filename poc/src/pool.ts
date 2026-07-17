@@ -2,8 +2,10 @@ export const TILE = 64;
 export const ATLAS_SIZE = 4096;
 export const PER_ROW = ATLAS_SIZE / TILE; // 64
 export const PER_ATLAS = PER_ROW * PER_ROW; // 4096
-export const LAYERS = 8; // R8 is cheap: 8 layers = 134MB, 32k photo capacity
-export const CAPACITY = PER_ATLAS * LAYERS; // 32768
+// RGBA8 is 4x the footprint of the old R8 atlas, so half the layers:
+// 4 layers = ~340MB with mips, 16k photo capacity (15k seeds + headroom).
+export const LAYERS = 4;
+export const CAPACITY = PER_ATLAS * LAYERS; // 16384
 
 interface Manifest {
   tileSize: number;
@@ -13,13 +15,14 @@ interface Manifest {
   ids: string[];
 }
 
-// The photo collection: single-channel (luminance) tile atlas array-texture
-// on the GPU, average-brightness values on the CPU, plus per-photo "flat"
-// (full) textures on demand. Everything is B&W.
+// The photo collection: color tile atlas array-texture on the GPU,
+// average-RGB values on the CPU, plus per-photo "flat" (full) textures on
+// demand.
 export class Pool {
   gl: WebGL2RenderingContext;
   atlasTex: WebGLTexture;
-  lumas = new Uint8Array(CAPACITY);
+  rgbs = new Uint8Array(CAPACITY * 3); // avg R,G,B per photo
+  lumas = new Uint8Array(CAPACITY); // Rec.709 luma of the avg color
   count = 0;
   seedCount = 0; // photos below this index are seeds, above are webcam
   ids: string[] = [];
@@ -35,17 +38,26 @@ export class Pool {
     this.atlasTex = gl.createTexture()!;
   }
 
+  private setAvg(idx: number, r: number, g: number, b: number): void {
+    this.rgbs[idx * 3] = r;
+    this.rgbs[idx * 3 + 1] = g;
+    this.rgbs[idx * 3 + 2] = b;
+    this.lumas[idx] = Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b);
+  }
+
   async init(): Promise<void> {
     const gl = this.gl;
     const manifest: Manifest = await (await fetch("/assets/manifest.json")).json();
-    const lumaBuf = await (await fetch("/assets/luma.bin")).arrayBuffer();
-    this.lumas.set(new Uint8Array(lumaBuf), 0);
+    const rgbBuf = new Uint8Array(await (await fetch("/assets/rgb.bin")).arrayBuffer());
+    this.rgbs.set(rgbBuf, 0);
+    for (let i = 0; i < manifest.count; i++) {
+      this.setAvg(i, rgbBuf[i * 3], rgbBuf[i * 3 + 1], rgbBuf[i * 3 + 2]);
+    }
     this.count = this.seedCount = manifest.count;
     this.ids = manifest.ids;
 
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.atlasTex);
-    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 7, gl.R8, ATLAS_SIZE, ATLAS_SIZE, LAYERS);
-    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 7, gl.RGBA8, ATLAS_SIZE, ATLAS_SIZE, LAYERS);
 
     const scratch = document.createElement("canvas");
     scratch.width = scratch.height = ATLAS_SIZE;
@@ -56,12 +68,10 @@ export class Pool {
       ctx.drawImage(bitmap, 0, 0);
       bitmap.close();
       const rgba = ctx.getImageData(0, 0, ATLAS_SIZE, ATLAS_SIZE).data;
-      const red = new Uint8Array(ATLAS_SIZE * ATLAS_SIZE);
-      for (let p = 0; p < red.length; p++) red[p] = rgba[p * 4];
       gl.texSubImage3D(
         gl.TEXTURE_2D_ARRAY, 0, 0, 0, i,
         ATLAS_SIZE, ATLAS_SIZE, 1,
-        gl.RED, gl.UNSIGNED_BYTE, red
+        gl.RGBA, gl.UNSIGNED_BYTE, rgba
       );
     }
     gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
@@ -75,16 +85,21 @@ export class Pool {
     return idx >= this.seedCount;
   }
 
-  // Add a captured photo. canvas512: square grayscale hi-res; img256: pixels
-  // for target analysis when this photo's own mosaic is built.
+  // Add a captured photo. canvas512: square hi-res; img256: pixels for
+  // target analysis when this photo's own mosaic is built.
   addPhoto(canvas512: HTMLCanvasElement, img256: ImageData): number {
     if (this.count >= CAPACITY) throw new Error("pool full");
     const gl = this.gl;
     const idx = this.count++;
 
-    let sum = 0;
-    for (let p = 0; p < 256 * 256; p++) sum += img256.data[p * 4];
-    this.lumas[idx] = Math.round(sum / (256 * 256));
+    let sumR = 0, sumG = 0, sumB = 0;
+    for (let p = 0; p < 256 * 256; p++) {
+      sumR += img256.data[p * 4];
+      sumG += img256.data[p * 4 + 1];
+      sumB += img256.data[p * 4 + 2];
+    }
+    const n = 256 * 256;
+    this.setAvg(idx, Math.round(sumR / n), Math.round(sumG / n), Math.round(sumB / n));
 
     // Tile into the atlas.
     const tileCanvas = document.createElement("canvas");
@@ -92,16 +107,13 @@ export class Pool {
     const tctx = tileCanvas.getContext("2d")!;
     tctx.drawImage(canvas512, 0, 0, TILE, TILE);
     const tile = tctx.getImageData(0, 0, TILE, TILE).data;
-    const red = new Uint8Array(TILE * TILE);
-    for (let p = 0; p < red.length; p++) red[p] = tile[p * 4];
     const layer = Math.floor(idx / PER_ATLAS);
     const slot = idx % PER_ATLAS;
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.atlasTex);
-    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     gl.texSubImage3D(
       gl.TEXTURE_2D_ARRAY, 0,
       (slot % PER_ROW) * TILE, Math.floor(slot / PER_ROW) * TILE, layer,
-      TILE, TILE, 1, gl.RED, gl.UNSIGNED_BYTE, red
+      TILE, TILE, 1, gl.RGBA, gl.UNSIGNED_BYTE, tile
     );
     gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
 
@@ -111,7 +123,7 @@ export class Pool {
     return idx;
   }
 
-  // 256px grayscale pixels of a photo (one per mosaic cell).
+  // 256px pixels of a photo (one per mosaic cell).
   async getPixels256(idx: number): Promise<ImageData> {
     const cached = this.webcamPixels.get(idx);
     if (cached) return cached;
@@ -119,7 +131,6 @@ export class Pool {
     const c = document.createElement("canvas");
     c.width = c.height = 256;
     const ctx = c.getContext("2d")!;
-    ctx.filter = "grayscale(1)";
     ctx.drawImage(bitmap, 0, 0, 256, 256);
     return ctx.getImageData(0, 0, 256, 256);
   }
@@ -144,16 +155,9 @@ export class Pool {
     const gl = this.gl;
     let source: TexImageSource;
     if (this.isWebcam(idx)) {
-      source = this.webcamFlat.get(idx)!; // already grayscale from capture
+      source = this.webcamFlat.get(idx)!;
     } else {
-      const bitmap = await this.fetchSeedBitmap(idx);
-      const c = document.createElement("canvas");
-      c.width = bitmap.width;
-      c.height = bitmap.height;
-      const ctx = c.getContext("2d")!;
-      ctx.filter = "grayscale(1)";
-      ctx.drawImage(bitmap, 0, 0);
-      source = c;
+      source = await this.fetchSeedBitmap(idx);
     }
     const tex = gl.createTexture()!;
     gl.bindTexture(gl.TEXTURE_2D, tex);

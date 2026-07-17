@@ -71,7 +71,7 @@ async function boot() {
     : "no webcam — idle wander mode";
   capture.onPhoto = (c512, img256) => {
     const idx = pool.addPhoto(c512, img256);
-    matcher.addLuma(idx, pool.lumas[idx]);
+    matcher.addPhoto(idx, pool.rgbs.subarray(idx * 3, idx * 3 + 3));
     choreo.onNewPhoto(idx);
     showToast("✓ you’re in — watch for yourself!");
   };

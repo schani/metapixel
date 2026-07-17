@@ -1,6 +1,6 @@
 import { G, Camera, Level, Rect, TileMap } from "./types";
 import { Pool } from "./pool";
-import { Matcher, cellBFromImage, insertIntoMap, isInterior } from "./mosaic";
+import { Matcher, cellRGBFromImage, insertIntoMap, isInterior } from "./mosaic";
 import { Renderer } from "./renderer";
 
 const FLY_SECONDS = 16; // each level is a 256x zoom now
@@ -46,7 +46,7 @@ export class Choreo {
     this.queue.push(idx);
     // Make it visible (and reachable) immediately in all live mosaics.
     for (const level of this.levels) {
-      if (level.map && insertIntoMap(level.map, idx, this.pool.lumas)) {
+      if (level.map && insertIntoMap(level.map, idx, this.pool.rgbs)) {
         this.renderer.buildLevelVBO(level);
       }
     }
@@ -79,19 +79,23 @@ export class Choreo {
     this.maybeRebase();
   }
 
-  private makeLevel(photoIdx: number, rect: Rect, tintB = 0.5): Level {
-    return { photoIdx, rect, map: null, vbo: null, tintB };
+  private makeLevel(
+    photoIdx: number,
+    rect: Rect,
+    tint: [number, number, number] = [0.5, 0.5, 0.5]
+  ): Level {
+    return { photoIdx, rect, map: null, vbo: null, tint };
   }
 
   private async buildMap(level: Level): Promise<void> {
     const img = await this.pool.getPixels256(level.photoIdx);
-    const cellB = cellBFromImage(img);
+    const cellRGB = cellRGBFromImage(img);
     const before = this.pool.count;
-    const { assign, homeMask, misfit, buildMs } = await this.matcher.build(cellB);
-    const map: TileMap = { assign, cellB, homeMask };
+    const { assign, homeMask, misfit, buildMs } = await this.matcher.build(cellRGB);
+    const map: TileMap = { assign, cellRGB, homeMask };
     // Photos captured while the build was running.
     for (let idx = before; idx < this.pool.count; idx++) {
-      insertIntoMap(map, idx, this.pool.lumas);
+      insertIntoMap(map, idx, this.pool.rgbs);
     }
     level.map = map;
     this.renderer.buildLevelVBO(level);
@@ -108,7 +112,7 @@ export class Choreo {
 
     if (this.queue.length > 0) {
       const idx = this.queue.shift()!;
-      insertIntoMap(map, idx, this.pool.lumas); // no-op if already present
+      insertIntoMap(map, idx, this.pool.rgbs); // no-op if already present
       const cells = [];
       for (let c = 0; c < map.assign.length; c++) {
         if (map.assign[c] === idx && isInterior(c)) cells.push(c);
@@ -161,7 +165,11 @@ export class Choreo {
       y: leaf.rect.y + (cy / G) * leaf.rect.size,
       size: leaf.rect.size / G,
     };
-    const child = this.makeLevel(map.assign[cell], rect, map.cellB[cell] / 255);
+    const child = this.makeLevel(map.assign[cell], rect, [
+      map.cellRGB[cell * 3] / 255,
+      map.cellRGB[cell * 3 + 1] / 255,
+      map.cellRGB[cell * 3 + 2] / 255,
+    ]);
     this.levels.push(child);
     void this.buildMap(child);
 

@@ -4,13 +4,14 @@ import { Pool, PER_ROW } from "./pool";
 
 const MOSAIC_VS = `#version 300 es
 layout(location=0) in vec2 aCorner;
-layout(location=1) in vec4 aCell;  // cellX, cellY, photoIdx, tintB
+layout(location=1) in vec3 aCell;  // cellX, cellY, photoIdx
+layout(location=2) in vec3 aTint;  // cell target color
 uniform vec3 uRect;                // x, y, size in root space
 uniform vec2 uCam;
 uniform vec2 uHalf;                // h*aspect, h
 out vec2 vUV;
 flat out int vLayer;
-out float vTintB;
+out vec3 vTint;
 void main() {
   float grid = float(${G});
   vec2 world = uRect.xy + (aCell.xy + aCorner) / grid * uRect.z;
@@ -23,7 +24,7 @@ void main() {
   float perRow = float(${PER_ROW});
   vec2 inner = aCorner * (1.0 - 1.0 / 64.0) + 0.5 / 64.0;
   vUV = (slotXY + inner) / perRow;
-  vTintB = aCell.w;
+  vTint = aTint;
 }`;
 
 const MOSAIC_FS = `#version 300 es
@@ -35,13 +36,13 @@ uniform float uAlpha;
 uniform vec2 uCurve; // lo, hi; lo<0 disables
 in vec2 vUV;
 flat in int vLayer;
-in float vTintB;
+in vec3 vTint;
 out vec4 outColor;
 void main() {
-  float l = texture(uAtlas, vec3(vUV, float(vLayer))).r;
-  l = mix(l, vTintB, uTintW);
-  if (uCurve.x >= 0.0) l = clamp((l - uCurve.x) / (uCurve.y - uCurve.x), 0.0, 1.0);
-  outColor = vec4(vec3(l), uAlpha);
+  vec3 col = texture(uAtlas, vec3(vUV, float(vLayer))).rgb;
+  col = mix(col, vTint, uTintW);
+  if (uCurve.x >= 0.0) col = clamp((col - uCurve.x) / (uCurve.y - uCurve.x), 0.0, 1.0);
+  outColor = vec4(col, uAlpha);
 }`;
 
 const FLAT_VS = `#version 300 es
@@ -86,15 +87,15 @@ const FLAT_FS = `#version 300 es
 precision mediump float;
 uniform sampler2D uTex;
 uniform float uAlpha;
-uniform float uTintB;
+uniform vec3 uTint;
 uniform float uTintW;
 uniform vec2 uCurve; // lo, hi; lo<0 disables
 in vec2 vUV;
 out vec4 outColor;
 void main() {
-  float l = mix(texture(uTex, vUV).r, uTintB, uTintW);
-  if (uCurve.x >= 0.0) l = clamp((l - uCurve.x) / (uCurve.y - uCurve.x), 0.0, 1.0);
-  outColor = vec4(vec3(l), uAlpha);
+  vec3 col = mix(texture(uTex, vUV).rgb, uTint, uTintW);
+  if (uCurve.x >= 0.0) col = clamp((col - uCurve.x) / (uCurve.y - uCurve.x), 0.0, 1.0);
+  outColor = vec4(col, uAlpha);
 }`;
 
 export class Renderer {
@@ -126,7 +127,7 @@ export class Renderer {
     for (const n of ["uRect", "uCam", "uHalf", "uAtlas", "uTintW", "uAlpha", "uCurve"]) {
       this.uni[n] = gl.getUniformLocation(this.mosaicProg, n)!;
     }
-    for (const n of ["uRect", "uCam", "uHalf", "uTex", "uAlpha", "uTintB", "uTintW", "uCurve"]) {
+    for (const n of ["uRect", "uCam", "uHalf", "uTex", "uAlpha", "uTint", "uTintW", "uCurve"]) {
       this.funi[n] = gl.getUniformLocation(this.flatProg, n)!;
     }
     this.quadBuf = gl.createBuffer()!;
@@ -145,13 +146,15 @@ export class Renderer {
   buildLevelVBO(level: Level): void {
     const gl = this.gl;
     const map = level.map!;
-    const data = new Float32Array(CELLS * 4);
+    const data = new Float32Array(CELLS * 6);
     for (let c = 0; c < CELLS; c++) {
-      const o = c * 4;
+      const o = c * 6;
       data[o] = c % G;
       data[o + 1] = Math.floor(c / G);
       data[o + 2] = map.assign[c];
-      data[o + 3] = map.cellB[c] / 255;
+      data[o + 3] = map.cellRGB[c * 3] / 255;
+      data[o + 4] = map.cellRGB[c * 3 + 1] / 255;
+      data[o + 5] = map.cellRGB[c * 3 + 2] / 255;
     }
     if (!level.vbo) level.vbo = gl.createBuffer()!;
     gl.bindBuffer(gl.ARRAY_BUFFER, level.vbo);
@@ -232,6 +235,8 @@ export class Renderer {
       gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
       gl.vertexAttribDivisor(1, 0);
       gl.disableVertexAttribArray(1);
+      gl.vertexAttribDivisor(2, 0);
+      gl.disableVertexAttribArray(2);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       gl.enable(gl.BLEND);
     }
@@ -290,8 +295,11 @@ export class Renderer {
       gl.uniform1i(this.uni.uAtlas, 0);
       gl.bindBuffer(gl.ARRAY_BUFFER, level.vbo);
       gl.enableVertexAttribArray(1);
-      gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 16, 0);
+      gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 24, 0);
       gl.vertexAttribDivisor(1, 1);
+      gl.enableVertexAttribArray(2);
+      gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 24, 12);
+      gl.vertexAttribDivisor(2, 1);
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, CELLS);
     }
 
@@ -309,7 +317,7 @@ export class Renderer {
         gl.uniform2f(this.funi.uCam, cam.x, cam.y);
         gl.uniform2f(this.funi.uHalf, halfX, cam.h);
         gl.uniform1f(this.funi.uAlpha, flatAlpha);
-        gl.uniform1f(this.funi.uTintB, level.tintB);
+        gl.uniform3f(this.funi.uTint, level.tint[0], level.tint[1], level.tint[2]);
         gl.uniform1f(this.funi.uTintW, parentTintW);
         gl.uniform2f(this.funi.uCurve, curveLo, knobs.curveHi);
         gl.activeTexture(gl.TEXTURE0);
@@ -320,6 +328,8 @@ export class Renderer {
         gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
         gl.vertexAttribDivisor(1, 0);
         gl.disableVertexAttribArray(1);
+        gl.vertexAttribDivisor(2, 0);
+        gl.disableVertexAttribArray(2);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       }
     }

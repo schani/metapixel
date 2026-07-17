@@ -51,11 +51,12 @@ export class Matcher {
     this.worker.postMessage({ type: "addPhoto", idx, rgb: rgb.slice() });
   }
 
-  build(cellRGB: Uint8Array): Promise<BuildResult> {
+  // bw: match on luminosity only (chroma ignored), for B&W mode.
+  build(cellRGB: Uint8Array, bw: boolean): Promise<BuildResult> {
     const jobId = this.nextJob++;
     return new Promise((resolve) => {
       this.pending.set(jobId, resolve);
-      this.worker.postMessage({ type: "build", jobId, cellRGB: cellRGB.slice(), G });
+      this.worker.postMessage({ type: "build", jobId, cellRGB: cellRGB.slice(), G, bw });
     });
   }
 }
@@ -69,13 +70,15 @@ export function isInterior(cell: number): boolean {
 }
 
 // Give photo `idx` a home in an existing map by claiming the free cell with
-// the nearest target color (free cells' occupants always have homes
-// elsewhere, so eviction never removes a photo's last appearance). Prefers
-// interior cells so the new photo is a valid zoom target.
+// the nearest target color — luminosity only in B&W mode (free cells'
+// occupants always have homes elsewhere, so eviction never removes a photo's
+// last appearance). Prefers interior cells so the new photo is a valid zoom
+// target.
 export function insertIntoMap(
   map: TileMap,
   idx: number,
-  rgbs: Uint8Array
+  pool: Pool,
+  bw: boolean
 ): boolean {
   let freeSpot = -1;
   for (let c = 0; c < CELLS; c++) {
@@ -89,19 +92,29 @@ export function insertIntoMap(
     map.homeMask[freeSpot] = 1;
     return false;
   }
-  const r = rgbs[idx * 3];
-  const g = rgbs[idx * 3 + 1];
-  const b = rgbs[idx * 3 + 2];
+  const r = pool.rgbs[idx * 3];
+  const g = pool.rgbs[idx * 3 + 1];
+  const b = pool.rgbs[idx * 3 + 2];
+  const luma = pool.lumas[idx];
   let best = Infinity;
   let bc = -1;
   let bestBorder = Infinity;
   let bcBorder = -1;
   for (let c = 0; c < CELLS; c++) {
     if (map.homeMask[c]) continue;
-    const dr = map.cellRGB[c * 3] - r;
-    const dg = map.cellRGB[c * 3 + 1] - g;
-    const db = map.cellRGB[c * 3 + 2] - b;
-    const d = dr * dr + dg * dg + db * db;
+    let d: number;
+    if (bw) {
+      const cl =
+        0.2126 * map.cellRGB[c * 3] +
+        0.7152 * map.cellRGB[c * 3 + 1] +
+        0.0722 * map.cellRGB[c * 3 + 2];
+      d = Math.abs(cl - luma);
+    } else {
+      const dr = map.cellRGB[c * 3] - r;
+      const dg = map.cellRGB[c * 3 + 1] - g;
+      const db = map.cellRGB[c * 3 + 2] - b;
+      d = dr * dr + dg * dg + db * db;
+    }
     if (isInterior(c)) {
       if (d < best) {
         best = d;

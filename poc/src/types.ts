@@ -48,8 +48,9 @@ export interface Knobs {
   curveLo: number; // 0..1 channel value mapped to 0
   curveHi: number; // 0..1 channel value mapped to 1
   // B&W mode ('b' key): desaturate every rendered pixel (Rec.709), applied
-  // uniformly like the curve. Matching is unchanged — the same tiles, shown
-  // as a black & white print.
+  // uniformly like the curve — and match on luminosity only: new builds skip
+  // chroma placement (uniform random duplicates within each luma level) and
+  // live insertion uses luma distance.
   bw: boolean;
   tintEnabled: boolean; // master switch for tint blending ('t' key)
   tintLo: number; // tile px below which tint is full

@@ -1,4 +1,4 @@
-import { G, Camera, Level, Rect, TileMap } from "./types";
+import { G, Camera, Knobs, Level, Rect, TileMap } from "./types";
 import { Pool } from "./pool";
 import { Matcher, cellRGBFromImage, insertIntoMap, isInterior } from "./mosaic";
 import { Renderer } from "./renderer";
@@ -31,7 +31,8 @@ export class Choreo {
   constructor(
     private pool: Pool,
     private matcher: Matcher,
-    private renderer: Renderer
+    private renderer: Renderer,
+    private knobs: Knobs
   ) {}
 
   async start(rootIdx: number): Promise<void> {
@@ -46,7 +47,7 @@ export class Choreo {
     this.queue.push(idx);
     // Make it visible (and reachable) immediately in all live mosaics.
     for (const level of this.levels) {
-      if (level.map && insertIntoMap(level.map, idx, this.pool.rgbs)) {
+      if (level.map && insertIntoMap(level.map, idx, this.pool, this.knobs.bw)) {
         this.renderer.buildLevelVBO(level);
       }
     }
@@ -91,11 +92,14 @@ export class Choreo {
     const img = await this.pool.getPixels256(level.photoIdx);
     const cellRGB = cellRGBFromImage(img);
     const before = this.pool.count;
-    const { assign, homeMask, misfit, buildMs } = await this.matcher.build(cellRGB);
+    const { assign, homeMask, misfit, buildMs } = await this.matcher.build(
+      cellRGB,
+      this.knobs.bw
+    );
     const map: TileMap = { assign, cellRGB, homeMask };
     // Photos captured while the build was running.
     for (let idx = before; idx < this.pool.count; idx++) {
-      insertIntoMap(map, idx, this.pool.rgbs);
+      insertIntoMap(map, idx, this.pool, this.knobs.bw);
     }
     level.map = map;
     this.renderer.buildLevelVBO(level);
@@ -112,7 +116,7 @@ export class Choreo {
 
     if (this.queue.length > 0) {
       const idx = this.queue.shift()!;
-      insertIntoMap(map, idx, this.pool.rgbs); // no-op if already present
+      insertIntoMap(map, idx, this.pool, this.knobs.bw); // no-op if already present
       const cells = [];
       for (let c = 0; c < map.assign.length; c++) {
         if (map.assign[c] === idx && isInterior(c)) cells.push(c);

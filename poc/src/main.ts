@@ -57,8 +57,8 @@ async function boot() {
   await pool.init();
   const matcher = new Matcher(pool, CAPACITY);
   const renderer = new Renderer(gl, pool);
-  const choreo = new Choreo(pool, matcher, renderer);
-  const detail = new DetailManager(pool, matcher, renderer);
+  const choreo = new Choreo(pool, matcher, renderer, knobs);
+  const detail = new DetailManager(pool, matcher, renderer, knobs);
 
   loading.textContent = "building first mosaic…";
   const rootIdx = Math.floor(Math.random() * pool.seedCount);
@@ -94,6 +94,9 @@ async function boot() {
     } else if (e.key === "b") {
       knobs.bw = !knobs.bw;
       video.style.filter = knobs.bw ? "grayscale(1)" : "";
+      // Matching mode changed: neighbor mosaics rebuild under the new rules;
+      // chain levels follow naturally with the next flights.
+      detail.clear();
     } else if (e.key === "s") {
       superSample = (superSample % 3) + 1; // 1 -> 2 -> 3 -> 1
     }
@@ -113,7 +116,7 @@ async function boot() {
     else if (e.key === "4") knobs.tintHi += 20;
   });
 
-  (window as any).__app = { pool, choreo, matcher }; // debug/verification hook
+  (window as any).__app = { pool, choreo, matcher, knobs }; // debug/verification hook
 
   let lastT = performance.now();
   let frames = 0;

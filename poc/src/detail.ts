@@ -1,4 +1,4 @@
-import { G, Camera, Level, TileMap } from "./types";
+import { G, Camera, Knobs, Level, TileMap } from "./types";
 import { Pool } from "./pool";
 import { Matcher, cellRGBFromImage } from "./mosaic";
 import { Renderer } from "./renderer";
@@ -26,14 +26,28 @@ export class DetailManager {
   private queue: number[] = [];
   private building = false;
   private frame = 0;
+  private epoch = 0; // bumped on clear(): discards stale in-flight builds
 
   constructor(
     private pool: Pool,
     private matcher: Matcher,
-    private renderer: Renderer
+    private renderer: Renderer,
+    private knobs: Knobs
   ) {}
 
   detailCount = 0;
+
+  // Drop all cached maps (e.g. when the matching mode changes) so visible
+  // neighbors rebuild under the current rules.
+  clear(): void {
+    this.epoch++;
+    for (const entry of this.mapCache.values()) {
+      this.renderer.freeBuffer(entry.vbo);
+    }
+    this.mapCache.clear();
+    this.queue.length = 0;
+    this.pendingBuild.clear();
+  }
 
   update(levels: Level[], cam: Camera, aspect: number): Level[][] {
     this.frame++;
@@ -106,11 +120,13 @@ export class DetailManager {
     if (this.building || this.queue.length === 0) return;
     this.building = true;
     const idx = this.queue.shift()!;
+    const epoch = this.epoch;
     void (async () => {
       try {
         const img = await this.pool.getPixels256(idx);
         const cellRGB = cellRGBFromImage(img);
-        const { assign, homeMask } = await this.matcher.build(cellRGB);
+        const { assign, homeMask } = await this.matcher.build(cellRGB, this.knobs.bw);
+        if (epoch !== this.epoch) return; // mode changed mid-build
         const map: TileMap = { assign, cellRGB, homeMask };
         const scratch: Level = {
           photoIdx: idx,

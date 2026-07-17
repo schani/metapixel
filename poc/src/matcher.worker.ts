@@ -87,7 +87,8 @@ function shuffle(a: Int32Array): void {
 
 function build(
   cellRGB: Uint8Array,
-  G: number
+  G: number,
+  bw: boolean
 ): { assign: Int32Array; homeMask: Uint8Array; misfit: number /* EMD */ } {
   const cells = cellRGB.length / 3;
   const cellLuma = new Uint8Array(cells);
@@ -184,6 +185,27 @@ function build(
       bucket = buckets[lumaAt(a, d, bucketLen)];
     }
     const M = Math.min(bucket.length, K);
+
+    // B&W mode: luminosity only. Within a level all tiles are equal in luma,
+    // so chroma placement is meaningless — issue must-haves at random cells
+    // and fill the rest with uniform random duplicates (maximum variety).
+    if (bw) {
+      const order = new Int32Array(K);
+      for (let i = 0; i < K; i++) order[i] = sortedCells[blockStart + i];
+      shuffle(order);
+      const mustCount = bucket === buckets[a] ? M : 0;
+      const perm = bucket.slice();
+      shuffle(perm);
+      for (let i = 0; i < K; i++) {
+        if (i < mustCount) {
+          assign[order[i]] = perm[i];
+          homeMask[order[i]] = 1;
+        } else {
+          assign[order[i]] = bucket[Math.floor(Math.random() * bucket.length)];
+        }
+      }
+      continue;
+    }
 
     // Sort the level's cells by jittered warm–cool key. Pack key<<17 | rank
     // so a plain numeric sort carries the rank along (cells <= 65536 < 2^17).
@@ -294,7 +316,7 @@ self.addEventListener("message", (e: MessageEvent) => {
     rebuildBuckets();
   } else if (msg.type === "build") {
     const t0 = performance.now();
-    const { assign, homeMask, misfit } = build(msg.cellRGB, msg.G);
+    const { assign, homeMask, misfit } = build(msg.cellRGB, msg.G, !!msg.bw);
     (self as any).postMessage(
       {
         jobId: msg.jobId,

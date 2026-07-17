@@ -27,6 +27,7 @@ const knobs: Knobs = {
   tintMax: 0.75,
   flatLo: 0.35,
   flatHi: 0.85,
+  bw: false,
 };
 
 let hudVisible = true;
@@ -90,6 +91,9 @@ async function boot() {
       knobs.curveEnabled = !knobs.curveEnabled;
     } else if (e.key === "p") {
       paused = !paused;
+    } else if (e.key === "b") {
+      knobs.bw = !knobs.bw;
+      video.style.filter = knobs.bw ? "grayscale(1)" : "";
     } else if (e.key === "s") {
       superSample = (superSample % 3) + 1; // 1 -> 2 -> 3 -> 1
     }
@@ -138,7 +142,7 @@ async function boot() {
         `h ${choreo.cam.h.toExponential(2)}  ${choreo.state}  det ${detail.detailCount}  ` +
         `tint ${knobs.tintEnabled ? "on" : "OFF"} ` +
         `curve ${knobs.curveEnabled ? `${Math.round(knobs.curveLo * 255)}..${Math.round(knobs.curveHi * 255)}` : "OFF"}  ` +
-        `ss ${superSample}x` +
+        `ss ${superSample}x  ${knobs.bw ? "B&W" : "color"}` +
         (paused ? "  PAUSED" : "");
     }
     requestAnimationFrame(frame);

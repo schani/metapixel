@@ -47,6 +47,10 @@ export interface Knobs {
   curveEnabled: boolean;
   curveLo: number; // 0..1 channel value mapped to 0
   curveHi: number; // 0..1 channel value mapped to 1
+  // B&W mode ('b' key): desaturate every rendered pixel (Rec.709), applied
+  // uniformly like the curve. Matching is unchanged — the same tiles, shown
+  // as a black & white print.
+  bw: boolean;
   tintEnabled: boolean; // master switch for tint blending ('t' key)
   tintLo: number; // tile px below which tint is full
   tintHi: number; // tile px above which tint is zero

@@ -34,6 +34,7 @@ uniform sampler2DArray uAtlas;
 uniform float uTintW;
 uniform float uAlpha;
 uniform vec2 uCurve; // lo, hi; lo<0 disables
+uniform float uBW;   // 1 = desaturate (Rec.709)
 in vec2 vUV;
 flat in int vLayer;
 in vec3 vTint;
@@ -41,6 +42,7 @@ out vec4 outColor;
 void main() {
   vec3 col = texture(uAtlas, vec3(vUV, float(vLayer))).rgb;
   col = mix(col, vTint, uTintW);
+  col = mix(col, vec3(dot(col, vec3(0.2126, 0.7152, 0.0722))), uBW);
   if (uCurve.x >= 0.0) col = clamp((col - uCurve.x) / (uCurve.y - uCurve.x), 0.0, 1.0);
   outColor = vec4(col, uAlpha);
 }`;
@@ -90,10 +92,12 @@ uniform float uAlpha;
 uniform vec3 uTint;
 uniform float uTintW;
 uniform vec2 uCurve; // lo, hi; lo<0 disables
+uniform float uBW;   // 1 = desaturate (Rec.709)
 in vec2 vUV;
 out vec4 outColor;
 void main() {
   vec3 col = mix(texture(uTex, vUV).rgb, uTint, uTintW);
+  col = mix(col, vec3(dot(col, vec3(0.2126, 0.7152, 0.0722))), uBW);
   if (uCurve.x >= 0.0) col = clamp((col - uCurve.x) / (uCurve.y - uCurve.x), 0.0, 1.0);
   outColor = vec4(col, uAlpha);
 }`;
@@ -124,10 +128,10 @@ export class Renderer {
       uTex: gl.getUniformLocation(this.downProg, "uTex")!,
       uSS: gl.getUniformLocation(this.downProg, "uSS")!,
     };
-    for (const n of ["uRect", "uCam", "uHalf", "uAtlas", "uTintW", "uAlpha", "uCurve"]) {
+    for (const n of ["uRect", "uCam", "uHalf", "uAtlas", "uTintW", "uAlpha", "uCurve", "uBW"]) {
       this.uni[n] = gl.getUniformLocation(this.mosaicProg, n)!;
     }
-    for (const n of ["uRect", "uCam", "uHalf", "uTex", "uAlpha", "uTint", "uTintW", "uCurve"]) {
+    for (const n of ["uRect", "uCam", "uHalf", "uTex", "uAlpha", "uTint", "uTintW", "uCurve", "uBW"]) {
       this.funi[n] = gl.getUniformLocation(this.flatProg, n)!;
     }
     this.quadBuf = gl.createBuffer()!;
@@ -290,6 +294,7 @@ export class Renderer {
       gl.uniform1f(this.uni.uTintW, tintW);
       gl.uniform1f(this.uni.uAlpha, 1);
       gl.uniform2f(this.uni.uCurve, curveLo, knobs.curveHi);
+      gl.uniform1f(this.uni.uBW, knobs.bw ? 1 : 0);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.pool.atlasTex);
       gl.uniform1i(this.uni.uAtlas, 0);
@@ -320,6 +325,7 @@ export class Renderer {
         gl.uniform3f(this.funi.uTint, level.tint[0], level.tint[1], level.tint[2]);
         gl.uniform1f(this.funi.uTintW, parentTintW);
         gl.uniform2f(this.funi.uCurve, curveLo, knobs.curveHi);
+        gl.uniform1f(this.funi.uBW, knobs.bw ? 1 : 0);
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, flatTex);
         gl.uniform1i(this.funi.uTex, 0);

@@ -108,6 +108,7 @@ installation, with attribution (see `seed-photos/LICENSE.txt`).
 | --- | --- |
 | `space` | countdown + capture — you join every mosaic, camera flies to you |
 | `p` | pause/resume the zoom |
+| `b` | toggle color / black & white rendering |
 | `c` | toggle global tone curve; `5`/`6` black point, `7`/`8` white point |
 | `t` | toggle tint blending; `1`/`2` strength, `3`/`4` fade distance |
 | `h` | toggle HUD |

@@ -26,6 +26,10 @@
 const JITTER = 10; // +- luma jitter on cell targets before rank matching
 const CHROMA_JITTER = 10; // +- jitter on the warm-cool key inside a level
 const FREE_TOL = 12; // free picks accept photos within this RGB distance of the best
+// Where the target color is unreachable (e.g. blue sky: no blue photos at
+// that luma), the tolerance band can shrink to 2-3 photos which then carpet
+// the region. Guarantee at least this many candidates (the nearest ones).
+const MIN_CAND = 8;
 
 let count = 0;
 let rgbs = new Uint8Array(0); // 3 bytes per photo: avg R, G, B
@@ -246,25 +250,24 @@ function build(
       const memoKey = (a << 15) | q;
       let cand = freeCand.get(memoKey);
       if (!cand) {
+        const n = bucket.length;
+        const byDist: [number, number][] = new Array(n);
         let best = Infinity;
-        for (let j = 0; j < bucket.length; j++) {
+        for (let j = 0; j < n; j++) {
           const p = bucket[j];
           const dr = rgbs[p * 3] - cr;
           const dg = rgbs[p * 3 + 1] - cg;
           const db = rgbs[p * 3 + 2] - cb;
           const d2 = dr * dr + dg * dg + db * db;
+          byDist[j] = [d2, p];
           if (d2 < best) best = d2;
         }
+        byDist.sort((x, y) => x[0] - y[0]);
         const lim = (Math.sqrt(best) + FREE_TOL) ** 2;
-        const list: number[] = [];
-        for (let j = 0; j < bucket.length; j++) {
-          const p = bucket[j];
-          const dr = rgbs[p * 3] - cr;
-          const dg = rgbs[p * 3 + 1] - cg;
-          const db = rgbs[p * 3 + 2] - cb;
-          if (dr * dr + dg * dg + db * db <= lim) list.push(p);
-        }
-        cand = Int32Array.from(list);
+        let take = 0;
+        while (take < n && (byDist[take][0] <= lim || take < MIN_CAND)) take++;
+        cand = new Int32Array(take);
+        for (let j = 0; j < take; j++) cand[j] = byDist[j][1];
         freeCand.set(memoKey, cand);
       }
       assign[cell] = cand[Math.floor(Math.random() * cand.length)];

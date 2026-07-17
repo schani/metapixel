@@ -179,6 +179,11 @@ export class Renderer {
   // Cap the supersampled framebuffer so Retina fullscreen doesn't explode.
   private static readonly MAX_FBO_PIXELS = 28_000_000;
 
+  // Flat-photo fade-in band (level height as viewport fraction). Below LO the
+  // parent's atlas tile is the representation; the flat is opaque from HI.
+  private static readonly FLAT_IN_LO = 0.04;
+  private static readonly FLAT_IN_HI = 0.075;
+
   draw(
     levels: Level[],
     cam: Camera,
@@ -286,7 +291,12 @@ export class Renderer {
       ? knobs.tintMax * (1 - smoothstep(knobs.tintLo, knobs.tintHi, tilePx))
       : 0;
 
-    if (level.map && level.vbo && tilePx > 0.5) {
+    // The mosaic joins the ladder only once the flat overlay is fully opaque
+    // (frac >= FLAT_IN_HI). The tilePx threshold alone is resolution-
+    // dependent: on a tall canvas it fires while the flat is still fading in
+    // (or before it starts), flashing sub-pixel tiles through the transparent
+    // flat until the fade completes.
+    if (level.map && level.vbo && tilePx > 0.5 && frac >= Renderer.FLAT_IN_HI) {
       gl.useProgram(this.mosaicProg);
       gl.uniform3f(this.uni.uRect, level.rect.x, level.rect.y, level.rect.size);
       gl.uniform2f(this.uni.uCam, cam.x, cam.y);
@@ -312,7 +322,7 @@ export class Renderer {
     // that the atlas tile goes soft (the same rule for zoom targets and
     // neighbors alike), and dissolves into the mosaic near fullscreen.
     const flatAlpha =
-      smoothstep(0.04, 0.075, frac) *
+      smoothstep(Renderer.FLAT_IN_LO, Renderer.FLAT_IN_HI, frac) *
       (1 - smoothstep(knobs.flatLo, knobs.flatHi, frac));
     if (flatAlpha > 0.01) {
       const flatTex = this.pool.getFlatTex(level.photoIdx);
